@@ -1,0 +1,6 @@
+{
+  "name": "AeroDAG - Enterprise Multi-Agent Travel Orchestration System",
+  "description": "Autonomous micro-agent DAG travel orchestration platform executing 5-phase guardrails, intent routing, puppeteer prompt expansion, SME parallel execution, LLM judge audits, and rich state persistence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
