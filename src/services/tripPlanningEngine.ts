@@ -962,6 +962,50 @@ export class TripPlanningEngine {
   /**
    * Directly applies a stay upgrade option to a trip plan
    */
+  /**
+   * Swap the flight or the stay chosen by the user and recompute the budget,
+   * so the total, buffer and over/under-budget state always match what is selected.
+   */
+  static swapComponent(plan: TripPlan, change: { flight?: FlightItem; hotel?: HotelItem }): TripPlan {
+    const nights = Math.max(1, plan.durationDays - 1);
+    const b = plan.budget;
+    let flightsCostINR = b.flightsCostINR;
+    let hotelCostINR = b.hotelCostINR;
+    const next: TripPlan = { ...plan };
+
+    if (change.flight) {
+      flightsCostINR = change.flight.totalPriceINR;
+      next.flight = change.flight;
+    }
+    if (change.hotel) {
+      hotelCostINR = nights * change.hotel.pricePerNightINR;
+      next.hotel = change.hotel;
+    }
+
+    const oldBuffer = b.bufferCostINR || 0;
+    const oldSubtotal = b.grandTotalINR - oldBuffer;
+    const newSubtotal = oldSubtotal + (flightsCostINR - b.flightsCostINR) + (hotelCostINR - b.hotelCostINR);
+    const newBuffer = calculateContingencyBufferINR(newSubtotal);
+    const grandTotalINR = newSubtotal + newBuffer;
+    const isOverBudget = grandTotalINR > b.targetINR;
+    const overBudgetAmountINR = isOverBudget ? grandTotalINR - b.targetINR : 0;
+
+    next.budget = {
+      ...b,
+      flightsCostINR,
+      hotelCostINR,
+      bufferCostINR: newBuffer,
+      grandTotalINR,
+      remainingBudgetINR: b.targetINR - grandTotalINR,
+      overBudgetAmountINR,
+      isOverBudget,
+      statusMessage: isOverBudget
+        ? `Your plan is currently ₹${overBudgetAmountINR.toLocaleString('en-IN')} above your target budget.`
+        : `Within budget with ₹${(b.targetINR - grandTotalINR).toLocaleString('en-IN')} remaining buffer.`
+    } as TripPlan['budget'];
+    return next;
+  }
+
   static applyUpgrade(plan: TripPlan, upgrade: PlanUpgradeOption): TripPlan {
     const luxuryHotel = upgrade.hotel;
     const nights = Math.max(1, plan.durationDays - 1);

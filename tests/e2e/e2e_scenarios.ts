@@ -121,7 +121,7 @@ async function runAllScenarios() {
     // 2. Clarify Screen (Date Question)
     await page.waitForSelector('h2');
     const clarifyHeading = await page.evaluate(() => document.body.innerText);
-    assert(clarifyHeading.includes('One thing changes the price most: when are you going?'), 'Clarify screen displays date question');
+    assert(clarifyHeading.includes('When are your holidays?'), 'Clarify screen asks for the holiday dates');
 
     await assertNoLeaks(page, 'Clarify Screen');
     await runAxeAudit(page, 'Clarify Screen');
@@ -223,20 +223,20 @@ async function runAllScenarios() {
     await checkMobile375(page, 'Done Screen');
 
     const doneText = await page.evaluate(() => document.body.innerText);
-    assert(doneText.includes('SIMULATED BOOKING'), 'Done screen shows "SIMULATED BOOKING" badge');
+    assert(doneText.includes('DEMO BOOKING'), 'Done screen shows "DEMO BOOKING" badge');
     assert(doneText.includes('no tickets were issued'), 'Done screen shows "no tickets were issued" disclaimer');
 
     // Navigate to My Trips
     await page.click('#view-in-my-trips-btn');
 
     // 6. My Trips Screen
-    await page.waitForFunction(() => document.body.innerText.includes('My Trips') || document.body.innerText.includes('SIMULATED'));
+    await page.waitForFunction(() => document.body.innerText.includes('My Trips') || document.body.innerText.includes('Booked'));
     await assertNoLeaks(page, 'My Trips Screen');
     await runAxeAudit(page, 'My Trips Screen');
     await checkMobile375(page, 'My Trips Screen');
 
     const myTripsText = await page.evaluate(() => document.body.innerText);
-    assert(myTripsText.toLowerCase().includes('simulated'), 'My Trips screen lists trip with "Simulated" status');
+    assert(myTripsText.includes('Booked trips') && myTripsText.includes('Booked'), 'My Trips lists the trip under "Booked trips" with a plain "Booked" label');
     assert(!myTripsText.includes('Confirmed Voucher'), 'My Trips does NOT display "Confirmed Voucher"');
     assert(!myTripsText.includes('Reserved\n') && !myTripsText.includes('· Reserved'), 'My Trips does NOT display "Reserved" status');
 
@@ -342,7 +342,7 @@ async function runAllScenarios() {
 
     await page.waitForSelector('h2');
     const noDatesText = await page.evaluate(() => document.body.innerText);
-    assert(noDatesText.includes('One thing changes the price most: when are you going?'), 'Clarify screen asks the date question');
+    assert(noDatesText.includes('When are your holidays?'), 'Clarify screen asks the date question');
     assert(!noDatesText.includes('Total trip cost'), 'Plan is not shown before dates are selected');
 
     // -------------------------------------------------------------------------
@@ -404,14 +404,14 @@ async function runAllScenarios() {
     console.log('\n--- Step 3: Account Menu & Guest Session ---');
     await page.waitForSelector('[data-testid="account-menu-button"]');
     const accountBtnText = await page.evaluate(() => document.querySelector('[data-testid="account-menu-button"]')?.textContent || '');
-    assert(accountBtnText.includes('Guest'), 'Account menu button displays "Guest" session badge');
+    assert(accountBtnText.includes('Sign in'), 'Guests see a visible "Sign in" button (no sign-up wall)');
 
     // Open dropdown
     await page.click('[data-testid="account-menu-button"]');
     await page.waitForSelector('[data-testid="account-menu-dropdown"]');
     const dropdownText = await page.evaluate(() => document.querySelector('[data-testid="account-menu-dropdown"]')?.textContent || '');
-    assert(dropdownText.includes('Save my trips with email'), 'Account dropdown includes "Save my trips with email"');
-    assert(dropdownText.includes('Guest trips will be lost unless you save them with email'), 'Account dropdown contains guest trip warning');
+    assert(dropdownText.includes('Sign in or keep your trips'), 'Account dropdown offers "Sign in or keep your trips"');
+    assert(dropdownText.includes('Email me a link'), 'Account dropdown offers a passwordless email link');
     // Close dropdown
     await page.click('[data-testid="account-menu-button"]');
 

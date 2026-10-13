@@ -50,7 +50,7 @@ const KIND_CONFIG: Record<
     borderColor: 'rgba(30, 79, 138, 0.2)'
   },
   simulated: {
-    label: 'Simulated',
+    label: 'Demo',
     textColor: '#1E4F8A',
     bgColor: '#E4EDF8',
     borderColor: 'rgba(30, 79, 138, 0.2)'

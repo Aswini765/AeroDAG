@@ -8,6 +8,7 @@ interface PlanHeaderProps {
   onSaveTrip: () => void;
   onProceedToReview: () => void;
   isSaved?: boolean;
+  saveState?: 'idle' | 'saving' | 'saved' | 'error';
 }
 
 export const PlanHeader: React.FC<PlanHeaderProps> = ({
@@ -15,8 +16,12 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
   preferences,
   onSaveTrip,
   onProceedToReview,
-  isSaved = false
+  isSaved = false,
+  saveState
 }) => {
+  const state = saveState || (isSaved ? 'saved' : 'idle');
+  const saveLabel =
+    state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : state === 'error' ? "Couldn't save · Retry" : 'Save trip';
   const areaName = plan.hotelZone || (plan.hotel.area.toLowerCase().includes('south') ? 'South Goa' : plan.hotel.area || 'Goa');
 
   return (
@@ -27,7 +32,7 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
           <span className="font-semibold px-2 py-0.5 rounded-full bg-[#E2E6E1] text-[#15201D] text-[11px]">
             DEMO MODE
           </span>
-          <span>Sample catalog options · Simulated booking checkout</span>
+          <span>Sample prices · Demo booking — no real payment</span>
         </div>
         <span className="text-[#4A5753] hidden sm:inline">
           Live inventory disabled
@@ -61,11 +66,15 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
           <button
             type="button"
             onClick={onSaveTrip}
-            className="btn-ghost"
+            className={`btn-ghost ${state === 'error' ? 'text-[#8A4307]' : ''}`}
             aria-label="Save trip draft"
+            aria-live="polite"
+            disabled={state === 'saving' || state === 'saved'}
+            id="save-trip-btn"
+            data-state={state}
           >
-            <Bookmark className={`h-4 w-4 ${isSaved ? 'text-[#0E6B59] fill-[#0E6B59]' : ''}`} />
-            <span>{isSaved ? 'Saved' : 'Save trip'}</span>
+            <Bookmark className={`h-4 w-4 ${state === 'saved' ? 'text-[#0E6B59] fill-[#0E6B59]' : ''}`} />
+            <span>{saveLabel}</span>
           </button>
 
           <button

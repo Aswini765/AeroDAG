@@ -13,6 +13,7 @@ import {
 import { getTripSummary } from '../../services/tripSummaryHelper';
 import { TripPlanningEngine } from '../../services/tripPlanningEngine';
 import { PlanHeader } from './plan/PlanHeader';
+import { KeepTripsCard } from './KeepTripsCard';
 import { BookedItems } from './plan/BookedItems';
 import { FeasibilityNote } from './plan/FeasibilityNote';
 import { DayByDay } from './plan/DayByDay';
@@ -29,6 +30,11 @@ interface PlanScreenProps {
   onProceedToReview: () => void;
   onDescribeAgain: () => void;
   onUpdateItineraryDay?: (dayNumber: number, modificationType: 'relaxed' | 'food' | 'budget') => void;
+  /** Saves this plan as a draft in My Trips. Resolves true on success. */
+  onSaveDraft?: () => Promise<boolean>;
+  /** Guest (not signed in) — after saving we offer the optional email card */
+  isGuest?: boolean;
+  onContinueWithEmail?: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
 }
 
 export const PlanScreen: React.FC<PlanScreenProps> = ({
@@ -37,9 +43,19 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
   onPlanChange,
   onProceedToReview,
   onDescribeAgain,
-  onUpdateItineraryDay
+  onUpdateItineraryDay,
+  onSaveDraft,
+  isGuest = false,
+  onContinueWithEmail
 }) => {
-  const [isSaved, setIsSaved] = useState(false);
+  const [emailCardDismissed, setEmailCardDismissed] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const handleSaveTrip = async () => {
+    if (!onSaveDraft || saveState === 'saving' || saveState === 'saved') return;
+    setSaveState('saving');
+    const ok = await onSaveDraft().catch(() => false);
+    setSaveState(ok ? 'saved' : 'error');
+  };
   const [isRefining, setIsRefining] = useState(false);
   const [moreOptionsView, setMoreOptionsView] = useState<'flights' | 'hotels' | 'dining' | 'map' | null>(null);
 
@@ -180,10 +196,22 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
       <PlanHeader
         plan={plan}
         preferences={preferences}
-        onSaveTrip={() => setIsSaved(!isSaved)}
+        onSaveTrip={handleSaveTrip}
         onProceedToReview={onProceedToReview}
-        isSaved={isSaved}
+        saveState={saveState}
       />
+
+      {saveState === 'saved' && isGuest && onContinueWithEmail && !emailCardDismissed && (
+        <div className="mb-6">
+          <KeepTripsCard
+            id="save-trip-email-card"
+            title="Saved — find it anytime under Saved plans"
+            description="Want it on your phone or another laptop too? Add your email — no password, we just send you a link."
+            onSubmitEmail={onContinueWithEmail}
+            onDismiss={() => setEmailCardDismissed(true)}
+          />
+        </div>
+      )}
 
       {/* 2. INFEASIBLE STATE CHECK: Replaces the plan body with a clear shortfall card */}
       {isPlanInfeasible && plan.concreteFixes && plan.concreteFixes.length > 0 ? (
@@ -263,8 +291,8 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
         diningSuggestions={plan.diningSuggestions}
         selectedFlightId={plan.flight?.id || ''}
         selectedHotelId={plan.hotel.id}
-        onSelectFlight={(fl) => onPlanChange({ ...plan, flight: fl })}
-        onSelectHotel={(ht) => onPlanChange({ ...plan, hotel: ht })}
+        onSelectFlight={(fl) => onPlanChange(TripPlanningEngine.swapComponent(plan, { flight: fl }))}
+        onSelectHotel={(ht) => onPlanChange(TripPlanningEngine.swapComponent(plan, { hotel: ht }))}
       />
     </div>
   );

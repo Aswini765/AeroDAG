@@ -26,8 +26,12 @@ interface ConsumerNavbarProps {
   authUser?: SupabaseUser | null;
   isAuthAnonymous?: boolean;
   isOfflineMode?: boolean;
-  onLinkEmail?: (email: string) => Promise<{ success: boolean; error?: string }>;
+  onLinkEmail?: (email: string) => Promise<{ success: boolean; error?: string; message?: string }>;
   onSignOut?: () => Promise<void>;
+  /** Opens My Trips on the "Saved plans" tab */
+  onOpenSavedPlans?: () => void;
+  savedPlansCount?: number;
+  myTripsTab?: 'booked' | 'saved';
 }
 
 export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
@@ -41,8 +45,12 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
   isAuthAnonymous = true,
   isOfflineMode = false,
   onLinkEmail,
-  onSignOut
+  onSignOut,
+  onOpenSavedPlans,
+  savedPlansCount = 0,
+  myTripsTab
 }) => {
+  const onSavedPlansView = currentStep === 'mytrips' && myTripsTab === 'saved';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -51,6 +59,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
   const [emailInput, setEmailInput] = useState('');
   const [isLinking, setIsLinking] = useState(false);
   const [linkSuccess, setLinkSuccess] = useState(false);
+  const [linkMessage, setLinkMessage] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
 
   // Sign out confirmation
@@ -87,6 +96,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
       const res = await onLinkEmail(emailInput.trim());
       if (res.success) {
         setLinkSuccess(true);
+        setLinkMessage(res.message || null);
         setEmailInput('');
       } else {
         setLinkError(res.error || 'Failed to send confirmation link');
@@ -171,16 +181,33 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
               id="nav-my-trips-btn"
               onClick={() => onNavigate('mytrips')}
               className={`text-sm font-medium transition cursor-pointer relative ${
-                currentStep === 'mytrips'
+                currentStep === 'mytrips' && !onSavedPlansView
                   ? 'text-[#0E6B59] font-semibold'
                   : 'text-[#55625E] hover:text-[#15201D]'
               }`}
+              aria-current={currentStep === 'mytrips' && !onSavedPlansView ? 'page' : undefined}
             >
               <span>My Trips</span>
-              {hasConfirmedTrips && (
-                <span className="absolute -top-1 -right-2 h-2 w-2 rounded-full bg-[#0E6B59]" />
-              )}
             </button>
+
+            {onOpenSavedPlans && (
+              <button
+                id="nav-saved-plans-btn"
+                onClick={onOpenSavedPlans}
+                className={`text-sm font-medium transition cursor-pointer inline-flex items-center gap-1.5 ${
+                  onSavedPlansView ? 'text-[#0E6B59] font-semibold' : 'text-[#55625E] hover:text-[#15201D]'
+                }`}
+                aria-current={onSavedPlansView ? 'page' : undefined}
+                aria-label={savedPlansCount > 0 ? `Saved plans, ${savedPlansCount}` : 'Saved plans'}
+              >
+                <span>Saved plans</span>
+                {savedPlansCount > 0 && (
+                  <span className="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-[#E3F1EC] text-[#0E6B59] text-[11px] font-bold inline-flex items-center justify-center" data-testid="saved-plans-count">
+                    {savedPlansCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             <button
               onClick={onOpenHowItWorks}
@@ -215,8 +242,8 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
                 <div className="h-5 w-5 rounded-full bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center text-[10px] font-bold">
                   {authUser?.email ? authUser.email.charAt(0).toUpperCase() : <User className="h-3 w-3" />}
                 </div>
-                <span className="max-w-[120px] truncate">
-                  {userDisplayName}
+                <span className="max-w-[120px] truncate" data-testid="account-trigger-label">
+                  {isUserGuest ? 'Sign in' : userDisplayName}
                 </span>
                 {isOfflineMode && (
                   <span className="h-1.5 w-1.5 rounded-full bg-[#D97706]" title="Offline mode active" />
@@ -270,16 +297,16 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
                     <div className="p-3 rounded-xl bg-[#F5F6F3] border border-[#E2E6E1] space-y-2.5">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-[#15201D]">
                         <Mail className="h-3.5 w-3.5 text-[#0E6B59]" />
-                        <span>Save my trips with email</span>
+                        <span>Sign in or keep your trips</span>
                       </div>
                       <p className="text-[11px] text-[#55625E] leading-relaxed">
-                        Send a magic link to link your email to this session, keeping all your trips across browsers and devices.
+                        No password — we email you a link. New here? Your trips from this visit are kept. Been here before? You'll get your saved trips back.
                       </p>
 
                       {linkSuccess ? (
                         <div className="p-2.5 rounded-lg bg-[#E3F1EC] text-[#0E6B59] text-xs font-medium flex items-center gap-2">
                           <Check className="h-4 w-4 flex-shrink-0" />
-                          <span>Check your email to confirm. Your trips stay saved here meanwhile.</span>
+                          <span>{linkMessage || 'Check your email for the link. Your trips stay saved here meanwhile.'}</span>
                         </div>
                       ) : (
                         <form onSubmit={handleSendMagicLink} className="space-y-2">
@@ -302,19 +329,20 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
                             disabled={isLinking || !emailInput}
                             className="w-full btn-primary py-1.5 px-3 text-xs justify-center font-medium"
                           >
-                            {isLinking ? 'Sending...' : 'Send magic link'}
+                            {isLinking ? 'Sending…' : 'Email me a link'}
                           </button>
                         </form>
                       )}
                     </div>
                   )}
 
-                  {/* Sign Out Section with Warning */}
+                  {/* Sign Out Section (signed-in users only; a guest signing out would just lose their trips) */}
+                  {!isUserGuest && (
                   <div className="pt-2 border-t border-[#E2E6E1] space-y-2">
                     {isUserGuest && (
                       <p className="text-[11px] text-[#8C4A4A] leading-tight flex items-start gap-1">
                         <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5 text-[#D97706]" />
-                        <span>Guest trips will be lost unless you save them with email.</span>
+                        <span>Without an email, your trips stay on this browser only.</span>
                       </p>
                     )}
 
@@ -353,6 +381,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
                       </button>
                     )}
                   </div>
+                  )}
                 </div>
               )}
             </div>
@@ -366,6 +395,15 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
             >
               My Trips
             </button>
+            {isUserGuest && !isOfflineMode && (
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                className="px-2.5 py-1 text-xs font-semibold text-[#0E6B59] border border-[#0E6B59]/40 rounded-full"
+                data-testid="mobile-sign-in-button"
+              >
+                Sign in
+              </button>
+            )}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 text-[#55625E] hover:text-[#15201D]"
@@ -414,6 +452,17 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
           >
             My Trips
           </button>
+          {onOpenSavedPlans && (
+            <button
+              onClick={() => {
+                onOpenSavedPlans();
+                setMobileMenuOpen(false);
+              }}
+              className="block w-full text-left py-1.5 text-sm font-medium text-[#15201D]"
+            >
+              Saved plans{savedPlansCount > 0 ? ` (${savedPlansCount})` : ''}
+            </button>
+          )}
           <button
             onClick={() => {
               onOpenHowItWorks();
@@ -427,14 +476,14 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
           {/* Mobile Save Email & Sign out */}
           {isUserGuest && (
             <div className="pt-2 border-t border-[#E2E6E1] space-y-2">
-              <div className="text-xs font-bold text-[#15201D]">Save my trips with email</div>
+              <div className="text-xs font-bold text-[#15201D]">Sign in or keep your trips</div>
               <p className="text-[11px] text-[#55625E]">
-                Link your email to keep your saved trips across devices.
+                No password — we email you a link to see your trips on any device.
               </p>
               {linkSuccess ? (
                 <div className="p-2.5 rounded-lg bg-[#E3F1EC] text-[#0E6B59] text-xs font-medium flex items-center gap-2">
                   <Check className="h-4 w-4 flex-shrink-0" />
-                  <span>Check your email to confirm. Your trips stay saved here meanwhile.</span>
+                  <span>{linkMessage || 'Check your email for the link. Your trips stay saved here meanwhile.'}</span>
                 </div>
               ) : (
                 <form onSubmit={handleSendMagicLink} className="space-y-2">
@@ -452,7 +501,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
                       disabled={isLinking || !emailInput}
                       className="btn-primary py-1 px-3 text-xs"
                     >
-                      {isLinking ? 'Sending...' : 'Send'}
+                      {isLinking ? 'Sending…' : 'Email me a link'}
                     </button>
                   </div>
                   {linkError && (
@@ -463,22 +512,24 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
                 </form>
               )}
               <p className="text-[11px] text-[#8C4A4A]">
-                ⚠️ Guest trips will be lost unless you save them with email.
+                Without an email, your trips stay on this browser only.
               </p>
             </div>
           )}
 
-          <div className="pt-2 border-t border-[#E2E6E1]">
-            <button
-              onClick={() => {
-                handleSignOutAction();
-                setMobileMenuOpen(false);
-              }}
-              className="text-xs font-medium text-red-600 py-1"
-            >
-              Sign out
-            </button>
-          </div>
+          {!isUserGuest && (
+            <div className="pt-2 border-t border-[#E2E6E1]">
+              <button
+                onClick={() => {
+                  handleSignOutAction();
+                  setMobileMenuOpen(false);
+                }}
+                className="text-xs font-medium text-red-600 py-1"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       )}
 

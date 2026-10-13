@@ -23,6 +23,8 @@ interface MyTripsViewProps {
   isLoading?: boolean;
   loadError?: string | null;
   onRetry?: () => void;
+  /** Which tab to open on. Omit to open Booked trips (or Saved plans if nothing is booked yet). */
+  initialTab?: 'booked' | 'saved';
 }
 
 const DEFAULT_ASSISTANT_MESSAGE = {
@@ -37,13 +39,29 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
   isOffline = false,
   isLoading = false,
   loadError = null,
-  onRetry
+  onRetry,
+  initialTab
 }) => {
-  const [selectedTripIndex, setSelectedTripIndex] = useState<number | null>(
-    confirmedTrips.length > 0 ? 0 : null
+  const isSavedPlan = (t: ConfirmedBookingRecord) => !!t.bookingId?.startsWith('draft_');
+  const bookedTrips = confirmedTrips.filter((t) => !isSavedPlan(t));
+  const savedPlans = confirmedTrips.filter(isSavedPlan);
+  // Open on Booked trips; if there are none yet but there are saved plans, open those instead
+  const [tab, setTab] = useState<'booked' | 'saved'>(
+    initialTab ?? (bookedTrips.length === 0 && savedPlans.length > 0 ? 'saved' : 'booked')
   );
+  const visibleTrips = tab === 'booked' ? bookedTrips : savedPlans;
 
-  const activeTrip = selectedTripIndex !== null ? confirmedTrips[selectedTripIndex] : null;
+  const [selectedTripIndex, setSelectedTripIndex] = useState<number | null>(
+    visibleTrips.length > 0 ? 0 : null
+  );
+  const switchTab = (next: 'booked' | 'saved') => {
+    setTab(next);
+    const list = next === 'booked' ? bookedTrips : savedPlans;
+    setSelectedTripIndex(list.length > 0 ? 0 : null);
+  };
+
+  const activeTrip = selectedTripIndex !== null ? visibleTrips[selectedTripIndex] ?? null : null;
+  const activeIsSavedPlan = !!activeTrip && isSavedPlan(activeTrip);
 
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<Array<{ sender: 'user' | 'assistant'; text: string }>>([
@@ -104,7 +122,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
         lower.includes('official');
 
       if (unsupportedAction) {
-        reply = "I can't do that — this is a simulated booking.";
+        reply = "I can't do that — this is a demo booking, so nothing can be changed or refunded.";
       } else if (lower.includes('budget') || lower.includes('money') || lower.includes('left') || lower.includes('remaining')) {
         // 2. Budget questions: answer directly from trip data
         const targetBudget = activeTrip?.budgetTotalINR || 60000;
@@ -127,7 +145,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
       } else if (lower.includes('pace') || lower.includes('less tiring') || lower.includes('relax')) {
         reply = "Your itinerary already schedules 2-hour afternoon rest downtime at the accommodation so your family can recharge before evening sightseeing.";
       } else {
-        reply = "Your trip details and itinerary are saved in sandbox mode. Feel free to ask about remaining budget, dining options, or day pacing.";
+        reply = "Your trip details and itinerary are saved here. Feel free to ask about remaining budget, dining options, or day pacing.";
       }
 
       const updatedWithReply = [...newMessages, { sender: 'assistant' as const, text: reply }];
@@ -250,7 +268,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
             My Trips
           </h1>
           <p className="text-xs sm:text-sm text-[#55625E]">
-            {confirmedTrips.length} saved sandbox journey{confirmedTrips.length > 1 ? 's' : ''}
+            {bookedTrips.length} booked · {savedPlans.length} saved plan{savedPlans.length === 1 ? '' : 's'}
           </p>
         </div>
 
@@ -263,9 +281,46 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
         </button>
       </div>
 
+      {/* Tabs: Booked trips vs Saved plans */}
+      <div role="tablist" aria-label="Trip type" className="flex gap-2">
+        {([
+          ['booked', `Booked trips (${bookedTrips.length})`],
+          ['saved', `Saved plans (${savedPlans.length})`]
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            id={`mytrips-tab-${key}`}
+            aria-selected={tab === key}
+            onClick={() => switchTab(key)}
+            className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-semibold border transition-colors ${
+              tab === key
+                ? 'bg-[#0E6B59] text-white border-[#0E6B59]'
+                : 'bg-white text-[#15201D] border-[#E2E6E1] hover:border-[#0E6B59]/40'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {visibleTrips.length === 0 && (
+        <div className="card-consumer p-6 text-center space-y-2" data-testid="mytrips-tab-empty">
+          <p className="text-sm font-semibold text-[#15201D]">
+            {tab === 'booked' ? 'No booked trips yet' : 'No saved plans yet'}
+          </p>
+          <p className="text-xs text-[#55625E]">
+            {tab === 'booked'
+              ? 'Trips you book appear here.'
+              : 'Click "Save trip" on any plan to keep it here for later.'}
+          </p>
+        </div>
+      )}
+
       {/* Trips Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {confirmedTrips.map((trip, idx) => {
+        {visibleTrips.map((trip, idx) => {
           const isSelected = selectedTripIndex === idx;
 
           return (
@@ -281,10 +336,10 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#E3F1EC] text-[#0E6B59]">
-                  {trip.status || 'SIMULATED'}
+                  {isSavedPlan(trip) ? 'Saved plan' : trip.status === 'CANCELLED' ? 'Cancelled' : 'Booked'}
                 </span>
                 <span className="text-xs text-[#55625E] font-mono">
-                  {trip.pnr}
+                  {isSavedPlan(trip) ? trip.createdAt : trip.pnr}
                 </span>
               </div>
 
@@ -304,6 +359,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
 
               <div className="pt-2 border-t border-[#E2E6E1] flex items-center justify-between">
                 <div className="text-sm font-bold text-[#15201D]">
+                  {trip.bookingId?.startsWith('draft_') && <span className="text-xs font-medium text-[#55625E] mr-1">Est.</span>}
                   ₹{trip.totalPaidINR.toLocaleString('en-IN')}
                 </div>
                 <span className="text-xs font-semibold text-[#0E6B59] hover:underline flex items-center gap-1">
@@ -370,7 +426,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                       {activeTrip.selectedHotel?.name || 'Heritage Village Resort & Spa, South Goa'}
                     </div>
                     <div className="text-[#55625E]">
-                      {activeTrip.selectedHotel?.area || 'South Goa'} · Simulated voucher
+                      {activeTrip.selectedHotel?.area || 'South Goa'} · {activeIsSavedPlan ? 'Not booked yet' : 'Demo voucher'}
                     </div>
                   </div>
                 </div>
@@ -393,14 +449,14 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                   </div>
                 </div>
                 <span className="font-bold text-[#15201D]">
-                  Simulated
+                  {activeIsSavedPlan ? 'Not booked yet' : 'Included'}
                 </span>
               </div>
             </div>
 
             {/* Total Paid */}
             <div className="pt-3 border-t border-[#E2E6E1] flex items-center justify-between text-sm">
-              <span className="text-[#55625E] font-medium">Plan Total (Simulated)</span>
+              <span className="text-[#55625E] font-medium">{activeIsSavedPlan ? 'Estimated total' : 'Trip total (demo booking)'}</span>
               <span className="text-xl font-bold text-[#15201D] font-heading">
                 ₹{activeTrip.totalPaidINR.toLocaleString('en-IN')}
               </span>

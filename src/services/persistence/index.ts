@@ -6,3 +6,4 @@ export * from './types';
 export * from './databaseAdapter';
 export * from './supabaseClient';
 export * from './tripStore';
+export * from './guestAccount';

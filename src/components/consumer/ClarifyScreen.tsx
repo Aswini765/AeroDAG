@@ -4,7 +4,7 @@ import { TripPreferences, TripPlan } from '../../types/travelBooking';
 import { TripContext } from '../../services/requirementEngine';
 import { TripPlanningEngine } from '../../services/tripPlanningEngine';
 import { getSeasonOptionsForDestination } from '../../services/destinationsData';
-import { resolveTravelDates } from '../../services/dateResolver';
+import { resolveTravelDates, formatDateRange } from '../../services/dateResolver';
 import { SourceTag } from './SourceTag';
 
 interface ClarifyScreenProps {
@@ -86,6 +86,57 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
   const [tripContext, setTripContext] = useState<TripContext>(initialContext);
   const [freeTextDate, setFreeTextDate] = useState('');
   const [dateError, setDateError] = useState<string | null>(null);
+  // "When are your holidays?" — From/To pickers, pre-filled from anything the user already said
+  const toIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const fromIso = (v: string) => { const [y, m, d] = v.split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1); };
+  const todayIso = toIso(new Date());
+  const prefill = (() => {
+    const r = initialContext.dates ? resolveTravelDates(initialContext.dates) : null;
+    return r && r.ok ? { from: toIso(r.start), to: toIso(r.end) } : { from: '', to: '' };
+  })();
+  const [holidayFrom, setHolidayFrom] = useState(prefill.from);
+  const [holidayTo, setHolidayTo] = useState(prefill.to);
+  const holidayDays = holidayFrom && holidayTo ? Math.round((fromIso(holidayTo).getTime() - fromIso(holidayFrom).getTime()) / 86400000) + 1 : 0;
+
+  const handleHolidayFromChange = (v: string) => {
+    setHolidayFrom(v);
+    setDateError(null);
+    // Suggest an end date from the trip length they already gave us
+    if (v && (!holidayTo || holidayTo < v) && initialContext.durationDays) {
+      const end = fromIso(v);
+      end.setDate(end.getDate() + Math.max(0, initialContext.durationDays - 1));
+      setHolidayTo(toIso(end));
+    }
+  };
+
+  const handleHolidaySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!holidayFrom || !holidayTo) {
+      setDateError('Pick both the first and the last day of your holidays.');
+      return;
+    }
+    if (holidayTo < holidayFrom) {
+      setDateError('The last day is before the first day. Please check your dates.');
+      return;
+    }
+    if (holidayFrom < todayIso) {
+      setDateError('That date has already passed. Please pick upcoming dates.');
+      return;
+    }
+    if (holidayDays > 60) {
+      setDateError('That trip is longer than 60 days. Please pick a shorter range.');
+      return;
+    }
+    setDateError(null);
+    const updated = {
+      ...tripContext,
+      dates: formatDateRange(fromIso(holidayFrom), fromIso(holidayTo)),
+      durationDays: holidayDays,
+      fieldSources: { ...tripContext.fieldSources, dates: 'stated' as const, duration: 'stated' as const }
+    };
+    setTripContext(updated);
+    await triggerPlanGeneration(updated);
+  };
   const [isLoading, setIsLoading] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -247,50 +298,51 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
           <div className="card-consumer p-5 sm:p-6 space-y-4 shadow-sm text-left">
             <div className="space-y-1">
               <h2 className="text-lg font-bold text-[#15201D] font-heading">
-                One thing changes the price most: when are you going?
+                When are your holidays?
               </h2>
               <p className="text-xs sm:text-sm text-[#55625E]">
-                {isRoadOrRailDestination
-                  ? `Stay and travel prices fluctuate significantly by week in ${tripContext.destination?.replace(/,.*$/, '') || 'Coorg'}.`
-                  : `Flight and stay prices fluctuate significantly by week in ${tripContext.destination?.replace(/,.*$/, '') || 'Goa'}.`}
+                Pick your travel dates and we'll plan around them.
               </p>
             </div>
 
-            {/* 3 Large Option Buttons */}
-            <div className="space-y-2.5 pt-2">
-              {dateOptions.map((opt) => (
-                <button
-                  key={opt.title}
-                  type="button"
-                  onClick={() => handleSelectDate(opt.value)}
-                  className="w-full card-consumer p-4 text-left transition-all hover:border-[#0E6B59] hover:bg-[#F5F6F3]/50 flex items-center justify-between gap-4 cursor-pointer group"
-                >
-                  <div className="space-y-0.5">
-                    <div className="text-base font-bold text-[#15201D] group-hover:text-[#0E6B59] transition-colors">
-                      {opt.title}
-                    </div>
-                    <div className="text-xs text-[#55625E]">
-                      {opt.note}
-                    </div>
-                  </div>
-
-                  <span
-                    className={`text-xs px-2.5 py-1 rounded-full font-semibold shrink-0 ${
-                      opt.tagType === 'value'
-                        ? 'bg-[#E3F1EC] text-[#0A5546]'
-                        : opt.tagType === 'budget'
-                        ? 'bg-[#FCEFD9] text-[#8A4307]'
-                        : 'bg-[#E4EDF8] text-[#1E4F8A]'
-                    }`}
-                  >
-                    {opt.tag}
-                  </span>
+            {/* Primary: the user's own holiday dates */}
+            <form onSubmit={handleHolidaySubmit} className="space-y-3" id="holiday-dates-form">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-[#55625E]">First day</span>
+                  <input
+                    type="date"
+                    id="holiday-from"
+                    value={holidayFrom}
+                    min={todayIso}
+                    onChange={(e) => handleHolidayFromChange(e.target.value)}
+                    className="w-full bg-[#FFFFFF] border border-[#E2E6E1] rounded-xl px-3.5 py-2.5 text-sm text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-[#55625E]">Last day</span>
+                  <input
+                    type="date"
+                    id="holiday-to"
+                    value={holidayTo}
+                    min={holidayFrom || todayIso}
+                    onChange={(e) => { setHolidayTo(e.target.value); setDateError(null); }}
+                    className="w-full bg-[#FFFFFF] border border-[#E2E6E1] rounded-xl px-3.5 py-2.5 text-sm text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="text-xs text-[#55625E]" aria-live="polite">
+                  {holidayDays > 0 ? `${holidayDays} day${holidayDays === 1 ? '' : 's'} · ${Math.max(0, holidayDays - 1)} night${holidayDays - 1 === 1 ? '' : 's'}` : 'Choose your first and last day'}
+                </span>
+                <button type="submit" className="btn-primary" disabled={!holidayFrom || !holidayTo}>
+                  <span>Plan these dates</span>
                 </button>
-              ))}
-            </div>
+              </div>
+            </form>
 
-            {/* Custom Date Input */}
-            <form onSubmit={handleCustomDateSubmit} className="pt-3 border-t border-[#E2E6E1] space-y-2">
+            {/* Or type them in words */}
+            <form onSubmit={handleCustomDateSubmit} className="space-y-2">
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -299,15 +351,12 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                     setFreeTextDate(e.target.value);
                     if (dateError) setDateError(null);
                   }}
-                  placeholder="Or type your dates, e.g. 20th to 27th this month"
-                  className="flex-1 bg-[#FFFFFF] border border-[#E2E6E1] rounded-xl px-3.5 py-2.5 text-sm text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none"
+                  aria-label="Type your dates"
+                  placeholder="Or type them, e.g. 20th to 27th this month"
+                  className="flex-1 bg-[#FFFFFF] border border-[#E2E6E1] rounded-xl px-3.5 py-2 text-sm text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none"
                 />
-                <button
-                  type="submit"
-                  disabled={!freeTextDate.trim()}
-                  className="btn-primary shrink-0"
-                >
-                  <span>Continue</span>
+                <button type="submit" disabled={!freeTextDate.trim()} className="btn-ghost shrink-0">
+                  <span>Use these</span>
                 </button>
               </div>
               {dateError && (
@@ -316,6 +365,27 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                 </p>
               )}
             </form>
+
+            {/* Secondary: cheaper weeks, for flexible travellers */}
+            <div className="pt-3 border-t border-[#E2E6E1] space-y-2">
+              <div className="text-xs font-semibold text-[#55625E]">
+                Flexible? These weeks usually cost less in {tripContext.destination?.replace(/,.*$/, '') || 'this destination'}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {dateOptions.filter((opt) => resolveTravelDates(opt.value)?.ok).map((opt) => (
+                  <button
+                    key={opt.title}
+                    type="button"
+                    onClick={() => handleSelectDate(opt.value)}
+                    title={opt.note}
+                    className="pill-chip text-xs bg-white text-[#15201D] hover:bg-[#E3F1EC] border border-[#E2E6E1] hover:border-[#0E6B59]/40 inline-flex items-center gap-1.5"
+                  >
+                    <span className="font-semibold">{opt.title}</span>
+                    <span className={opt.tagType === 'value' ? 'text-[#0A5546]' : 'text-[#8A4307]'}>· {opt.tag}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 

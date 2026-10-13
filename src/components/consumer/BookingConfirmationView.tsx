@@ -26,11 +26,11 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
   onPlanAnotherTrip,
   tripSummary
 }) => {
-  const destination = confirmedBooking?.destination || 'Goa';
+  const destination = confirmedBooking?.destination || 'your destination';
   const rawPnr = confirmedBooking?.pnr || confirmedBooking?.bookingId || 'AD-GOA-7821';
   const tripId = rawPnr.startsWith('AD-')
-    ? `${rawPnr} (sandbox)`
-    : `AD-GOA-${rawPnr.replace(/\D/g, '').slice(-4) || '8492'} (sandbox)`;
+    ? `${rawPnr.replace(' (sandbox)', '')} (demo)`
+    : `AD-${rawPnr.replace(/\D/g, '').slice(-4) || '0000'} (demo)`;
 
   const handleDownloadItinerary = () => {
     window.print();
@@ -48,7 +48,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
           <span className="font-semibold px-2 py-0.5 rounded-full bg-[#E2E6E1] text-[#15201D] text-[11px]">
             DEMO MODE
           </span>
-          <span>Sample catalog options · Simulated booking checkout</span>
+          <span>Sample prices · Demo booking — no real payment</span>
         </div>
         <span className="text-[#4A5753] hidden sm:inline">
           Live inventory disabled
@@ -57,7 +57,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
 
       {/* Print only banner for downloaded itinerary */}
       <div className="hidden print:block text-center font-mono text-xs text-[#55625E] pb-2 border-b border-[#E2E6E1]">
-        Simulated booking — not a ticket • AeroDAG Sandbox Demo
+        Demo booking — not a ticket • AeroDAG demo
       </div>
 
       {/* 1. Centered Confirmation Card */}
@@ -70,11 +70,11 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
         {/* Amber Pill */}
         <div>
           <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#FCEFD9] text-[#8A4307]">
-            SIMULATED BOOKING · SANDBOX
+            DEMO BOOKING · NO PAYMENT TAKEN
           </span>
 
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#15201D] font-heading mt-3">
-            Your {destination} plan is saved
+            Your {destination} trip is booked
           </h1>
 
           <p className="text-xs sm:text-sm text-[#55625E] max-w-lg mx-auto mt-2 leading-relaxed">
@@ -117,7 +117,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
         </div>
       </div>
 
-      {/* 2. "What's in this trip" List with gray "Simulated" Pills */}
+      {/* 2. "What's in this trip" List with gray "Demo" pills */}
       <div className="card-consumer p-6 sm:p-8 space-y-4 text-left">
         <h2 className="text-base font-bold text-[#15201D] font-heading pb-2 border-b border-[#E2E6E1]">
           What's in this trip
@@ -132,15 +132,19 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
               </div>
               <div>
                 <div className="font-bold text-[#15201D]">
-                  {flight ? `${flight.airline} (${flight.flightNumber})` : 'Air India Express (IX 924)'}
+                  {flight
+                    ? `${flight.airline} (${flight.flightNumber})`
+                    : confirmedBooking.selectedTrain
+                    ? `${confirmedBooking.selectedTrain.trainName || 'Train'}${confirmedBooking.selectedTrain.trainNumber ? ` (${confirmedBooking.selectedTrain.trainNumber})` : ''}`
+                    : 'By road'}
                 </div>
                 <div className="text-xs text-[#55625E]">
-                  Bengaluru (BLR) → Goa ({flight?.destinationCode || 'GOI'})
+                  {confirmedBooking.origin} → {destination}{flight?.destinationCode ? ` (${flight.destinationCode})` : ''}
                 </div>
               </div>
             </div>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
-              Simulated
+              Demo
             </span>
           </div>
 
@@ -152,15 +156,15 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
               </div>
               <div>
                 <div className="font-bold text-[#15201D]">
-                  {hotel ? hotel.name : 'Heritage Village Resort & Spa, South Goa'}
+                  {hotel ? hotel.name : 'Your stay'}
                 </div>
                 <div className="text-xs text-[#55625E]">
-                  {hotel ? hotel.area : 'South Goa'} · {confirmedBooking.travelDates}
+                  {hotel ? hotel.area : destination} · {confirmedBooking.travelDates}
                 </div>
               </div>
             </div>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
-              Simulated
+              Demo
             </span>
           </div>
 
@@ -172,7 +176,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
               </div>
               <div>
                 <div className="font-bold text-[#15201D]">
-                  {transfer ? transfer.title : 'Toyota Innova Crysta 7-Seater AC'}
+                  {transfer ? transfer.title : 'Local transfers'}
                 </div>
                 <div className="text-xs text-[#55625E]">
                   Direct round-trip airport chauffeur transfer
@@ -180,7 +184,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
               </div>
             </div>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
-              Simulated
+              Demo
             </span>
           </div>
 
@@ -200,7 +204,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
               </div>
             </div>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
-              Simulated
+              Demo
             </span>
           </div>
         </div>

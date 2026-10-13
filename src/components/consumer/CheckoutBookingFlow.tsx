@@ -45,7 +45,8 @@ interface CheckoutBookingFlowProps {
   totalCostINR?: number;
   totalCostUSD?: number;
   currency: Currency;
-  onBookingSuccess: (confirmedRecord: ConfirmedBookingRecord) => void;
+  /** contactEmail = lead traveller's email, used only to offer "see this trip on any device" */
+  onBookingSuccess: (confirmedRecord: ConfirmedBookingRecord, contactEmail?: string) => void;
   onBackToTrip: () => void;
   tripSummary?: TripSummary | null;
 }
@@ -172,7 +173,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
 
     setTimeout(() => {
       const destCode = summary?.destinationCode || deriveDestinationCode(preferences.destination);
-      const bookingId = `${generateSandboxBookingId(destCode)} (sandbox)`;
+      const bookingId = `${generateSandboxBookingId(destCode)} (demo)`;
       const pnrNum = Math.floor(1000 + Math.random() * 9000);
       const voucherNum = Math.floor(1000 + Math.random() * 9000);
 
@@ -187,7 +188,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
       const confirmedRecord: ConfirmedBookingRecord = {
         bookingId,
         pnr: `AD-${destCode}-${pnrNum}`,
-        hotelVoucherId: `HTL-${destCode}-${voucherNum} (sandbox)`,
+        hotelVoucherId: `HTL-${destCode}-${voucherNum} (demo)`,
         createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
         status: 'SIMULATED',
         tripTitle: `${summary?.durationDays || preferences.durationDays}-Day Trip to ${summary?.destination || preferences.destination}`,
@@ -207,7 +208,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
         scope: 'domestic'
       };
 
-      onBookingSuccess(confirmedRecord);
+      onBookingSuccess(confirmedRecord, (passengers[0]?.email || '').trim() || undefined);
       setIsSubmitting(false);
     }, 1000);
   };
@@ -434,7 +435,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
             {/* Amber Demo Notice */}
             <div className="p-3 rounded-xl bg-[#FCEFD9] border border-[#8A4307]/30 text-xs text-[#8A4307] flex items-start gap-2">
               <Info className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>Demo booking. This runs a simulated booking. No tickets are issued and no money is charged.</span>
+              <span>Demo booking. No tickets are issued and no money is charged.</span>
             </div>
 
             {/* Security Notice */}
@@ -442,7 +443,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
               We never ask for your UPI PIN or payment credentials.
             </div>
 
-            {/* Full-width "Run simulated booking" button */}
+            {/* Full-width demo booking button */}
             <button
               type="button"
               id="run-simulated-booking-btn"
@@ -452,9 +453,9 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
               className="btn-primary w-full text-sm font-bold py-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
-                <span>Running simulated booking…</span>
+                <span>Booking (demo)…</span>
               ) : (
-                <span>Run simulated booking</span>
+                <span>Book now (demo — no payment)</span>
               )}
             </button>
           </div>

@@ -6,7 +6,7 @@
  * 3. Render/scan test: across src/components/consumer, zero hits for "Guaranteed", "guaranteed", "Locked in",
  *    "Driver Assigned", "Voucher Active", "Seats Confirmed", "GDS", "CRS", "100% Secure", "dispatched".
  *    Allow "verified" only where it lists the exact check it refers to.
- * 4. Flow test (Goa, 2A+1C): checkout button text = "Run simulated booking"; confirmation contains "SIMULATED BOOKING"
+ * 4. Flow test (Goa, 2A+1C): checkout button text = "Book now (demo — no payment)"; confirmation contains "DEMO BOOKING"
  *    and "no tickets were issued"; every order-summary line has a source tag.
  */
 
@@ -279,18 +279,18 @@ async function runTests() {
   // ------------------------------------------------------------------
   // TEST SUITE 4: FLOW CHECKS (Goa, 2A+1C)
   // ------------------------------------------------------------------
-  console.log('\n[4] Flow Checks: Honest Checkout & Simulated Confirmation');
+  console.log('\n[4] Flow Checks: Honest Checkout & Demo Confirmation');
 
   const checkoutFileContent = fs.readFileSync(path.join(consumerDir, 'CheckoutBookingFlow.tsx'), 'utf-8');
   const confirmationFileContent = fs.readFileSync(path.join(consumerDir, 'BookingConfirmationView.tsx'), 'utf-8');
 
   assert(
-    checkoutFileContent.includes('Run simulated booking') && checkoutFileContent.includes('Running simulated booking…'),
-    'Checkout button has honest text: "Run simulated booking" and disabled spinning state'
+    checkoutFileContent.includes('Book now (demo — no payment)') && checkoutFileContent.includes('Booking (demo)…'),
+    'Checkout button has honest text: "Book now (demo — no payment)" and disabled spinning state'
   );
 
   assert(
-    checkoutFileContent.includes('Demo booking. This runs a simulated booking. No tickets are issued and no money is charged.'),
+    checkoutFileContent.includes('Demo booking. No tickets are issued and no money is charged.'),
     'Checkout has amber demo notice directly above pay button'
   );
 
@@ -305,8 +305,8 @@ async function runTests() {
   );
 
   assert(
-    confirmationFileContent.includes('SIMULATED BOOKING · SANDBOX'),
-    'Confirmation page renders amber eyebrow pill: "SIMULATED BOOKING · SANDBOX"'
+    confirmationFileContent.includes('DEMO BOOKING · NO PAYMENT TAKEN'),
+    'Confirmation page renders amber eyebrow pill: "DEMO BOOKING · NO PAYMENT TAKEN"'
   );
 
   assert(
@@ -315,8 +315,8 @@ async function runTests() {
   );
 
   assert(
-    confirmationFileContent.includes('Simulated booking — not a ticket'),
-    'Download/print itinerary contains header: "Simulated booking — not a ticket"'
+    confirmationFileContent.includes('Demo booking — not a ticket'),
+    'Download/print itinerary contains header: "Demo booking — not a ticket"'
   );
 
   assert(

@@ -25,9 +25,12 @@ import {
 import { TripContext, RequirementEngine } from './services/requirementEngine';
 import { TripPlanningEngine } from './services/tripPlanningEngine';
 import { getTripSummary } from './services/tripSummaryHelper';
+import { KeepTripsCard } from './components/consumer/KeepTripsCard';
 import {
   initializeAuth,
-  linkEmailToCurrentUser,
+  continueWithEmail,
+  rememberGuestTrip,
+  carryOverGuestTrips,
   signOutAndResetGuest,
   isSupabaseConfigured,
   supabase,
@@ -60,6 +63,13 @@ export default function App() {
   const [confirmedTrips, setConfirmedTrips] = useState<ConfirmedBookingRecord[]>([]);
   const [latestConfirmedRecord, setLatestConfirmedRecord] = useState<ConfirmedBookingRecord | null>(null);
   const [isAiAvailable, setIsAiAvailable] = useState(false);
+  // Optional "keep your trips" email card after booking (guests only)
+  const [bookingContactEmail, setBookingContactEmail] = useState<string | undefined>(undefined);
+  const [bookingEmailCardDismissed, setBookingEmailCardDismissed] = useState(false);
+  const carryOverRunning = React.useRef(false);
+  // Which My Trips tab the top-bar link opened ("Saved plans" opens straight on saved plans)
+  const [myTripsTab, setMyTripsTab] = useState<'booked' | 'saved' | undefined>(undefined);
+  const savedPlansCount = confirmedTrips.filter((t) => t.bookingId?.startsWith('draft_')).length;
 
   const fetchTrips = async (offline: boolean = isOfflineMode) => {
     setIsLoadingTrips(true);
@@ -93,9 +103,21 @@ export default function App() {
         if (!isMounted) return;
         if (session?.user) {
           setAuthUser(session.user);
-          setIsAuthAnonymous(session.user.is_anonymous ?? !session.user.email);
+          const anon = session.user.is_anonymous ?? !session.user.email;
+          setIsAuthAnonymous(anon);
           setIsOfflineMode(false);
-          fetchTrips(false);
+          if (!anon && !carryOverRunning.current) {
+            // Signed in with email: bring along trips saved as a guest on this device
+            carryOverRunning.current = true;
+            carryOverGuestTrips(session.user.id, getTripStore(false))
+              .catch(() => 0)
+              .finally(() => {
+                carryOverRunning.current = false;
+                fetchTrips(false);
+              });
+          } else {
+            fetchTrips(false);
+          }
         } else {
           setAuthUser(null);
           setIsAuthAnonymous(true);
@@ -611,6 +633,51 @@ export default function App() {
     return null;
   };
 
+  // Save the current plan as a draft in My Trips (Supabase, or this browser in offline mode)
+  const handleSaveDraft = async (): Promise<boolean> => {
+    if (!activeTripPlan) return false;
+    const plan = activeTripPlan;
+    const t = plan.travellers;
+    const passengers: ConfirmedBookingRecord['passengers'] = [
+      ...Array.from({ length: t.adults || 0 }, (_, i) => ({ type: 'ADULT' as const, title: '', firstName: `Adult ${i + 1}`, lastName: '' })),
+      ...(t.childAges || []).map((age, i) => ({ type: 'CHILD' as const, title: '', firstName: `Child ${i + 1}`, lastName: '', age })),
+      ...Array.from({ length: t.seniors || 0 }, (_, i) => ({ type: 'SENIOR' as const, title: '', firstName: `Senior ${i + 1}`, lastName: '' }))
+    ];
+    const total = plan.budget.grandTotalINR;
+    const draft: ConfirmedBookingRecord = {
+      bookingId: `draft_${Date.now()}`,
+      pnr: 'Saved plan',
+      hotelVoucherId: '',
+      createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      status: 'SELECTED',
+      tripTitle: `${plan.durationDays}-Day Trip to ${plan.destination}`,
+      destination: plan.destination,
+      origin: plan.origin,
+      travelDates: plan.dates,
+      totalPaidINR: total,
+      totalPaidUSD: Math.round(total / 84),
+      budgetTotalINR: plan.budget.targetINR,
+      remainingBudgetINR: plan.budget.remainingBudgetINR,
+      passengers,
+      selectedFlight: plan.flight,
+      selectedTrain: plan.selectedTrain || null,
+      selectedHotel: plan.hotel,
+      selectedTransfer: plan.transfer,
+      itinerary: plan.itinerary,
+      visa: null,
+      scope: plan.scope
+    };
+    try {
+      await getTripStore(isOfflineMode).saveDraft(draft);
+      if (isAuthAnonymous && !isOfflineMode) rememberGuestTrip('draft', draft, authUser?.id ?? null);
+      await fetchTrips();
+      return true;
+    } catch (err) {
+      console.warn('Failed to save draft trip:', err);
+      return false;
+    }
+  };
+
   // Handle plan finalized from Clarify Screen
   const handlePlanReadyFromClarify = (plan: TripPlan, prefs: TripPreferences) => {
     setActiveTripPlan(plan);
@@ -619,7 +686,10 @@ export default function App() {
   };
 
   // Handle booking success from Review Screen
-  const handleBookingSuccess = async (confirmedRecord: ConfirmedBookingRecord) => {
+  const handleBookingSuccess = async (confirmedRecord: ConfirmedBookingRecord, contactEmail?: string) => {
+    setBookingContactEmail(contactEmail);
+    setBookingEmailCardDismissed(false);
+    if (isAuthAnonymous && !isOfflineMode) rememberGuestTrip('booking', confirmedRecord, authUser?.id ?? null);
     try {
       const store = getTripStore(isOfflineMode);
       const idempotencyKey = `idem_${confirmedRecord.bookingId}_${confirmedRecord.totalPaidINR}`;
@@ -635,8 +705,9 @@ export default function App() {
   };
 
   // Phase 6: Handle Email Linking
+  // One email action for Save trip, booking and Sign in (links a new email, or signs in an existing one)
   const handleLinkEmail = async (email: string) => {
-    return await linkEmailToCurrentUser(email);
+    return await continueWithEmail(email);
   };
 
   // Phase 6: Handle Sign Out
@@ -658,7 +729,16 @@ export default function App() {
       {/* 1. Consumer Navbar with 4-Step Progress Bar */}
       <ConsumerNavbar
         currentStep={currentStep}
-        onNavigate={(step) => setCurrentStep(step)}
+        onNavigate={(step) => {
+          if (step === 'mytrips') setMyTripsTab(undefined);
+          setCurrentStep(step);
+        }}
+        onOpenSavedPlans={() => {
+          setMyTripsTab('saved');
+          setCurrentStep('mytrips');
+        }}
+        savedPlansCount={savedPlansCount}
+        myTripsTab={myTripsTab}
         currency={currency}
         setCurrency={setCurrency}
         onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
@@ -704,6 +784,9 @@ export default function App() {
             onPlanChange={(updated) => setActiveTripPlan(updated)}
             onProceedToReview={() => setCurrentStep('review')}
             onDescribeAgain={() => setCurrentStep('describe')}
+            onSaveDraft={handleSaveDraft}
+            isGuest={isAuthAnonymous && !isOfflineMode}
+            onContinueWithEmail={handleLinkEmail}
             onUpdateItineraryDay={(dayNumber, modificationType) => {
               setActiveTripPlan((prev) => {
                 if (!prev) return null;
@@ -741,17 +824,33 @@ export default function App() {
 
         {/* SCREEN 5: DONE (CONFIRMATION) */}
         {!isLoadingPlan && currentStep === 'done' && latestConfirmedRecord && (
+          <>
+          {isAuthAnonymous && !isOfflineMode && !bookingEmailCardDismissed && (
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-6">
+              <KeepTripsCard
+                id="booking-email-card"
+                title="Booking confirmed — it's in My Trips"
+                description="Get this booking on any device. We'll send a link to your email — no password."
+                defaultEmail={bookingContactEmail}
+                onSubmitEmail={handleLinkEmail}
+                onDismiss={() => setBookingEmailCardDismissed(true)}
+              />
+            </div>
+          )}
           <BookingConfirmationView
             confirmedBooking={latestConfirmedRecord}
             currency={currency}
-            onGoToMyTrips={() => setCurrentStep('mytrips')}
+            onGoToMyTrips={() => { setMyTripsTab('booked'); setCurrentStep('mytrips'); }}
             onPlanAnotherTrip={() => setCurrentStep('describe')}
           />
+          </>
         )}
 
         {/* MY TRIPS VIEW */}
         {!isLoadingPlan && currentStep === 'mytrips' && (
           <MyTripsView
+            key={myTripsTab ?? 'auto'}
+            initialTab={myTripsTab}
             confirmedTrips={confirmedTrips}
             currency={currency}
             onExploreMore={() => setCurrentStep('describe')}
@@ -780,7 +879,7 @@ export default function App() {
               How it works & System Architecture
             </button>
             <span>·</span>
-            <span>&copy; 2026 AeroDAG · Demo Sandbox</span>
+            <span>&copy; 2026 AeroDAG · Demo</span>
           </div>
         </div>
       </footer>
