@@ -6,6 +6,8 @@ export type Currency = 'INR' | 'USD' | 'EUR' | 'SGD' | 'AED' | 'JPY';
 
 export type TripScope = 'domestic' | 'international';
 
+export type ProvenanceSource = 'live' | 'estimate' | 'sample' | 'reserved' | 'stated' | 'assumed';
+
 export type BookingState =
   | 'SEARCHED'
   | 'AVAILABLE'
@@ -13,6 +15,16 @@ export type BookingState =
   | 'HELD'
   | 'PAYMENT_PROCESSING'
   | 'CONFIRMED'
+  | 'SIMULATED'
+  | 'EXPIRED'
+  | 'UNAVAILABLE'
+  | 'HOLD_EXPIRED'
+  | 'PAYMENT_FAILED'
+  | 'CANCEL_REQUESTED'
+  | 'CANCELLED'
+  | 'REFUND_PROCESSING'
+  | 'REFUNDED'
+  | 'REFUND_FAILED'
   | 'FAILED';
 
 export interface TrainItem {
@@ -36,6 +48,9 @@ export interface TrainItem {
   totalPriceINR: number;
   foodIncluded: boolean;
   isVandeBharatOrRajdhani: boolean;
+  source?: ProvenanceSource;
+  sourceLabel?: string;
+  retrievedAt?: string;
 }
 
 export interface FlightItem {
@@ -61,7 +76,19 @@ export interface FlightItem {
   refundable: boolean;
   seatAvailability: number;
   tag?: 'Best for Families' | 'Lowest Fare' | 'Fastest' | 'Recommended';
-  adjacentFamilySeatsGuaranteed: boolean;
+  adjacentFamilySeatsGuaranteed?: boolean;
+  adjacentFamilySeatsRequested?: boolean;
+  isRoundTrip?: boolean;
+  returnFlightNumber?: string;
+  returnDepartureTime?: string;
+  returnArrivalTime?: string;
+  outboundFarePerPersonINR?: number;
+  returnFarePerPersonINR?: number;
+  outboundTotalPriceINR?: number;
+  returnTotalPriceINR?: number;
+  source?: ProvenanceSource;
+  sourceLabel?: string;
+  retrievedAt?: string;
 }
 
 export interface HotelItem {
@@ -75,7 +102,7 @@ export interface HotelItem {
   roomType: string;
   bedConfiguration: string;
   maxCapacity: number;
-  capacityVerifiedForFamily: boolean;
+  capacityVerifiedForFamily?: boolean;
   pricePerNightINR: number;
   totalPriceINR: number;
   pricePerNightUSD: number;
@@ -86,6 +113,10 @@ export interface HotelItem {
   distanceFromCenter: string;
   imageUrl: string;
   tag?: 'Best Match' | 'Family-Friendly' | 'Within Budget' | 'Luxury Splurge';
+  source?: ProvenanceSource;
+  sourceLabel?: string;
+  retrievedAt?: string;
+  cancellationPolicy?: string;
 }
 
 export interface TransferItem {
@@ -100,6 +131,9 @@ export interface TransferItem {
   duration: string;
   pickupLocation: string;
   dropLocation: string;
+  source?: ProvenanceSource;
+  sourceLabel?: string;
+  retrievedAt?: string;
 }
 
 export interface ActivityDayItem {
@@ -110,11 +144,17 @@ export interface ActivityDayItem {
   morning: string;
   afternoon: string;
   evening: string;
-  familyFriendlyScore: number;
+  familyFriendlyScore?: number;
   estimatedCostINR: number;
   estimatedCostUSD: number;
   localDining: string[];
   transitTip: string;
+  walkingLevel?: 'very light' | 'light' | 'moderate';
+  walkingFlag?: string;
+  stopDriveTimes?: Array<{ from: string; to: string; driveMinutes: number; note: string }>;
+  source?: ProvenanceSource;
+  sourceLabel?: string;
+  retrievedAt?: string;
 }
 
 export interface VisaDetails {
@@ -129,6 +169,9 @@ export interface VisaDetails {
   officialSourceUrl: string;
   requiredDocuments: string[];
   notes: string;
+  source?: ProvenanceSource;
+  sourceLabel?: string;
+  retrievedAt?: string;
 }
 
 export interface DiningItem {
@@ -143,14 +186,19 @@ export interface DiningItem {
   isFamilyFriendly: boolean;
   recommendedDishes: string[];
   imageUrl: string;
+  source?: ProvenanceSource;
+  sourceLabel?: string;
+  retrievedAt?: string;
 }
 
 export interface VerificationCheck {
   id: string;
   title: string;
   category: 'capacity' | 'budget' | 'visa' | 'schedule';
-  status: 'PASS' | 'NEEDS_REVIEW' | 'REPLAN' | 'FAILED';
+  status: 'PASS' | 'NEEDS_REVIEW' | 'REPLAN' | 'FAILED' | 'pass' | 'warn' | 'fail' | 'not_applicable';
   detail: string;
+  warningFix?: string;
+  whatWasChecked?: string;
 }
 
 export interface RefinementLogItem {
@@ -162,7 +210,7 @@ export interface RefinementLogItem {
 }
 
 export interface Passenger {
-  type: 'ADULT' | 'CHILD';
+  type: 'ADULT' | 'CHILD' | 'SENIOR';
   title: string;
   firstName: string;
   lastName: string;
@@ -208,12 +256,156 @@ export interface ConfirmedBookingRecord {
   travelDates: string;
   totalPaidINR: number;
   totalPaidUSD: number;
+  budgetTotalINR?: number;
+  remainingBudgetINR?: number;
   passengers: Passenger[];
-  selectedFlight?: FlightItem;
-  selectedTrain?: TrainItem;
-  selectedHotel: HotelItem;
-  selectedTransfer: TransferItem;
+  selectedFlight?: FlightItem | null;
+  selectedTrain?: TrainItem | null;
+  selectedHotel?: HotelItem | null;
+  selectedTransfer?: TransferItem | null;
   itinerary: ActivityDayItem[];
-  visa: VisaDetails;
+  visa?: VisaDetails | null;
   scope?: TripScope;
 }
+
+export type ActivityCategory =
+  | 'Beach'
+  | 'Nature'
+  | 'Culture'
+  | 'Sightseeing'
+  | 'Food'
+  | 'Shopping'
+  | 'Adventure'
+  | 'Relaxation';
+
+export interface ActivityItem {
+  id: string;
+  name: string;
+  category: ActivityCategory;
+  location: string;
+  duration: string;
+  ageSuitability: string;
+  minAge?: number;
+  estimatedPriceINR: number;
+  walkingLevel: 'Low' | 'Moderate' | 'Active';
+  walkingIntensity?: 'Low' | 'Moderate' | 'High';
+  familySuitabilityScore?: number;
+  seniorSuitability?: boolean;
+  description: string;
+  timeSlot?: 'Morning' | 'Afternoon' | 'Evening';
+  imageUrl?: string;
+  dayNumber?: number;
+  isIncluded?: boolean;
+  source?: ProvenanceSource;
+  sourceLabel?: string;
+  retrievedAt?: string;
+}
+
+export interface MapWaypoint {
+  id: string;
+  name: string;
+  type: 'origin' | 'destination' | 'hotel' | 'activity' | 'airport' | 'station';
+  area: string;
+  coordinates?: { lat: number; lng: number };
+  description: string;
+  dayNumber?: number;
+}
+
+export interface ConcreteBudgetFix {
+  id: string;
+  title: string;
+  description: string;
+  rupeeImpactINR: number;
+  actionType: 'fewer_nights' | 'mode_switch' | 'budget_hotel' | 'cheaper_dates';
+}
+
+export interface BalancingOption {
+  id: string;
+  title: string;
+  description: string;
+  rupeeImpactINR: number;
+}
+
+export interface PlanUpgradeOption {
+  id: string;
+  title: string;
+  description: string;
+  deltaINR: number;
+  deltaText: string;
+  hotel: HotelItem;
+  balancingOptions: BalancingOption[];
+}
+
+export interface TripPlanBudget {
+  targetINR: number;
+  flightsCostINR: number;
+  hotelCostINR: number;
+  transportCostINR: number; // Airport transfers
+  localTransportCostINR?: number; // Local cabs and excursions
+  foodCostINR?: number; // Food & dining estimate
+  activitiesCostINR: number;
+  diningEstimateINR: number;
+  bufferCostINR?: number; // Reserved contingency buffer
+  otherCostsINR: number;
+  grandTotalINR: number;
+  remainingBudgetINR: number;
+  overBudgetAmountINR: number;
+  isOverBudget: boolean;
+  statusMessage?: string;
+  foreignCurrencyBreakdowns?: Array<{
+    amount: number;
+    sourceCurrency: string;
+    exchangeRate: number;
+    rateTimestamp: string;
+    targetCurrency: string;
+    convertedAmount: number;
+    provider: string;
+    cached?: boolean;
+    isStale?: boolean;
+  }>;
+}
+
+export interface TripPlan {
+  id: string;
+  title: string;
+  summary: string;
+  destination: string;
+  origin: string;
+  dates: string;
+  durationDays: number;
+  travellers: {
+    total: number;
+    adults: number;
+    children: number;
+    childAges: number[];
+    seniors: number;
+  };
+  scope: TripScope;
+  status?: 'feasible' | 'infeasible';
+  shortfallINR?: number;
+  concreteFixes?: ConcreteBudgetFix[];
+  upgradeOptions?: PlanUpgradeOption[];
+  airportSelectionReason?: string;
+  hotelZone?: string;
+  arrivalAirportCode?: string;
+  arrivalAirportName?: string;
+  flight: FlightItem | null;
+  availableFlights: FlightItem[];
+  selectedTrain?: TrainItem;
+  availableTrains?: TrainItem[];
+  hotel: HotelItem;
+  availableHotels: HotelItem[];
+  transfer: TransferItem;
+  availableTransfers: TransferItem[];
+  activities: ActivityItem[];
+  availableActivities: ActivityItem[];
+  itinerary: ActivityDayItem[];
+  diningSuggestions: DiningItem[];
+  visa?: VisaDetails | null;
+  budget: TripPlanBudget;
+  mapWaypoints: MapWaypoint[];
+  recommendations: string[];
+  verificationChecks: VerificationCheck[];
+  createdAt: string;
+}
+

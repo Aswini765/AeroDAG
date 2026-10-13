@@ -1,20 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Luggage,
   Calendar,
-  MapPin,
+  Users,
+  Sparkles,
+  Send,
+  Download,
+  ArrowRight,
   Plane,
   Building,
   Car,
-  Sparkles,
-  Send,
-  MessageSquare,
-  CheckCircle2,
-  Clock,
-  ArrowRight,
-  Download,
-  Share2,
-  Users
+  ChevronLeft,
+  AlertCircle
 } from 'lucide-react';
 import { ConfirmedBookingRecord, Currency } from '../../types/travelBooking';
 
@@ -22,252 +19,468 @@ interface MyTripsViewProps {
   confirmedTrips: ConfirmedBookingRecord[];
   currency: Currency;
   onExploreMore: () => void;
+  isOffline?: boolean;
+  isLoading?: boolean;
+  loadError?: string | null;
+  onRetry?: () => void;
 }
+
+const DEFAULT_ASSISTANT_MESSAGE = {
+  sender: 'assistant' as const,
+  text: "Hello! I'm your AeroDAG Trip Assistant. Your saved journey is ready. How can I help with dining, day pacing, or packing questions?"
+};
 
 export const MyTripsView: React.FC<MyTripsViewProps> = ({
   confirmedTrips,
   currency,
-  onExploreMore
+  onExploreMore,
+  isOffline = false,
+  isLoading = false,
+  loadError = null,
+  onRetry
 }) => {
-  const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState<
-    Array<{ sender: 'user' | 'assistant'; text: string; actionApplied?: string }>
-  >([
-    {
-      sender: 'assistant',
-      text: "Hello! I'm your AeroDAG Trip Assistant. Your Vietnam family vacation is confirmed. How can I assist you with dining, itinerary pacing, or packing tips today?"
-    }
-  ]);
-  const [isAssistantThinking, setIsAssistantThinking] = useState(false);
+  const [selectedTripIndex, setSelectedTripIndex] = useState<number | null>(
+    confirmedTrips.length > 0 ? 0 : null
+  );
 
-  const activeTrip = confirmedTrips[0];
+  const activeTrip = selectedTripIndex !== null ? confirmedTrips[selectedTripIndex] : null;
+
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<Array<{ sender: 'user' | 'assistant'; text: string }>>([
+    DEFAULT_ASSISTANT_MESSAGE
+  ]);
+  const [isTyping, setIsTyping] = useState(false);
+
+  // Load chat from localStorage whenever activeTrip changes
+  useEffect(() => {
+    if (!activeTrip?.bookingId) {
+      setChatMessages([DEFAULT_ASSISTANT_MESSAGE]);
+      return;
+    }
+
+    try {
+      const stored = localStorage.getItem(`aerodag:v1:chat:${activeTrip.bookingId}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatMessages(parsed);
+          return;
+        }
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+    setChatMessages([DEFAULT_ASSISTANT_MESSAGE]);
+  }, [activeTrip?.bookingId]);
 
   const handleSendMessage = (textToSend?: string) => {
     const q = textToSend || chatInput;
     if (!q.trim()) return;
 
-    setChatMessages((prev) => [...prev, { sender: 'user', text: q }]);
+    const newMessages: Array<{ sender: 'user' | 'assistant'; text: string }> = [
+      ...chatMessages,
+      { sender: 'user', text: q }
+    ];
+    setChatMessages(newMessages);
     setChatInput('');
-    setIsAssistantThinking(true);
+    setIsTyping(true);
 
     setTimeout(() => {
       const lower = q.toLowerCase();
-      let reply = '';
-      let action = '';
+      let reply: string;
 
-      if (lower.includes('restaurant') || lower.includes('dinner') || lower.includes('food')) {
-        reply =
-          'I have added "Quan An Ngon (Hanoi Garden Feast)" to your Day 2 dinner recommendations. It is just a 6-minute stroll from your Golden Silk Suite and features a courtyard with kid-friendly dishes like fresh rice paper rolls and crispy banh xeo.';
-        action = 'Added Quan An Ngon to Day 2 dinner.';
-      } else if (lower.includes('less tiring') || lower.includes('relax') || lower.includes('day 4')) {
-        reply =
-          'I have adjusted Day 4 (Ninh Binh Excursion): the boat cave trip is kept at an easy morning hour, the afternoon bicycle ride has been shifted to a gentle electric golf-cart transfer, and we added a 2-hour rest window at your hotel before dinner.';
-        action = 'Updated Day 4 with relaxed pacing.';
-      } else if (lower.includes('money') || lower.includes('budget') || lower.includes('left')) {
-        reply =
-          'You have approximately ₹7,600 INR ($90 USD) remaining from your ₹1,00,000 budget allocation. Your flights, 10-night family suite, airport minivan, and official e-visas are already 100% paid for!';
-      } else if (lower.includes('visa')) {
-        reply =
-          'Yes, each traveler needs the 30-day single entry e-Visa ($25 / ₹2,100 per person). We recommend submitting your applications online at evisa.xuatnhapcanh.gov.vn by October 25 to ensure smooth processing.';
-      } else if (lower.includes('cab') || lower.includes('transfer')) {
-        reply =
-          'Your round-trip private 7-seater AC minivan airport transfer is already confirmed and included in your booking! The driver will be holding a name board at Noi Bai arrival gate.';
+      // 1. Actions the assistant cannot do (confirming, real PNR, payments, tickets)
+      const unsupportedAction =
+        lower.includes('confirm') ||
+        lower.includes('pnr') ||
+        lower.includes('pay') ||
+        lower.includes('payment') ||
+        lower.includes('credit card') ||
+        lower.includes('upi') ||
+        lower.includes('ticket') ||
+        lower.includes('charge') ||
+        lower.includes('refund') ||
+        lower.includes('real booking') ||
+        lower.includes('official');
+
+      if (unsupportedAction) {
+        reply = "I can't do that — this is a simulated booking.";
+      } else if (lower.includes('budget') || lower.includes('money') || lower.includes('left') || lower.includes('remaining')) {
+        // 2. Budget questions: answer directly from trip data
+        const targetBudget = activeTrip?.budgetTotalINR || 60000;
+        const totalPaid = activeTrip?.totalPaidINR || 0;
+        const remaining = activeTrip?.remainingBudgetINR !== undefined
+          ? activeTrip.remainingBudgetINR
+          : Math.max(0, targetBudget - totalPaid);
+        reply = `You have ₹${remaining.toLocaleString('en-IN')} remaining from your ₹${targetBudget.toLocaleString('en-IN')} target budget (Allocated plan total: ₹${totalPaid.toLocaleString('en-IN')}).`;
+      } else if (lower.includes('food') || lower.includes('dinner') || lower.includes('restaurant')) {
+        const dest = (activeTrip?.destination || '').toLowerCase();
+        if (dest.includes('coorg')) {
+          reply = `Recommended dinner in Coorg: Raintree Restaurant in Madikeri for authentic Kodava pork or veg curry, or Tiger Tiger for traditional Coorg thali.`;
+        } else if (dest.includes('kerala')) {
+          reply = `Recommended dinner in Kerala: Saravana Bhavan for traditional vegetarian sadhya, or Rapsy Restaurant in Munnar market for local malabar dishes.`;
+        } else if (dest.includes('mysuru')) {
+          reply = `Recommended dinner in Mysuru: Mylari Hotel in Nazarbad for legendary butter masala dose, or Gufha Restaurant for multi-cuisine dining.`;
+        } else {
+          reply = "Recommended dinner: Martin's Corner in Betalbatim (12 min drive from Heritage Village Resort). Known for fresh coastal Goan curries and family seating.";
+        }
+      } else if (lower.includes('pace') || lower.includes('less tiring') || lower.includes('relax')) {
+        reply = "Your itinerary already schedules 2-hour afternoon rest downtime at the accommodation so your family can recharge before evening sightseeing.";
       } else {
-        reply =
-          'I have noted your request and updated your trip context. All your travel preferences and reservations remain safe and intact.';
+        reply = "Your trip details and itinerary are saved in sandbox mode. Feel free to ask about remaining budget, dining options, or day pacing.";
       }
 
-      setChatMessages((prev) => [
-        ...prev,
-        { sender: 'assistant', text: reply, actionApplied: action }
-      ]);
-      setIsAssistantThinking(false);
-    }, 700);
+      const updatedWithReply = [...newMessages, { sender: 'assistant' as const, text: reply }];
+      setChatMessages(updatedWithReply);
+      setIsTyping(false);
+
+      // Persist chat per trip
+      if (activeTrip?.bookingId) {
+        try {
+          localStorage.setItem(`aerodag:v1:chat:${activeTrip.bookingId}`, JSON.stringify(updatedWithReply));
+        } catch {
+          // ignore
+        }
+      }
+    }, 500);
   };
 
-  if (!activeTrip) {
+  // 1. Loading Skeleton State
+  if (isLoading) {
     return (
-      <div className="max-w-3xl mx-auto p-12 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
-        <Luggage className="h-12 w-12 text-slate-600 mx-auto" />
-        <h2 className="text-lg font-bold text-white">No Confirmed Trips Yet</h2>
-        <p className="text-xs text-slate-400 max-w-md mx-auto">
-          You haven't booked a trip yet. Use our AI Trip Planner to plan and confirm your next journey.
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6 text-left animate-fade-in-slide">
+        <div className="pb-3 border-b border-[#E2E6E1]">
+          <div className="h-7 w-32 bg-[#E2E6E1] rounded animate-pulse" />
+          <div className="h-4 w-48 bg-[#E2E6E1]/60 rounded mt-2 animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="trips-loading-skeleton">
+          {[1, 2, 3].map((n) => (
+            <div key={n} className="card-consumer p-5 space-y-3.5 bg-white border-[#E2E6E1]">
+              <div className="flex justify-between">
+                <div className="h-4 w-16 bg-[#E2E6E1] rounded animate-pulse" />
+                <div className="h-4 w-20 bg-[#E2E6E1] rounded animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-5 w-3/4 bg-[#E2E6E1] rounded animate-pulse" />
+                <div className="h-3.5 w-1/2 bg-[#E2E6E1] rounded animate-pulse" />
+                <div className="h-3.5 w-2/3 bg-[#E2E6E1] rounded animate-pulse" />
+              </div>
+              <div className="pt-2 border-t border-[#E2E6E1] flex justify-between">
+                <div className="h-4 w-16 bg-[#E2E6E1] rounded animate-pulse" />
+                <div className="h-4 w-16 bg-[#E2E6E1] rounded animate-pulse" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Error State
+  if (loadError) {
+    return (
+      <div className="max-w-md mx-auto my-16 p-8 text-center card-consumer space-y-4 animate-fade-in-slide" data-testid="trips-error-state">
+        <div className="h-12 w-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto">
+          <AlertCircle className="h-6 w-6" />
+        </div>
+        <h1 className="text-xl font-bold text-[#15201D] font-heading">
+          Couldn't load your trips. Retry
+        </h1>
+        <p className="text-xs sm:text-sm text-[#55625E]">
+          {loadError}
         </p>
         <button
-          onClick={onExploreMore}
-          className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-slate-950 font-bold text-xs transition"
+          type="button"
+          onClick={onRetry || onExploreMore}
+          className="btn-primary"
         >
-          Plan a Trip with AI
+          <span>Retry</span>
         </button>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
-      {/* Page Title */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-        <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <Luggage className="h-5 w-5 text-amber-400" />
-            <span>My Trips & Upcoming Journeys</span>
+  // 3. Empty state: If no saved trips yet
+  if (!confirmedTrips || confirmedTrips.length === 0) {
+    return (
+      <div className="max-w-md mx-auto my-16 space-y-4 animate-fade-in-slide">
+        {isOffline && (
+          <div className="p-3 rounded-xl bg-[#FBF3E8] border border-[#E6D4B8] text-[#8C5D23] text-xs flex items-center justify-center gap-2" data-testid="offline-mode-banner">
+            <span className="h-2 w-2 rounded-full bg-[#D97706]" />
+            <span>Offline mode — trips are saved on this device only.</span>
+          </div>
+        )}
+        <div className="p-8 text-center card-consumer space-y-4">
+          <div className="h-12 w-12 rounded-full bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center mx-auto">
+            <Luggage className="h-6 w-6" />
+          </div>
+          <h1 className="text-xl font-bold text-[#15201D] font-heading">
+            No trips yet — plan your first one
           </h1>
-          <p className="text-xs text-slate-400">
-            View your active bookings, vouchers, and collaborate with your AI trip assistant.
+          <p className="text-xs sm:text-sm text-[#55625E]">
+            Describe a trip to build a plan that fits inside your budget.
           </p>
-        </div>
-
-        <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-          1 Upcoming Confirmed Trip
-        </span>
-      </div>
-
-      {/* Confirmed Trip Card */}
-      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 space-y-5 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-mono font-bold">
-                CONFIRMED
-              </span>
-              <span className="text-xs font-mono text-slate-400">
-                Booking ID: {activeTrip.bookingId}
-              </span>
-            </div>
-            <h2 className="text-xl font-bold text-white">{activeTrip.tripTitle}</h2>
-            <p className="text-xs text-slate-300 mt-0.5">
-              {activeTrip.travelDates} &bull; {activeTrip.origin} &rarr; {activeTrip.destination}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => window.print()}
-              className="px-3.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition"
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span>PDF Itinerary</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Breakdown Items */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-            <span className="text-slate-400 block font-mono text-[10px] uppercase flex items-center gap-1">
-              <Plane className="h-3.5 w-3.5 text-sky-400" /> Flight PNR
-            </span>
-            <div className="font-bold text-white text-sm">{activeTrip.pnr}</div>
-            <div className="text-slate-400 text-[11px]">{activeTrip.selectedFlight.airline} (4 Seats)</div>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-            <span className="text-slate-400 block font-mono text-[10px] uppercase flex items-center gap-1">
-              <Building className="h-3.5 w-3.5 text-emerald-400" /> Hotel Voucher
-            </span>
-            <div className="font-bold text-white text-sm">{activeTrip.hotelVoucherId}</div>
-            <div className="text-slate-400 text-[11px]">{activeTrip.selectedHotel.name}</div>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-            <span className="text-slate-400 block font-mono text-[10px] uppercase flex items-center gap-1">
-              <Car className="h-3.5 w-3.5 text-amber-400" /> Airport Transfer
-            </span>
-            <div className="font-bold text-white text-sm">Driver Assigned</div>
-            <div className="text-slate-400 text-[11px]">Private 7-Seater AC Minivan</div>
-          </div>
-        </div>
-      </div>
-
-      {/* POST-BOOKING AI ASSISTANT EMBEDDED CONSOLE */}
-      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-teal-500/10 text-teal-400 flex items-center justify-center">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white">Post-Booking AI Travel Assistant</h3>
-              <p className="text-[11px] text-slate-400">
-                Ask questions or adjust your trip anytime without having to restart.
-              </p>
-            </div>
-          </div>
-          <span className="text-[10px] font-mono text-teal-300 bg-teal-500/10 px-2 py-0.5 rounded border border-teal-500/20">
-            Trip Context Active
-          </span>
-        </div>
-
-        {/* Example Suggestion Chips */}
-        <div className="flex flex-wrap gap-2 text-xs">
-          {[
-            'Can you suggest a child-friendly dinner near our hotel?',
-            'Make Day 4 less tiring',
-            'How much spending money do we have left?',
-            'Do we need an international driving permit?'
-          ].map((promptText, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleSendMessage(promptText)}
-              className="text-[11px] text-slate-300 bg-slate-950 hover:bg-slate-850 px-2.5 py-1 rounded-lg border border-slate-800 transition"
-            >
-              &bull; {promptText}
-            </button>
-          ))}
-        </div>
-
-        {/* Message Thread */}
-        <div className="space-y-3 max-h-72 overflow-y-auto p-4 rounded-xl bg-slate-950 border border-slate-800">
-          {chatMessages.map((msg, idx) => (
-            <div
-              key={idx}
-              className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
-            >
-              <div
-                className={`max-w-[85%] p-3 rounded-xl text-xs leading-relaxed ${
-                  msg.sender === 'user'
-                    ? 'bg-teal-600 text-slate-950 font-medium rounded-tr-none'
-                    : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none space-y-1.5'
-                }`}
-              >
-                <div>{msg.text}</div>
-                {msg.actionApplied && (
-                  <div className="text-[10px] font-mono text-teal-300 bg-slate-950/80 px-2 py-0.5 rounded border border-teal-500/30 flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 text-teal-400" />
-                    <span>{msg.actionApplied}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {isAssistantThinking && (
-            <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-              <span className="h-2 w-2 rounded-full bg-teal-400 animate-pulse" />
-              <span>Trip Assistant is reviewing your itinerary...</span>
-            </div>
-          )}
-        </div>
-
-        {/* Chat Input Bar */}
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-            placeholder="Ask anything about your confirmed trip (e.g. food spots, pacing, packing)..."
-            className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-400"
-          />
           <button
-            onClick={() => handleSendMessage()}
-            className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition"
+            type="button"
+            onClick={onExploreMore}
+            className="btn-primary"
           >
-            <Send className="h-3.5 w-3.5" />
-            <span>Send</span>
+            <span>Plan a trip</span>
+            <ArrowRight className="h-4 w-4" />
           </button>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6 text-left animate-fade-in-slide">
+      {/* Offline Mode Banner */}
+      {isOffline && (
+        <div className="p-3 rounded-xl bg-[#FBF3E8] border border-[#E6D4B8] text-[#8C5D23] text-xs flex items-center gap-2" data-testid="offline-mode-banner">
+          <span className="h-2 w-2 rounded-full bg-[#D97706]" />
+          <span>Offline mode — trips are saved on this device only.</span>
+        </div>
+      )}
+
+      {/* Title */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E2E6E1]">
+        <div>
+          <h1 className="text-2xl font-bold text-[#15201D] font-heading">
+            My Trips
+          </h1>
+          <p className="text-xs sm:text-sm text-[#55625E]">
+            {confirmedTrips.length} saved sandbox journey{confirmedTrips.length > 1 ? 's' : ''}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onExploreMore}
+          className="btn-primary py-2 px-3.5 text-xs sm:text-sm"
+        >
+          <span>Plan another trip</span>
+        </button>
+      </div>
+
+      {/* Trips Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {confirmedTrips.map((trip, idx) => {
+          const isSelected = selectedTripIndex === idx;
+
+          return (
+            <div
+              key={trip.bookingId}
+              data-testid="trip-card"
+              className={`card-consumer p-5 space-y-3.5 transition-all cursor-pointer ${
+                isSelected
+                  ? 'border-[#0E6B59] ring-2 ring-[#0E6B59]/20 bg-[#FFFFFF]'
+                  : 'hover:border-[#0E6B59]/40 bg-[#FFFFFF]'
+              }`}
+              onClick={() => setSelectedTripIndex(idx)}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#E3F1EC] text-[#0E6B59]">
+                  {trip.status || 'SIMULATED'}
+                </span>
+                <span className="text-xs text-[#55625E] font-mono">
+                  {trip.pnr}
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <h2 className="text-lg font-bold text-[#15201D] font-heading">
+                  {trip.destination}
+                </h2>
+                <div className="text-xs text-[#55625E] flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-[#0E6B59]" />
+                  <span>{trip.travelDates}</span>
+                </div>
+                <div className="text-xs text-[#55625E] flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-[#0E6B59]" />
+                  <span>{trip.passengers?.length || 3} travellers · {trip.origin}</span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-[#E2E6E1] flex items-center justify-between">
+                <div className="text-sm font-bold text-[#15201D]">
+                  ₹{trip.totalPaidINR.toLocaleString('en-IN')}
+                </div>
+                <span className="text-xs font-semibold text-[#0E6B59] hover:underline flex items-center gap-1">
+                  <span>{isSelected ? 'Viewing' : 'Open trip'}</span>
+                  <ArrowRight className="h-3 w-3" />
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Selected Trip Detail + Assistant Panel */}
+      {activeTrip && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-4 items-start">
+          {/* Read-Only Plan Layout (7 cols) */}
+          <div className="lg:col-span-7 card-consumer p-6 space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E6E1]">
+              <div className="space-y-0.5">
+                <div className="text-xs uppercase font-bold text-[#0E6B59]">
+                  Trip Details · Read-only
+                </div>
+                <h3 className="text-xl font-bold text-[#15201D] font-heading">
+                  {activeTrip.tripTitle}
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="btn-ghost py-2 px-3 text-xs"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>PDF</span>
+              </button>
+            </div>
+
+            {/* Travel Summary Cards */}
+            <div className="space-y-3">
+              {/* Flight */}
+              <div className="p-3.5 rounded-xl bg-[#F5F6F3] border border-[#E2E6E1] flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2.5">
+                  <Plane className="h-4 w-4 text-[#0E6B59]" />
+                  <div>
+                    <div className="font-bold text-[#15201D]">
+                      {activeTrip.selectedFlight?.airline || 'Air India Express'} ({activeTrip.selectedFlight?.flightNumber || 'IX 924'})
+                    </div>
+                    <div className="text-[#55625E]">
+                      {activeTrip.origin} → {activeTrip.destination}
+                    </div>
+                  </div>
+                </div>
+                <span className="font-bold text-[#15201D]">
+                  {activeTrip.pnr}
+                </span>
+              </div>
+
+              {/* Stay */}
+              <div className="p-3.5 rounded-xl bg-[#F5F6F3] border border-[#E2E6E1] flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2.5">
+                  <Building className="h-4 w-4 text-[#0E6B59]" />
+                  <div>
+                    <div className="font-bold text-[#15201D]">
+                      {activeTrip.selectedHotel?.name || 'Heritage Village Resort & Spa, South Goa'}
+                    </div>
+                    <div className="text-[#55625E]">
+                      {activeTrip.selectedHotel?.area || 'South Goa'} · Simulated voucher
+                    </div>
+                  </div>
+                </div>
+                <span className="font-bold text-[#15201D]">
+                  {activeTrip.hotelVoucherId}
+                </span>
+              </div>
+
+              {/* Transfer */}
+              <div className="p-3.5 rounded-xl bg-[#F5F6F3] border border-[#E2E6E1] flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2.5">
+                  <Car className="h-4 w-4 text-[#0E6B59]" />
+                  <div>
+                    <div className="font-bold text-[#15201D]">
+                      {activeTrip.selectedTransfer?.title || 'Toyota Innova Crysta 7-Seater AC'}
+                    </div>
+                    <div className="text-[#55625E]">
+                      Private Airport Transfer
+                    </div>
+                  </div>
+                </div>
+                <span className="font-bold text-[#15201D]">
+                  Simulated
+                </span>
+              </div>
+            </div>
+
+            {/* Total Paid */}
+            <div className="pt-3 border-t border-[#E2E6E1] flex items-center justify-between text-sm">
+              <span className="text-[#55625E] font-medium">Plan Total (Simulated)</span>
+              <span className="text-xl font-bold text-[#15201D] font-heading">
+                ₹{activeTrip.totalPaidINR.toLocaleString('en-IN')}
+              </span>
+            </div>
+          </div>
+
+          {/* Assistant Side Panel (5 cols) */}
+          <div className="lg:col-span-5 card-consumer p-5 space-y-4 sticky top-24">
+            <div className="flex items-center gap-2 pb-2 border-b border-[#E2E6E1]">
+              <Sparkles className="h-4 w-4 text-[#0E6B59]" />
+              <h3 className="text-sm font-bold text-[#15201D] font-heading">
+                Post-Booking Assistant
+              </h3>
+            </div>
+
+            {/* Quick chips */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                'Dinner near hotel',
+                'Make pacing relaxed',
+                'How much budget left?'
+              ].map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  onClick={() => handleSendMessage(chip)}
+                  className="pill-chip text-[11px] py-1 px-2.5"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+
+            {/* Thread */}
+            <div className="space-y-3 max-h-64 overflow-y-auto p-3 rounded-xl bg-[#F5F6F3] border border-[#E2E6E1] text-xs">
+              {chatMessages.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[85%] p-2.5 rounded-xl ${
+                      msg.sender === 'user'
+                        ? 'bg-[#0E6B59] text-white'
+                        : 'bg-white border border-[#E2E6E1] text-[#15201D]'
+                    }`}
+                  >
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+              {isTyping && (
+                <div className="text-[11px] text-[#55625E] italic">
+                  Assistant is typing...
+                </div>
+              )}
+            </div>
+
+            {/* Input */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                placeholder="Ask about your trip..."
+                className="flex-1 bg-white border border-[#E2E6E1] rounded-xl px-3 py-2 text-xs text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => handleSendMessage()}
+                className="btn-primary py-2 px-3 text-xs"
+                aria-label="Send message"
+              >
+                <Send className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

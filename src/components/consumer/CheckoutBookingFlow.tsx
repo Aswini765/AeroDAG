@@ -1,17 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
-  CreditCard,
-  ShieldCheck,
-  CheckCircle2,
   Users,
-  Building,
-  Plane,
-  ArrowRight,
-  RotateCcw,
-  Check,
-  Lock,
-  Smartphone,
-  AlertCircle
+  Info,
+  ArrowLeft,
+  Check
 } from 'lucide-react';
 import {
   FlightItem,
@@ -24,18 +16,38 @@ import {
   ConfirmedBookingRecord,
   Currency
 } from '../../types/travelBooking';
+import {
+  getTripSummary,
+  TripSummary,
+  generateSandboxBookingId,
+  deriveDestinationCode
+} from '../../services/tripSummaryHelper';
+import { SourceTag } from './SourceTag';
+
+export interface TravellerFormItem {
+  id: string;
+  type: 'ADULT' | 'CHILD' | 'SENIOR';
+  title: string;
+  firstName: string;
+  lastName: string;
+  age?: number;
+  email?: string;
+  phone?: string;
+  label: string;
+}
 
 interface CheckoutBookingFlowProps {
   preferences: TripPreferences;
-  selectedFlight: FlightItem;
-  selectedHotel: HotelItem;
-  selectedTransfer: TransferItem;
-  visaDetails: VisaDetails;
-  totalCostINR: number;
-  totalCostUSD: number;
+  selectedFlight?: FlightItem | null;
+  selectedHotel?: HotelItem | null;
+  selectedTransfer?: TransferItem | null;
+  visaDetails?: VisaDetails | null;
+  totalCostINR?: number;
+  totalCostUSD?: number;
   currency: Currency;
   onBookingSuccess: (confirmedRecord: ConfirmedBookingRecord) => void;
   onBackToTrip: () => void;
+  tripSummary?: TripSummary | null;
 }
 
 export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
@@ -45,434 +57,406 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
   selectedTransfer,
   visaDetails,
   totalCostINR,
-  totalCostUSD,
   currency,
   onBookingSuccess,
-  onBackToTrip
+  onBackToTrip,
+  tripSummary: propSummary
 }) => {
-  // Booking State Machine tracking
-  const [bookingState, setBookingState] = useState<BookingState>('HELD');
-  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CARD' | 'NETBANKING'>('UPI');
+  // Authoritative Trip Summary (Single Source of Truth)
+  const summary =
+    propSummary ||
+    getTripSummary({
+      preferences,
+      flight: selectedFlight,
+      hotel: selectedHotel,
+      transfer: selectedTransfer,
+      visa: visaDetails
+    });
 
-  // Passenger form
-  const [adult1First, setAdult1First] = useState('Rahul');
-  const [adult1Last, setAdult1Last] = useState('Sharma');
-  const [adult1Email, setAdult1Email] = useState('rahul.sharma@example.com');
-  const [adult1Phone, setAdult1Phone] = useState('+91 98765 43210');
+  // Dynamic Passenger Form State derived strictly from summary / preferences
+  const [passengers, setPassengers] = useState<TravellerFormItem[]>(() => {
+    const list: TravellerFormItem[] = [];
+    const adults = summary?.travellers.adults ?? preferences.adultsCount ?? 2;
+    const children = summary?.travellers.children ?? preferences.childrenAges ?? [];
+    const seniors = summary?.travellers.seniors ?? 0;
 
-  const [adult2First, setAdult2First] = useState('Priya');
-  const [adult2Last, setAdult2Last] = useState('Sharma');
+    for (let i = 0; i < adults; i++) {
+      list.push({
+        id: `pax-adult-${i + 1}`,
+        type: 'ADULT',
+        title: i === 0 ? 'Mr' : 'Ms',
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        label: i === 0 ? 'Lead Traveller' : `Adult ${i + 1}`
+      });
+    }
 
-  const [child1First, setChild1First] = useState('Aarav');
-  const [child1Last, setChild1Last] = useState('Sharma');
-  const [child1Age, setChild1Age] = useState(11);
+    for (let i = 0; i < children.length; i++) {
+      const age = children[i];
+      list.push({
+        id: `pax-child-${i + 1}`,
+        type: 'CHILD',
+        title: 'Mstr',
+        firstName: '',
+        lastName: '',
+        age: age,
+        label: `Child ${i + 1} (Age ${age})`
+      });
+    }
 
-  const [child2First, setChild2First] = useState('Ananya');
-  const [child2Last, setChild2Last] = useState('Sharma');
-  const [child2Age, setChild2Age] = useState(8);
+    for (let i = 0; i < seniors; i++) {
+      list.push({
+        id: `pax-senior-${i + 1}`,
+        type: 'SENIOR',
+        title: 'Mr',
+        firstName: '',
+        lastName: '',
+        label: `Senior ${i + 1}`
+      });
+    }
 
-  const [cardNumber, setCardNumber] = useState('4532 8901 2345 6789');
-  const [cardExpiry, setCardExpiry] = useState('11/28');
-  const [cardCvv, setCardCvv] = useState('842');
-  const [upiId, setUpiId] = useState('rahul.sharma@okaxis');
+    return list;
+  });
 
-  const displayTotal = currency === 'INR' ? `₹${totalCostINR.toLocaleString()}` : `$${totalCostUSD.toLocaleString()}`;
+  const [isUsingTestData, setIsUsingTestData] = useState(false);
+  const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
+
+  const markTouched = (fieldKey: string) => {
+    setTouchedFields((prev) => ({ ...prev, [fieldKey]: true }));
+  };
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const phoneDigits = (p: string) => (p || '').replace(/\D/g, '');
+
+  const isPaxValid = (pax: TravellerFormItem, isLead: boolean) => {
+    if (!pax.firstName.trim() || !pax.lastName.trim()) return false;
+    if (isLead) {
+      if (!emailRegex.test((pax.email || '').trim())) return false;
+      if (phoneDigits(pax.phone || '').length < 10) return false;
+    }
+    return true;
+  };
+
+  const isFormValid = passengers.length > 0 && passengers.every((p, idx) => isPaxValid(p, idx === 0));
+
+  const handleFillTestDetails = () => {
+    setIsUsingTestData(true);
+    setTouchedFields({});
+    setPassengers((prev) =>
+      prev.map((p, idx) => ({
+        ...p,
+        firstName: idx === 0 ? 'Alex' : idx === 1 ? 'Sam' : 'Jordan',
+        lastName: 'Taylor',
+        email: idx === 0 ? 'alex.taylor@example.com' : '',
+        phone: idx === 0 ? '+91 98765 43210' : ''
+      }))
+    );
+  };
+
+  const handleUpdatePassenger = (id: string, field: keyof TravellerFormItem, value: any) => {
+    setPassengers((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, [field]: value } : p))
+    );
+  };
+
+  const finalTotalINR = summary?.totalINR ?? totalCostINR ?? 0;
+  const isSubmittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSimulatePayment = () => {
-    setBookingState('PAYMENT_PROCESSING');
+    if (isSubmittingRef.current || !isFormValid) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
     setTimeout(() => {
-      setBookingState('CONFIRMED');
+      const destCode = summary?.destinationCode || deriveDestinationCode(preferences.destination);
+      const bookingId = `${generateSandboxBookingId(destCode)} (sandbox)`;
+      const pnrNum = Math.floor(1000 + Math.random() * 9000);
+      const voucherNum = Math.floor(1000 + Math.random() * 9000);
+
+      const passengersList: Passenger[] = passengers.map((p) => ({
+        type: p.type,
+        title: p.title as any,
+        firstName: p.firstName.trim() || `Guest`,
+        lastName: p.lastName.trim() || 'Traveller',
+        age: p.age
+      }));
 
       const confirmedRecord: ConfirmedBookingRecord = {
-        bookingId: `BK-VN-${Math.floor(100000 + Math.random() * 900000)}`,
-        pnr: `VN-BLR-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-        hotelVoucherId: `HAN-HTL-${Math.floor(1000 + Math.random() * 9000)}`,
+        bookingId,
+        pnr: `AD-${destCode}-${pnrNum}`,
+        hotelVoucherId: `HTL-${destCode}-${voucherNum} (sandbox)`,
         createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        status: 'CONFIRMED',
-        tripTitle: `10-Day Family Vacation to ${preferences.destination}`,
-        destination: preferences.destination,
-        origin: preferences.origin,
-        travelDates: preferences.targetDates,
-        totalPaidINR: totalCostINR,
-        totalPaidUSD: totalCostUSD,
-        passengers: [
-          { type: 'ADULT', title: 'Mr', firstName: adult1First, lastName: adult1Last },
-          { type: 'ADULT', title: 'Mrs', firstName: adult2First, lastName: adult2Last },
-          { type: 'CHILD', title: 'Mstr', firstName: child1First, lastName: child1Last, age: child1Age },
-          { type: 'CHILD', title: 'Miss', firstName: child2First, lastName: child2Last, age: child2Age }
-        ],
-        selectedFlight,
-        selectedHotel,
-        selectedTransfer,
-        itinerary: [],
-        visa: visaDetails
+        status: 'SIMULATED',
+        tripTitle: `${summary?.durationDays || preferences.durationDays}-Day Trip to ${summary?.destination || preferences.destination}`,
+        destination: summary?.destination || preferences.destination,
+        origin: summary?.origin || preferences.origin,
+        travelDates: summary?.dates || preferences.targetDates,
+        totalPaidINR: finalTotalINR,
+        totalPaidUSD: Math.round(finalTotalINR / 84),
+        budgetTotalINR: preferences.budgetTotalINR || 60000,
+        remainingBudgetINR: Math.max(0, (preferences.budgetTotalINR || 60000) - finalTotalINR),
+        passengers: passengersList,
+        selectedFlight: summary?.flight || selectedFlight || null,
+        selectedHotel: summary?.hotel || selectedHotel || null,
+        selectedTransfer: summary?.transfer || selectedTransfer || null,
+        itinerary: summary?.itinerary || [],
+        visa: null,
+        scope: 'domestic'
       };
 
       onBookingSuccess(confirmedRecord);
-    }, 1400);
+      setIsSubmitting(false);
+    }, 1000);
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-        <div>
-          <h1 className="text-xl font-bold text-white">Passenger Details & Secure Checkout</h1>
-          <p className="text-xs text-slate-400">
-            Review traveller names and complete your booking. Inventory is currently held.
-          </p>
-        </div>
-
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 animate-fade-in-slide text-left">
+      {/* Top Bar: Back to Plan button */}
+      <div className="flex items-center justify-between gap-4 mb-6">
         <button
+          type="button"
           onClick={onBackToTrip}
-          className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-800 self-start sm:self-auto"
+          className="btn-ghost text-xs sm:text-sm py-2 px-3.5 inline-flex items-center gap-1.5 cursor-pointer"
+          aria-label="Back to plan"
         >
-          &larr; Back to Trip Builder
+          <ArrowLeft className="h-4 w-4" />
+          <span>Back to plan</span>
         </button>
+
+        <span className="text-xs font-semibold uppercase tracking-wider text-[#0E6B59]">
+          Step 3 of 4 · Review details
+        </span>
       </div>
 
-      {/* Booking State Machine Tracker */}
-      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-        <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block mb-2">
-          Booking State Machine:
-        </span>
-        <div className="flex items-center justify-between text-xs font-mono overflow-x-auto pb-1">
-          <div className="flex items-center gap-1.5 text-slate-400">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-            <span>1. Searched</span>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* LEFT COLUMN: TRAVELLER FIELDSETS (7 cols) */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#15201D] font-heading">
+                Traveller Details
+              </h1>
+              <p className="text-xs sm:text-sm text-[#55625E]">
+                Names must match government-issued photo IDs (Aadhaar or Voter ID).
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {isUsingTestData && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#E3F1EC] text-[#0E6B59]">
+                  Test data
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handleFillTestDetails}
+                className="btn-ghost py-1.5 px-3 text-xs"
+              >
+                Fill test details
+              </button>
+            </div>
           </div>
-          <span className="text-slate-600">&rarr;</span>
-          <div className="flex items-center gap-1.5 text-slate-400">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-            <span>2. Available</span>
-          </div>
-          <span className="text-slate-600">&rarr;</span>
-          <div className="flex items-center gap-1.5 text-teal-300 font-bold">
-            <span className="h-2 w-2 rounded-full bg-teal-400 animate-pulse" />
-            <span>3. Seats & Suite Held (Active)</span>
-          </div>
-          <span className="text-slate-600">&rarr;</span>
-          <div className={`flex items-center gap-1.5 ${bookingState === 'PAYMENT_PROCESSING' ? 'text-amber-400 font-bold' : 'text-slate-500'}`}>
-            <span>4. Payment</span>
-          </div>
-          <span className="text-slate-600">&rarr;</span>
-          <div className={`flex items-center gap-1.5 ${bookingState === 'CONFIRMED' ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
-            <span>5. Confirmed</span>
+
+          <div className="space-y-4">
+            {passengers.map((pax, idx) => {
+              const isLead = idx === 0;
+
+              return (
+                <fieldset
+                  key={pax.id}
+                  className="card-consumer p-5 space-y-3.5 border-[#E2E6E1]"
+                >
+                  <legend className="px-2 font-bold text-sm text-[#15201D] font-heading">
+                    {pax.label}
+                  </legend>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* First Name */}
+                    <div className="space-y-1">
+                      <label
+                        htmlFor={`input-fn-${pax.id}`}
+                        className="block text-xs font-semibold text-[#55625E]"
+                      >
+                        First Name <span className="text-[#DC2626]">*</span>
+                      </label>
+                      <input
+                        id={`input-fn-${pax.id}`}
+                        type="text"
+                        value={pax.firstName}
+                        onChange={(e) => handleUpdatePassenger(pax.id, 'firstName', e.target.value)}
+                        onBlur={() => markTouched(`fn-${pax.id}`)}
+                        placeholder="e.g. Aswin"
+                        className={`w-full bg-[#FFFFFF] border rounded-xl px-3.5 py-2.5 text-sm text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none ${
+                          (touchedFields[`fn-${pax.id}`] || isSubmitting) && !pax.firstName.trim() ? 'border-[#DC2626]' : 'border-[#E2E6E1]'
+                        }`}
+                      />
+                      {(touchedFields[`fn-${pax.id}`] || isSubmitting) && !pax.firstName.trim() && (
+                        <span id={`error-fn-${pax.id}`} data-testid={`error-fn-${pax.id}`} role="alert" className="text-xs text-[#DC2626] font-medium block">
+                          First name is required
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Last Name */}
+                    <div className="space-y-1">
+                      <label
+                        htmlFor={`input-ln-${pax.id}`}
+                        className="block text-xs font-semibold text-[#55625E]"
+                      >
+                        Last Name <span className="text-[#DC2626]">*</span>
+                      </label>
+                      <input
+                        id={`input-ln-${pax.id}`}
+                        type="text"
+                        value={pax.lastName}
+                        onChange={(e) => handleUpdatePassenger(pax.id, 'lastName', e.target.value)}
+                        onBlur={() => markTouched(`ln-${pax.id}`)}
+                        placeholder="e.g. Kumar"
+                        className={`w-full bg-[#FFFFFF] border rounded-xl px-3.5 py-2.5 text-sm text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none ${
+                          (touchedFields[`ln-${pax.id}`] || isSubmitting) && !pax.lastName.trim() ? 'border-[#DC2626]' : 'border-[#E2E6E1]'
+                        }`}
+                      />
+                      {(touchedFields[`ln-${pax.id}`] || isSubmitting) && !pax.lastName.trim() && (
+                        <span id={`error-ln-${pax.id}`} data-testid={`error-ln-${pax.id}`} role="alert" className="text-xs text-[#DC2626] font-medium block">
+                          Last name is required
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Lead Traveller Contacts */}
+                  {isLead && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#E2E6E1]">
+                      <div className="space-y-1">
+                        <label
+                          htmlFor={`input-email-${pax.id}`}
+                          className="block text-xs font-semibold text-[#55625E]"
+                        >
+                          Email Address <span className="text-[#DC2626]">*</span>
+                        </label>
+                        <input
+                          id={`input-email-${pax.id}`}
+                          type="email"
+                          value={pax.email || ''}
+                          onChange={(e) => handleUpdatePassenger(pax.id, 'email', e.target.value)}
+                          onBlur={() => markTouched(`email-${pax.id}`)}
+                          placeholder="aswin@example.com"
+                          className={`w-full bg-[#FFFFFF] border rounded-xl px-3.5 py-2.5 text-sm text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none ${
+                            (touchedFields[`email-${pax.id}`] || isSubmitting) && !emailRegex.test((pax.email || '').trim()) ? 'border-[#DC2626]' : 'border-[#E2E6E1]'
+                          }`}
+                        />
+                        {(touchedFields[`email-${pax.id}`] || isSubmitting) && !emailRegex.test((pax.email || '').trim()) && (
+                          <span id={`error-email-${pax.id}`} data-testid={`error-email-${pax.id}`} role="alert" className="text-xs text-[#DC2626] font-medium block">
+                            Valid email is required for the lead traveller
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <label
+                          htmlFor={`input-mobile-${pax.id}`}
+                          className="block text-xs font-semibold text-[#55625E]"
+                        >
+                          Mobile Number <span className="text-[#DC2626]">*</span>
+                        </label>
+                        <input
+                          id={`input-mobile-${pax.id}`}
+                          type="tel"
+                          value={pax.phone || ''}
+                          onChange={(e) => handleUpdatePassenger(pax.id, 'phone', e.target.value)}
+                          onBlur={() => markTouched(`phone-${pax.id}`)}
+                          placeholder="+91 98765 43210"
+                          className={`w-full bg-[#FFFFFF] border rounded-xl px-3.5 py-2.5 text-sm text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none ${
+                            (touchedFields[`phone-${pax.id}`] || isSubmitting) && phoneDigits(pax.phone || '').length < 10 ? 'border-[#DC2626]' : 'border-[#E2E6E1]'
+                          }`}
+                        />
+                        {(touchedFields[`phone-${pax.id}`] || isSubmitting) && phoneDigits(pax.phone || '').length < 10 && (
+                          <span id={`error-phone-${pax.id}`} data-testid={`error-phone-${pax.id}`} role="alert" className="text-xs text-[#DC2626] font-medium block">
+                            Valid 10-digit phone number is required
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Child Age indicator */}
+                  {pax.type === 'CHILD' && pax.age !== undefined && (
+                    <div className="text-xs text-[#55625E] italic">
+                      Child age: {pax.age} years (qualifies for discounted activities and food pricing)
+                    </div>
+                  )}
+                </fieldset>
+              );
+            })}
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Passenger & Contact Details */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Passenger Form */}
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-5">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <Users className="h-4 w-4 text-teal-400" />
-              <span>Traveller Information (4 Guests)</span>
+        {/* RIGHT COLUMN: ORDER SUMMARY (5 cols) */}
+        <div className="lg:col-span-5 space-y-5 sticky top-24">
+          <div className="card-consumer p-5 sm:p-6 space-y-4">
+            <h2 className="text-base font-bold text-[#15201D] font-heading pb-2 border-b border-[#E2E6E1]">
+              Order Summary
             </h2>
 
-            {/* Adult 1 (Lead Traveller) */}
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-3">
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
-                <span>Adult 1 (Lead Passenger)</span>
-                <span className="text-teal-400 font-mono text-[11px]">Primary Contact</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">First Name</label>
-                  <input
-                    type="text"
-                    value={adult1First}
-                    onChange={(e) => setAdult1First(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
+            {/* Line items identical to plan */}
+            <div className="space-y-2.5">
+              {summary?.lineItems.map((item: any) => (
+                <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
+                  <div className="truncate text-[#55625E]">
+                    <span className="font-semibold text-[#15201D]">{item.title}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="font-bold text-[#15201D]">
+                      ₹{item.amountINR.toLocaleString('en-IN')}
+                    </span>
+                    <SourceTag kind={item.source} label={item.sourceLabel || item.source} />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Last Name</label>
-                  <input
-                    type="text"
-                    value={adult1Last}
-                    onChange={(e) => setAdult1Last(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs pt-1">
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Email (for E-Tickets & Voucher)</label>
-                  <input
-                    type="email"
-                    value={adult1Email}
-                    onChange={(e) => setAdult1Email(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Mobile Phone (with country code)</label>
-                  <input
-                    type="tel"
-                    value={adult1Phone}
-                    onChange={(e) => setAdult1Phone(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-              </div>
+              ))}
             </div>
 
-            {/* Adult 2 */}
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-3">
-              <span className="text-xs font-semibold text-slate-200 block">Adult 2</span>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">First Name</label>
-                  <input
-                    type="text"
-                    value={adult2First}
-                    onChange={(e) => setAdult2First(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Last Name</label>
-                  <input
-                    type="text"
-                    value={adult2Last}
-                    onChange={(e) => setAdult2Last(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Child 1 & Child 2 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2">
-                <span className="text-xs font-semibold text-slate-200 block">Child 1 (Age: {child1Age})</span>
-                <div className="space-y-2 text-xs">
-                  <input
-                    type="text"
-                    value={child1First}
-                    onChange={(e) => setChild1First(e.target.value)}
-                    placeholder="First Name"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                  <input
-                    type="text"
-                    value={child1Last}
-                    onChange={(e) => setChild1Last(e.target.value)}
-                    placeholder="Last Name"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2">
-                <span className="text-xs font-semibold text-slate-200 block">Child 2 (Age: {child2Age})</span>
-                <div className="space-y-2 text-xs">
-                  <input
-                    type="text"
-                    value={child2First}
-                    onChange={(e) => setChild2First(e.target.value)}
-                    placeholder="First Name"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                  <input
-                    type="text"
-                    value={child2Last}
-                    onChange={(e) => setChild2Last(e.target.value)}
-                    placeholder="Last Name"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Sandbox Payment Card */}
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-emerald-400" />
-                <span>Payment Method (Sandbox Test Mode)</span>
-              </h2>
-              <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 px-2.5 py-0.5 rounded border border-emerald-500/20">
-                100% Secure Sandbox
+            {/* Total */}
+            <div className="pt-3 border-t border-[#E2E6E1] flex items-baseline justify-between">
+              <span className="text-sm font-bold text-[#15201D]">Grand Total</span>
+              <span className="text-2xl font-black text-[#15201D] font-heading">
+                ₹{finalTotalINR.toLocaleString('en-IN')}
               </span>
             </div>
 
-            {/* Payment Method Switcher */}
-            <div className="grid grid-cols-3 gap-2.5 text-xs">
-              <button
-                onClick={() => setPaymentMethod('UPI')}
-                className={`p-3 rounded-xl border text-center transition ${
-                  paymentMethod === 'UPI'
-                    ? 'bg-emerald-500/15 border-emerald-500/50 text-white font-bold'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                UPI (GPay / PhonePe)
-              </button>
-
-              <button
-                onClick={() => setPaymentMethod('CARD')}
-                className={`p-3 rounded-xl border text-center transition ${
-                  paymentMethod === 'CARD'
-                    ? 'bg-emerald-500/15 border-emerald-500/50 text-white font-bold'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                Credit / Debit Card
-              </button>
-
-              <button
-                onClick={() => setPaymentMethod('NETBANKING')}
-                className={`p-3 rounded-xl border text-center transition ${
-                  paymentMethod === 'NETBANKING'
-                    ? 'bg-emerald-500/15 border-emerald-500/50 text-white font-bold'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                NetBanking
-              </button>
+            {/* Cancellation terms */}
+            <div className="text-[11px] text-[#55625E] leading-relaxed pt-2 border-t border-[#E2E6E1]">
+              <span className="font-semibold text-[#15201D]">Cancellation policy (Sample):</span> Free cancellation up to 48 hours prior to departure for hotel and private transfers. Airline fees apply for flight schedule alterations.
             </div>
 
-            {/* Payment Inputs */}
-            {paymentMethod === 'UPI' && (
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
-                <label className="text-[10px] text-slate-400 font-mono">Enter UPI ID / VPA</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={upiId}
-                    onChange={(e) => setUpiId(e.target.value)}
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono"
-                  />
-                  <button
-                    onClick={() => setUpiId('demo.travel@okhdfcbank')}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] rounded-lg transition"
-                  >
-                    Test Auto-Fill
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Amber Demo Notice */}
+            <div className="p-3 rounded-xl bg-[#FCEFD9] border border-[#8A4307]/30 text-xs text-[#8A4307] flex items-start gap-2">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>Demo booking. This runs a simulated booking. No tickets are issued and no money is charged.</span>
+            </div>
 
-            {paymentMethod === 'CARD' && (
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-xs">
-                <div>
-                  <label className="text-[10px] text-slate-400 font-mono">Card Number</label>
-                  <input
-                    type="text"
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] text-slate-400 font-mono">Valid Thru</label>
-                    <input
-                      type="text"
-                      value={cardExpiry}
-                      onChange={(e) => setCardExpiry(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400 font-mono">CVV</label>
-                    <input
-                      type="text"
-                      value={cardCvv}
-                      onChange={(e) => setCardCvv(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Security Notice */}
+            <div className="text-[11px] text-[#55625E]">
+              We never ask for your UPI PIN or payment credentials.
+            </div>
 
-            {paymentMethod === 'NETBANKING' && (
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
-                Sandbox Simulator: Simulates payment approval via HDFC Bank / ICICI / SBI Gateway.
-              </div>
-            )}
-
+            {/* Full-width "Run simulated booking" button */}
             <button
+              type="button"
+              id="run-simulated-booking-btn"
+              data-testid="run-simulated-booking-btn"
               onClick={handleSimulatePayment}
-              disabled={bookingState === 'PAYMENT_PROCESSING'}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition active:scale-95 disabled:opacity-50 cursor-pointer"
+              disabled={isSubmitting || !isFormValid}
+              className="btn-primary w-full text-sm font-bold py-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {bookingState === 'PAYMENT_PROCESSING' ? (
-                <>
-                  <RotateCcw className="h-4 w-4 animate-spin text-slate-950" />
-                  <span>Processing Secure Payment with GDS & CRS...</span>
-                </>
+              {isSubmitting ? (
+                <span>Running simulated booking…</span>
               ) : (
-                <>
-                  <Lock className="h-4 w-4" />
-                  <span>Pay {displayTotal} & Confirm All Reservations</span>
-                </>
+                <span>Run simulated booking</span>
               )}
             </button>
-          </div>
-        </div>
-
-        {/* Right Column: Order Summary Card */}
-        <div className="space-y-4">
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono pb-2 border-b border-slate-800">
-              Trip Order Summary
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <span className="text-[10px] font-mono text-slate-400 uppercase">Flights</span>
-                <div className="font-semibold text-white">{selectedFlight.airline}</div>
-                <div className="text-[11px] text-slate-400">{selectedFlight.originCode} &rarr; {selectedFlight.destinationCode} (4 Seats)</div>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-mono text-slate-400 uppercase">Lodging</span>
-                <div className="font-semibold text-white">{selectedHotel.name}</div>
-                <div className="text-[11px] text-teal-300">{selectedHotel.roomType} (10 Nights)</div>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-mono text-slate-400 uppercase">Transfer</span>
-                <div className="text-slate-300">Private 7-Seater AC Minivan</div>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-mono text-slate-400 uppercase">Visas</span>
-                <div className="text-slate-300">4 &times; Vietnam 30-Day e-Visas</div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800 space-y-1.5 text-xs">
-              <div className="flex justify-between text-slate-400">
-                <span>Sub-Total:</span>
-                <span>{displayTotal}</span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>Convenience Fee:</span>
-                <span className="text-emerald-400 font-mono">₹0 (Waived)</span>
-              </div>
-              <div className="flex justify-between text-white font-bold text-sm pt-2 border-t border-slate-800">
-                <span>Total Amount:</span>
-                <span className="text-emerald-400 font-mono">{displayTotal}</span>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-              <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                <span>AeroDAG Booking Guarantee</span>
-              </div>
-              <p>Immediate PNR generation, guaranteed adjacent family seats, and hotel voucher delivery.</p>
-            </div>
           </div>
         </div>
       </div>

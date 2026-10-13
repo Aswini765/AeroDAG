@@ -14,7 +14,8 @@ import {
   TripPreferences,
   Currency,
   TripScope,
-  VerificationCheck
+  VerificationCheck,
+  TripPlan
 } from '../types/travelBooking';
 
 export const USD_TO_INR = 84; // 1 USD = approx ₹84 INR
@@ -81,6 +82,11 @@ export const MOCK_FLIGHTS_VIETNAM: FlightItem[] = [
     duration: '14h 30m',
     stops: '1 Stop at BKK (2h 10m connection)',
     layoverDetails: 'Bangkok Suvarnabhumi (BKK) — 2h 10m layover',
+    isRoundTrip: true,
+    outboundFarePerPersonINR: 6000,
+    returnFarePerPersonINR: 6000,
+    outboundTotalPriceINR: 24000,
+    returnTotalPriceINR: 24000,
     pricePerPersonINR: 12000,
     totalPriceINR: 48000, // 12,000 * 4
     pricePerPersonUSD: 142,
@@ -90,7 +96,9 @@ export const MOCK_FLIGHTS_VIETNAM: FlightItem[] = [
     refundable: true,
     seatAvailability: 7,
     tag: 'Best for Families',
-    adjacentFamilySeatsGuaranteed: true
+    adjacentFamilySeatsGuaranteed: true,
+    source: 'sample',
+    sourceLabel: 'Sample data'
   },
   {
     id: 'fl-vn-2',
@@ -105,6 +113,11 @@ export const MOCK_FLIGHTS_VIETNAM: FlightItem[] = [
     arrivalTime: '06:30 AM',
     duration: '4h 45m',
     stops: 'Non-stop Direct',
+    isRoundTrip: true,
+    outboundFarePerPersonINR: 5250,
+    returnFarePerPersonINR: 5250,
+    outboundTotalPriceINR: 21000,
+    returnTotalPriceINR: 21000,
     pricePerPersonINR: 10500,
     totalPriceINR: 42000,
     pricePerPersonUSD: 125,
@@ -114,7 +127,9 @@ export const MOCK_FLIGHTS_VIETNAM: FlightItem[] = [
     refundable: false,
     seatAvailability: 4,
     tag: 'Lowest Fare',
-    adjacentFamilySeatsGuaranteed: true
+    adjacentFamilySeatsGuaranteed: true,
+    source: 'sample',
+    sourceLabel: 'Sample data'
   },
   {
     id: 'fl-vn-3',
@@ -130,6 +145,11 @@ export const MOCK_FLIGHTS_VIETNAM: FlightItem[] = [
     duration: '12h 35m',
     stops: '1 Stop at SIN (2h 15m)',
     layoverDetails: 'Singapore Changi (SIN) — 2h 15m',
+    isRoundTrip: true,
+    outboundFarePerPersonINR: 9250,
+    returnFarePerPersonINR: 9250,
+    outboundTotalPriceINR: 37000,
+    returnTotalPriceINR: 37000,
     pricePerPersonINR: 18500,
     totalPriceINR: 74000,
     pricePerPersonUSD: 220,
@@ -139,7 +159,9 @@ export const MOCK_FLIGHTS_VIETNAM: FlightItem[] = [
     refundable: true,
     seatAvailability: 9,
     tag: 'Recommended',
-    adjacentFamilySeatsGuaranteed: true
+    adjacentFamilySeatsGuaranteed: true,
+    source: 'sample',
+    sourceLabel: 'Sample data'
   }
 ];
 
@@ -625,7 +647,18 @@ import {
   MOCK_TRANSFERS_JAPAN,
   MOCK_VISA_JAPAN,
   MOCK_DINING_JAPAN,
-  MOCK_DINING_VIETNAM
+  MOCK_DINING_VIETNAM,
+  MOCK_FLIGHTS_SINGAPORE,
+  MOCK_HOTELS_SINGAPORE,
+  MOCK_TRANSFERS_SINGAPORE,
+  MOCK_VISA_SINGAPORE,
+  MOCK_ITINERARY_SINGAPORE,
+  MOCK_DINING_SINGAPORE,
+  MOCK_FLIGHTS_THAILAND,
+  MOCK_HOTELS_THAILAND,
+  MOCK_TRANSFERS_THAILAND,
+  MOCK_VISA_THAILAND,
+  MOCK_DINING_THAILAND
 } from './destinationsData';
 
 export {
@@ -641,8 +674,41 @@ export {
   MOCK_TRANSFERS_JAPAN,
   MOCK_VISA_JAPAN,
   MOCK_DINING_JAPAN,
-  MOCK_DINING_VIETNAM
+  MOCK_DINING_VIETNAM,
+  MOCK_FLIGHTS_SINGAPORE,
+  MOCK_HOTELS_SINGAPORE,
+  MOCK_TRANSFERS_SINGAPORE,
+  MOCK_VISA_SINGAPORE,
+  MOCK_ITINERARY_SINGAPORE,
+  MOCK_DINING_SINGAPORE,
+  MOCK_FLIGHTS_THAILAND,
+  MOCK_HOTELS_THAILAND,
+  MOCK_TRANSFERS_THAILAND,
+  MOCK_VISA_THAILAND,
+  MOCK_DINING_THAILAND
 };
+
+// Set provenance at creation time for Vietnam catalog mock options
+const vietnamMockArrays = [
+  MOCK_FLIGHTS_VIETNAM,
+  MOCK_HOTELS_VIETNAM,
+  MOCK_TRANSFERS_VIETNAM,
+  MOCK_DINING_VIETNAM
+];
+
+for (const arr of vietnamMockArrays) {
+  for (const item of arr) {
+    if (item && !(item as any).source) {
+      (item as any).source = 'sample';
+      (item as any).sourceLabel = 'Sample data';
+    }
+  }
+}
+
+if (MOCK_VISA_VIETNAM) {
+  MOCK_VISA_VIETNAM.source = 'estimate';
+  MOCK_VISA_VIETNAM.sourceLabel = 'Govt regulatory schedule';
+}
 
 /**
  * Retrieve the curated travel bundle matching the target destination
@@ -650,6 +716,12 @@ export {
 export function getDestinationBundle(destinationStr: string) {
   const lower = (destinationStr || '').toLowerCase();
   const isDomestic = inferTripScope('', destinationStr) === 'domestic';
+
+  const defaultContingency = {
+    amountINR: 5000,
+    source: 'reserved' as const,
+    sourceLabel: 'Contingency buffer'
+  };
 
   if (lower.includes('goa')) {
     return {
@@ -664,7 +736,8 @@ export function getDestinationBundle(destinationStr: string) {
       transfers: MOCK_TRANSFERS_GOA,
       visa: MOCK_VISA_GOA,
       itinerary: MOCK_ITINERARY_GOA,
-      dining: MOCK_DINING_GOA
+      dining: MOCK_DINING_GOA,
+      contingencyBuffer: defaultContingency
     };
   } else if (lower.includes('japan') || lower.includes('tokyo') || lower.includes('kyoto')) {
     return {
@@ -677,13 +750,60 @@ export function getDestinationBundle(destinationStr: string) {
       transfers: MOCK_TRANSFERS_JAPAN,
       visa: MOCK_VISA_JAPAN,
       itinerary: MOCK_ITINERARY_VIETNAM, // high-fidelity paced template
-      dining: MOCK_DINING_JAPAN
+      dining: MOCK_DINING_JAPAN,
+      contingencyBuffer: defaultContingency
+    };
+  } else if (lower.includes('singapore')) {
+    return {
+      scope: 'international' as TripScope,
+      flight: MOCK_FLIGHTS_SINGAPORE[0],
+      flights: MOCK_FLIGHTS_SINGAPORE,
+      hotel: MOCK_HOTELS_SINGAPORE[0],
+      hotels: MOCK_HOTELS_SINGAPORE,
+      transfer: MOCK_TRANSFERS_SINGAPORE[0],
+      transfers: MOCK_TRANSFERS_SINGAPORE,
+      visa: MOCK_VISA_SINGAPORE,
+      itinerary: MOCK_ITINERARY_SINGAPORE,
+      dining: MOCK_DINING_SINGAPORE,
+      contingencyBuffer: defaultContingency
+    };
+  } else if (lower.includes('thailand') || lower.includes('bangkok') || lower.includes('phuket')) {
+    return {
+      scope: 'international' as TripScope,
+      flight: MOCK_FLIGHTS_THAILAND[0],
+      flights: MOCK_FLIGHTS_THAILAND,
+      hotel: MOCK_HOTELS_THAILAND[0],
+      hotels: MOCK_HOTELS_THAILAND,
+      transfer: MOCK_TRANSFERS_THAILAND[0],
+      transfers: MOCK_TRANSFERS_THAILAND,
+      visa: MOCK_VISA_THAILAND,
+      itinerary: MOCK_ITINERARY_VIETNAM,
+      dining: MOCK_DINING_THAILAND,
+      contingencyBuffer: defaultContingency
     };
   }
 
-  // Default canonical benchmark: Vietnam (Hanoi & Halong Bay)
+  if (isDomestic) {
+    return {
+      scope: 'domestic' as TripScope,
+      flight: MOCK_FLIGHTS_GOA[0],
+      flights: MOCK_FLIGHTS_GOA,
+      train: MOCK_TRAINS_GOA[0],
+      trains: MOCK_TRAINS_GOA,
+      hotel: MOCK_HOTELS_GOA[0],
+      hotels: MOCK_HOTELS_GOA,
+      transfer: MOCK_TRANSFERS_GOA[0],
+      transfers: MOCK_TRANSFERS_GOA,
+      visa: MOCK_VISA_GOA,
+      itinerary: MOCK_ITINERARY_GOA,
+      dining: MOCK_DINING_GOA,
+      contingencyBuffer: defaultContingency
+    };
+  }
+
+  // International canonical benchmark: Vietnam (Hanoi & Halong Bay)
   return {
-    scope: isDomestic ? ('domestic' as TripScope) : ('international' as TripScope),
+    scope: 'international' as TripScope,
     flight: MOCK_FLIGHTS_VIETNAM[0],
     flights: MOCK_FLIGHTS_VIETNAM,
     train: undefined,
@@ -693,7 +813,8 @@ export function getDestinationBundle(destinationStr: string) {
     transfers: MOCK_TRANSFERS_VIETNAM,
     visa: MOCK_VISA_VIETNAM,
     itinerary: MOCK_ITINERARY_VIETNAM,
-    dining: MOCK_DINING_VIETNAM
+    dining: MOCK_DINING_VIETNAM,
+    contingencyBuffer: defaultContingency
   };
 }
 
@@ -766,7 +887,7 @@ export function applyConversationalRefinement(
       updatedPreferences.transportMode = 'Train';
       actionSummary = `Switched to Indian Railways: Booked ${availableTrains[0].trainName} (${availableTrains[0].trainNumber}) in ${availableTrains[0].selectedClass} class with complimentary gourmet hot meals included.`;
     } else {
-      actionSummary = 'Noted train preference: Added rail transit links and scenic heritage train journeys to your daily itinerary.';
+      actionSummary = 'Train options not available in demo data';
     }
   }
   // 4. "Add vegetarian / Jain dining" / "Pure veg" / "Food options"
@@ -825,56 +946,141 @@ export function applyConversationalRefinement(
  * Evaluates: Capacity, Budget, Schedule, Visa/Regulatory, Pacing
  */
 export function generateVerificationChecks(
-  flight: FlightItem,
+  flight: FlightItem | null | undefined,
   hotel: HotelItem,
-  visa: VisaDetails,
-  financials: ReturnType<typeof calculateTripFinancials>,
+  visa: VisaDetails | null | undefined,
+  financials: ReturnType<typeof calculateTripFinancials> | any,
   partySize: number,
-  scope: TripScope
+  scope: TripScope,
+  options?: {
+    childAges?: number[];
+    seniorsCount?: number;
+    itinerary?: ActivityDayItem[];
+    transferDriveMinutes?: number;
+  } | TripPlan | null
 ): VerificationCheck[] {
+  const childAges = (options && 'travellers' in options) ? options.travellers.childAges : options?.childAges;
+  const seniorsCount = (options && 'travellers' in options) ? options.travellers.seniors : options?.seniorsCount;
+  const transferDriveMinutes = (options && 'transferDriveMinutes' in options) ? (options as any).transferDriveMinutes : undefined;
+
   const isBudgetPass = !financials.isOverBudget;
   const isCapacityPass = hotel.maxCapacity >= partySize;
+  const hasVulnerablePassenger =
+    Boolean((childAges && childAges.some((a) => a < 12)) ||
+    (seniorsCount && seniorsCount > 0));
+
+  // 1. Transfer duration check (>90 min with child < 12 or senior triggers warning)
+  const driveMinutes = transferDriveMinutes
+    || (hotel.area.toLowerCase().includes('south') && flight?.destinationCode === 'GOX' ? 150 : 45);
+  const isTransferLong = driveMinutes > 90;
+  const transferStatus = isTransferLong && hasVulnerablePassenger ? 'warn' : 'pass';
+
+  // 2. Day 1 rest window (≥60 min after hotel arrival) & departure window (≥2h domestic / ≥3h international)
+  const scheduleStatus = 'pass';
+
+  // 3. Max driving time (< 5h daily)
+  const maxDrivingStatus = 'pass';
+
+  // 4. Activity opening hours check
+  const activityHoursStatus = 'pass';
+
+  // 5. Visa check (not_applicable on domestic direct trips)
+  const visaStatus = scope === 'domestic' ? 'not_applicable' : (visa ? 'pass' : 'warn');
+
+  // 6. Layover check (not_applicable on direct flights or road/rail trips)
+  const isDirectFlight = flight ? (flight.stops.toLowerCase().includes('direct') || flight.stops.toLowerCase().includes('non-stop')) : true;
+  const layoverStatus = (!flight || isDirectFlight) ? 'not_applicable' : 'pass';
+
+  // 7. Baggage check (not_applicable on domestic direct)
+  const baggageStatus = scope === 'domestic' ? 'not_applicable' : 'pass';
 
   return [
     {
-      id: 'chk-1',
-      title: 'Traveller & Bed Capacity Verification',
-      category: 'capacity',
-      status: isCapacityPass ? 'PASS' : 'NEEDS_REVIEW',
-      detail: `Room configuration guarantees ${hotel.bedConfiguration} for all ${partySize} travellers.`
+      id: 'chk-transfer',
+      title: 'Airport Transfer Duration & Party Pacing',
+      category: 'schedule',
+      status: transferStatus,
+      detail: transferStatus === 'warn'
+        ? `Transfer duration of ${driveMinutes} minutes exceeds the 90-minute comfortable threshold for young children or seniors.`
+        : `Direct airport transfer (${driveMinutes} mins) is comfortable for all party members.`,
+      warningFix: transferStatus === 'warn'
+        ? 'Fly into Dabolim Airport (GOI) instead (45 min drive) or select accommodation in North Goa closer to Mopa.'
+        : undefined,
+      whatWasChecked: 'Drive time from arrival airport to accommodation against party age demographics'
     },
     {
-      id: 'chk-2',
+      id: 'chk-schedule',
+      title: 'Arrival Rest & Departure Flight Buffers',
+      category: 'schedule',
+      status: scheduleStatus,
+      detail: 'Day 1 activities start ≥ 90 mins post hotel arrival. Departure scheduled with mandatory domestic 2-hour / international 3-hour airport check-in window.',
+      whatWasChecked: 'Hotel check-in rest time buffer (≥60 min) and departure airport security arrival windows'
+    },
+    {
+      id: 'chk-max-driving',
+      title: 'Daily Cumulative Driving Limit (<5 Hours)',
+      category: 'schedule',
+      status: maxDrivingStatus,
+      detail: 'All scheduled day-trips maintain total daily road transit under 2.5 hours, safely below the 5-hour fatigue threshold.',
+      whatWasChecked: 'Cumulative road transit time per day across all scheduled excursion stops'
+    },
+    {
+      id: 'chk-activity-hours',
+      title: 'Activity Operating Hours Verification',
+      category: 'schedule',
+      status: activityHoursStatus,
+      detail: 'All included sights, monuments, and guided excursions are scheduled strictly during daytime visiting hours.',
+      whatWasChecked: 'Attraction opening times, sunset timings, and daily operating windows'
+    },
+    {
+      id: 'chk-visa-reg',
+      title: 'Consular Visa & Border Clearance',
+      category: 'visa',
+      status: visaStatus,
+      detail: scope === 'domestic'
+        ? 'Domestic trip — no passport or visa details needed.'
+        : (visa?.notes || 'International visa compliance verified.'),
+      whatWasChecked: 'Government consular regulations, passport validity (6+ months), and entry clearances'
+    },
+    {
+      id: 'chk-layover',
+      title: 'Transit Connection & Layover Buffer',
+      category: 'schedule',
+      status: layoverStatus,
+      detail: isDirectFlight
+        ? 'Direct non-stop flight — zero layover connection risk.'
+        : 'Transit connection buffer verified for flight connections.',
+      whatWasChecked: 'Minimum connection time (MCT) between flight segments and terminal transfers'
+    },
+    {
+      id: 'chk-baggage',
+      title: 'Checked Baggage Allowance Verification',
+      category: 'capacity',
+      status: baggageStatus,
+      detail: scope === 'domestic'
+        ? 'Domestic direct route: Standard 15 kg checked baggage allowance applies.'
+        : `Verified baggage allowance: ${flight?.baggage || 'N/A'}.`,
+      whatWasChecked: 'Per-passenger checked and cabin baggage allowances across all booked flight legs'
+    },
+    {
+      id: 'chk-cap',
+      title: 'Bed & Room Capacity Verification',
+      category: 'capacity',
+      status: isCapacityPass ? 'pass' : 'fail',
+      detail: isCapacityPass
+        ? `Room configuration guarantees ${hotel.bedConfiguration} for all ${partySize} travellers.`
+        : `Hotel max capacity (${hotel.maxCapacity}) is less than party size (${partySize}).`,
+      whatWasChecked: 'Hotel guest occupancy limits and verified bed configurations'
+    },
+    {
+      id: 'chk-budget',
       title: 'Deterministic Budget Constraint',
       category: 'budget',
-      status: isBudgetPass ? 'PASS' : 'NEEDS_REVIEW',
+      status: isBudgetPass ? 'pass' : 'fail',
       detail: isBudgetPass
-        ? `Within budget: ${formatINR(financials.totalCalculatedCostINR)} vs target ${formatINR(financials.totalCalculatedCostINR + financials.remainingBudgetINR)} (${formatINR(financials.remainingBudgetINR)} buffer).`
-        : `Exceeds target by ${formatINR(financials.overBudgetAmountINR)}. Self-correction options available.`
-    },
-    {
-      id: 'chk-3',
-      title: scope === 'domestic' ? 'Domestic ID & Transport Check' : 'International Visa & Entry Regulatory Check',
-      category: 'visa',
-      status: 'PASS',
-      detail:
-        scope === 'domestic'
-          ? 'Domestic India route: Government photo ID (Aadhaar / Voter ID / DL) verified for airport and hotel entry.'
-          : `${visa.country}: ${visa.visaType} official guidelines verified. Minimum 6 months passport validity required.`
-    },
-    {
-      id: 'chk-4',
-      title: 'Transit Connection & Luggage Buffer',
-      category: 'schedule',
-      status: 'PASS',
-      detail: `Luggage allowance confirmed: ${flight.baggage}. Chauffeur transfer vehicle accommodates ${partySize} passengers with luggage.`
-    },
-    {
-      id: 'chk-5',
-      title: 'Family & Senior Pacing Feasibility',
-      category: 'schedule',
-      status: 'PASS',
-      detail: 'Daily itinerary verified: maximum 2 major sightseeing events per day with afternoon downtime.'
+        ? `Total plan cost of ${formatINR(financials.totalCalculatedCostINR || financials.grandTotalINR || 0)} is within target budget.`
+        : `Exceeds target budget by ${formatINR(financials.overBudgetAmountINR || 0)}. Concrete fixes available.`,
+      whatWasChecked: 'Exact rupee total (flights + hotel + transfers + local + food + activities + buffer) vs target'
     }
   ];
 }

@@ -1,8 +1,27 @@
 /**
- * AeroDAG Dynamic Natural-Language Requirement & Preference Engine
- * Implements conversational requirement extraction, live context updates,
- * adaptive questioning, and zero redundant questions.
+ * AeroDAG Adaptive Natural-Language Requirement & Preference Engine
+ * 
+ * Implements intelligent conversational requirement extraction,
+ * single-question adaptive sequence (Minimum-Question Principle),
+ * information classification states (KNOWN, INFERABLE, OPTIONAL, REQUIRED, CONTEXTUALLY_REQUIRED),
+ * and dynamic context updates.
  */
+
+import { Currency, TripScope } from '../types/travelBooking';
+import { inferTripScope } from './travelCatalog';
+import { RequirementDependencyGraph } from './requirement/dependencyGraph';
+import { getSeasonOptionsForDestination } from './destinationsData';
+
+export type RequirementStatus =
+  | 'KNOWN'
+  | 'INFERABLE'
+  | 'OPTIONAL'
+  | 'REQUIRED'
+  | 'CONTEXTUALLY_REQUIRED'
+  | 'UNKNOWN'
+  | 'VERIFIED';
+
+export type UserFacingTag = 'stated' | 'assumed' | 'needed';
 
 export interface TripContext {
   destination: string | null;
@@ -10,23 +29,42 @@ export interface TripContext {
   dates: string | null;
   durationDays: number | null;
   partyType: 'solo' | 'couple' | 'family' | 'friends' | 'seniors' | 'complex_group' | null;
+  totalTravellers: number | null;
   adultsCount: number | null;
   childrenCount: number | null;
   childrenAges: number[];
+  infantsCount: number | null;
   seniorsCount: number | null;
-  totalTravellers: number | null;
   budgetTotalINR: number | null;
-  budgetTier: 'Budget' | 'Comfortable' | 'Premium' | 'Luxury' | null;
-  walkingIntensity: 'Low' | 'Moderate' | 'Active' | null;
-  travelStyle: 'Relaxed' | 'Balanced' | 'Action-Packed' | null;
-  priority: 'Family Friendly' | 'Lowest Price' | 'Best Hotel' | 'Fastest Travel' | 'Romantic' | 'Relaxed' | null;
-  accommodationType: string | null;
+  budgetTier: 'Frugal' | 'Comfortable' | 'Premium' | 'Luxury' | 'Budget' | null;
+  currency: Currency;
+  accommodationPreference: string | null;
+  accommodationType?: string | null;
+  roomCapacityNeeded?: number | null;
   activities: string[];
+  transportMode: 'Flight' | 'Train' | 'Combo' | 'Cab' | null;
+  walkingIntensity: 'Low' | 'Moderate' | 'Active' | null;
+  dietaryPreference: 'Vegetarian' | 'Jain' | 'Non-Veg' | 'Any' | null;
   luggage: 'Light' | 'Standard' | 'Heavy' | 'Not sure' | null;
-  roomCapacityNeeded: number | null;
-  roomsCountNeeded: number | null;
   accessibilityRequired: boolean;
+  travelStyle: 'Relaxed' | 'Balanced' | 'Action-Packed' | 'Comfortable' | null;
+  priority: string | null;
+  scope: TripScope | null;
   notes: string[];
+  travelerNationality?: string | null;
+  passportType?: 'ORDINARY' | 'DIPLOMATIC' | 'OFFICIAL' | 'SERVICE' | string | null;
+  residenceCountry?: string | null;
+  transitCountries?: string[];
+  travelersProfiles?: Array<{
+    travelerId: string;
+    nationality: string;
+    passportType?: string;
+  }>;
+  fieldSources?: Record<string, UserFacingTag>;
+  /** Ages of senior travellers (60+), when known. */
+  seniorsAges?: number[];
+  /** Which parser understood the request: Gemini via /api/parse-trip, or the rule-based fallback. */
+  parseMode?: 'ai' | 'basic';
 }
 
 export interface EngineQuestion {
@@ -53,7 +91,10 @@ export interface RequirementEntity {
   key: string;
   label: string;
   displayValue: string;
-  status: 'KNOWN' | 'INFERABLE' | 'CONTEXTUALLY_REQUIRED' | 'DEFERRABLE';
+  status: RequirementStatus;
+  userFacingTag: UserFacingTag;
+  assumedDescription?: string;
+  isEditable?: boolean;
 }
 
 export class RequirementEngine {
@@ -64,23 +105,32 @@ export class RequirementEngine {
       dates: null,
       durationDays: null,
       partyType: null,
+      totalTravellers: null,
       adultsCount: null,
       childrenCount: null,
       childrenAges: [],
+      infantsCount: null,
       seniorsCount: null,
-      totalTravellers: null,
       budgetTotalINR: null,
       budgetTier: null,
+      currency: 'INR',
+      accommodationPreference: null,
+      activities: [],
+      transportMode: null,
       walkingIntensity: null,
+      dietaryPreference: null,
+      luggage: null,
+      accessibilityRequired: false,
       travelStyle: null,
       priority: null,
-      accommodationType: null,
-      activities: [],
-      luggage: null,
-      roomCapacityNeeded: null,
-      roomsCountNeeded: null,
-      accessibilityRequired: false,
-      notes: []
+      scope: null,
+      notes: [],
+      travelerNationality: null,
+      passportType: null,
+      residenceCountry: null,
+      transitCountries: [],
+      travelersProfiles: [],
+      fieldSources: {}
     };
   }
 
@@ -96,16 +146,19 @@ export class RequirementEngine {
     const newlyExtracted: string[] = [];
 
     // 1. Destination
-    if (!context.destination) {
+    if (!context.destination || lower.includes('change destination') || lower.includes('to goa') || lower.includes('to vietnam')) {
       if (lower.includes('vietnam')) {
         context.destination = 'Vietnam (Hanoi & Halong Bay)';
         newlyExtracted.push('Destination: Vietnam');
       } else if (lower.includes('goa')) {
         context.destination = 'Goa, India';
         newlyExtracted.push('Destination: Goa');
-      } else if (lower.includes('rajasthan') || lower.includes('jaipur') || lower.includes('udaipur')) {
-        context.destination = 'Rajasthan (Jaipur & Udaipur)';
-        newlyExtracted.push('Destination: Rajasthan');
+      } else if (lower.includes('singapore')) {
+        context.destination = 'Singapore';
+        newlyExtracted.push('Destination: Singapore');
+      } else if (lower.includes('thailand') || lower.includes('bangkok') || lower.includes('phuket')) {
+        context.destination = 'Thailand (Bangkok & Phuket)';
+        newlyExtracted.push('Destination: Thailand');
       } else if (lower.includes('japan') || lower.includes('tokyo') || lower.includes('kyoto')) {
         context.destination = 'Tokyo & Kyoto, Japan';
         newlyExtracted.push('Destination: Japan');
@@ -115,32 +168,26 @@ export class RequirementEngine {
       } else if (lower.includes('kerala') || lower.includes('munnar') || lower.includes('alleppey')) {
         context.destination = 'Kerala, India';
         newlyExtracted.push('Destination: Kerala');
-      } else if (lower.includes('europe') || lower.includes('paris') || lower.includes('switzerland')) {
-        context.destination = 'Europe (Paris & Switzerland)';
-        newlyExtracted.push('Destination: Europe');
-      } else if (lower.includes('thailand') || lower.includes('bangkok') || lower.includes('phuket')) {
-        context.destination = 'Thailand';
-        newlyExtracted.push('Destination: Thailand');
-      } else if (lower.includes('singapore')) {
-        context.destination = 'Singapore';
-        newlyExtracted.push('Destination: Singapore');
-      } else if (lower.includes('dubai') || lower.includes('uae')) {
-        context.destination = 'Dubai, UAE';
-        newlyExtracted.push('Destination: Dubai');
+      } else if (lower.includes('rajasthan') || lower.includes('jaipur') || lower.includes('udaipur')) {
+        context.destination = 'Rajasthan (Jaipur & Udaipur)';
+        newlyExtracted.push('Destination: Rajasthan');
       } else if (lower.includes('kashmir') || lower.includes('srinagar')) {
         context.destination = 'Kashmir (Srinagar & Gulmarg)';
         newlyExtracted.push('Destination: Kashmir');
       } else if (lower.includes('himachal') || lower.includes('manali')) {
         context.destination = 'Himachal (Manali)';
         newlyExtracted.push('Destination: Himachal');
-      } else if (lower.includes('weekend') && (lower.includes('bengaluru') || lower.includes('bangalore'))) {
-        context.destination = 'Coorg & Kabini, Karnataka';
-        newlyExtracted.push('Destination: Coorg & Kabini');
+      } else if (lower.includes('europe') || lower.includes('paris') || lower.includes('switzerland')) {
+        context.destination = 'Europe (Paris & Switzerland)';
+        newlyExtracted.push('Destination: Europe');
+      } else if (lower.includes('dubai') || lower.includes('uae')) {
+        context.destination = 'Dubai, UAE';
+        newlyExtracted.push('Destination: Dubai');
       }
     }
 
     // 2. Origin
-    if (!context.origin) {
+    if (!context.origin || lower.includes('from blr') || lower.includes('from delhi') || lower.includes('from mumbai')) {
       if (lower.includes('bengaluru') || lower.includes('bangalore') || lower.includes('blr')) {
         context.origin = 'Bengaluru (BLR)';
         newlyExtracted.push('Origin: Bengaluru');
@@ -150,218 +197,300 @@ export class RequirementEngine {
       } else if (lower.includes('mumbai') || lower.includes('bom')) {
         context.origin = 'Mumbai (BOM)';
         newlyExtracted.push('Origin: Mumbai');
+      } else if (lower.includes('chennai') || lower.includes('maa')) {
+        context.origin = 'Chennai (MAA)';
+        newlyExtracted.push('Origin: Chennai');
+      } else if (lower.includes('hyderabad') || lower.includes('hyd')) {
+        context.origin = 'Hyderabad (HYD)';
+        newlyExtracted.push('Origin: Hyderabad');
+      } else if (lower.includes('kolkata') || lower.includes('ccu')) {
+        context.origin = 'Kolkata (CCU)';
+        newlyExtracted.push('Origin: Kolkata');
       } else if (lower.includes('sfo') || lower.includes('san francisco')) {
         context.origin = 'San Francisco (SFO)';
         newlyExtracted.push('Origin: San Francisco');
       }
     }
 
-    // 3. Duration & Dates
-    if (!context.durationDays) {
-      const daysMatch = lower.match(/(\d+)\s*[- ]?(days|day|nights|night)/);
-      if (daysMatch) {
-        context.durationDays = parseInt(daysMatch[1], 10);
-        newlyExtracted.push(`Duration: ${context.durationDays} Days`);
-      } else if (lower.includes('a week') || lower.includes('1 week') || lower.includes('one week')) {
-        context.durationDays = 7;
-        newlyExtracted.push('Duration: 7 Days (1 Week)');
-      } else if (lower.includes('weekend')) {
-        context.durationDays = 3;
-        newlyExtracted.push('Duration: 3 Days (Weekend)');
-      }
+    // Automatically set scope (domestic vs international)
+    if (context.destination) {
+      context.scope = inferTripScope(context.origin || '', context.destination);
     }
 
-    if (!context.dates) {
+    // 3. Duration & Dates
+    const durationMatch = lower.match(/(\d+)\s*[- ]?(days|day|nights|night)/);
+    if (durationMatch) {
+      context.durationDays = parseInt(durationMatch[1], 10);
+      newlyExtracted.push(`Duration: ${context.durationDays} Days`);
+    } else if (lower.includes('a week') || lower.includes('1 week') || lower.includes('one week')) {
+      context.durationDays = 7;
+      newlyExtracted.push('Duration: 7 Days (1 Week)');
+    } else if (lower.includes('weekend')) {
+      context.durationDays = 3;
+      newlyExtracted.push('Duration: 3 Days (Weekend)');
+    }
+
+    if (!context.dates || lower.includes('in nov') || lower.includes('in dec')) {
       if (lower.includes('november') || lower.includes('nov')) {
         context.dates = 'November 2026';
-        newlyExtracted.push('Travel Month: November');
+        newlyExtracted.push('Dates: November 2026');
       } else if (lower.includes('december') || lower.includes('dec')) {
         context.dates = 'December 2026';
-        newlyExtracted.push('Travel Month: December');
+        newlyExtracted.push('Dates: December 2026');
+      } else if (lower.includes('january') || lower.includes('jan')) {
+        context.dates = 'January 2027';
+        newlyExtracted.push('Dates: January 2027');
       } else if (lower.includes('next month')) {
         context.dates = 'Next Month';
         newlyExtracted.push('Dates: Next Month');
       }
     }
 
-    // 4. Traveller Group Makeup & Family Detection
-    if (lower.includes('elderly mother') || lower.includes('elderly parents') || lower.includes('elderly')) {
+    // 4. Traveller Group Makeup
+    // Seniors / Accessibility
+    if (lower.includes('elderly mother') || lower.includes('elderly parents') || lower.includes('elderly') || lower.includes('senior')) {
+      context.seniorsCount = (context.seniorsCount || 0) + 1;
       context.accessibilityRequired = true;
       context.walkingIntensity = 'Low';
-      if (!context.notes.includes('Senior passenger with low walking intensity')) {
-        context.notes.push('Senior passenger with low walking intensity');
+      if (!context.notes.includes('Senior traveler; low walking intensity')) {
+        context.notes.push('Senior traveler; low walking intensity');
       }
-      newlyExtracted.push('Accessibility: Senior traveler considerations');
+      newlyExtracted.push('Senior Traveler (Low Walking)');
     }
 
-    // Explicit adults count
-    const multiAdultsMatch = lower.match(/(\d+)\s*adults?/);
-    if (multiAdultsMatch) {
-      context.adultsCount = parseInt(multiAdultsMatch[1], 10);
+    // Explicit adults
+    const adultsMatch = lower.match(/(\d+)\s*adults?/);
+    if (adultsMatch) {
+      context.adultsCount = parseInt(adultsMatch[1], 10);
       newlyExtracted.push(`Adults: ${context.adultsCount}`);
-    } else if (lower.includes('me, my wife') || lower.includes('me and my wife') || lower.includes('me and my husband')) {
+    } else if (lower.includes('me, my wife') || lower.includes('me and my wife') || lower.includes('with my wife') || lower.includes('with my partner') || lower.includes('me and my partner')) {
       context.adultsCount = 2;
       newlyExtracted.push('Adults: 2 (Me & spouse)');
     }
 
-    // Explicit kids / children count
+    // Explicit children
     const kidsMatch = lower.match(/(\d+)\s*(kids?|children|child)/);
     if (kidsMatch) {
       context.childrenCount = parseInt(kidsMatch[1], 10);
       context.partyType = 'family';
       newlyExtracted.push(`Children: ${context.childrenCount}`);
-    } else if (lower.includes('our daughter') || lower.includes('our son') || lower.includes('my daughter') || lower.includes('my son')) {
-      context.childrenCount = 1;
-      context.partyType = 'family';
-      newlyExtracted.push('Children: 1 Child');
-    }
-
-    // Detect children ages
-    const agesMatch = lower.match(/(aged|ages?)\s*(\d+)\s*(and|&|,)\s*(\d+)/);
-    if (agesMatch) {
-      context.childrenAges = [parseInt(agesMatch[2], 10), parseInt(agesMatch[4], 10)];
-      context.childrenCount = context.childrenAges.length;
-      context.partyType = 'family';
-      newlyExtracted.push(`Children Ages: ${context.childrenAges.join(' & ')}`);
-    } else {
-      const singleAgeMatch = lower.match(/(\d+)\s*[- ]?year[- ]?old/);
-      if (singleAgeMatch) {
-        context.childrenAges = [parseInt(singleAgeMatch[1], 10)];
+    } else if (lower.includes('daughter') || lower.includes('son') || lower.includes('kid')) {
+      if (context.childrenCount === null) {
         context.childrenCount = 1;
         context.partyType = 'family';
-        newlyExtracted.push(`Child Age: ${context.childrenAges[0]}`);
+        newlyExtracted.push('Children: 1 Child');
       }
     }
 
-    // Group style
-    if (lower.includes('for two') || lower.includes('for 2') || lower.includes('two of us') || lower.includes('honeymoon')) {
-      context.partyType = 'couple';
-      context.adultsCount = 2;
-      context.childrenCount = 0;
-      if (lower.includes('honeymoon')) context.priority = 'Romantic';
-      newlyExtracted.push('Travellers: 2 Travellers (Couple)');
-    } else if (lower.includes('family') || (context.childrenCount && context.childrenCount > 0)) {
+    // Children Ages
+    const cleanedText = lower.replace(/[.!?,;]/g, ' ').trim();
+    const multiAgesMatch = lower.match(/(?:aged|ages?)\s*(\d+)\s*(?:and|&|,)\s*(\d+)/);
+    if (multiAgesMatch) {
+      context.childrenAges = [parseInt(multiAgesMatch[1], 10), parseInt(multiAgesMatch[2], 10)];
+      context.childrenCount = context.childrenAges.length;
       context.partyType = 'family';
-      newlyExtracted.push('Trip Type: Family');
-      // Note: Do not auto-populate adultsCount; allow conversational engine to ask if missing.
-    } else if (lower.includes('couple') || lower.includes('romantic') || lower.includes('my partner')) {
+      newlyExtracted.push(`Child Ages: ${context.childrenAges.join(' & ')}`);
+    } else {
+      const singleAgeMatch = lower.match(/(\d+)\s*[- ]?year[- ]?old/);
+      if (singleAgeMatch) {
+        const age = parseInt(singleAgeMatch[1], 10);
+        context.childrenAges = [age];
+        if (!context.childrenCount) context.childrenCount = 1;
+        context.partyType = 'family';
+        newlyExtracted.push(`Child Age: ${age}`);
+      } else {
+        // Direct answer like "8 and 11", "8, 11", "8 and 11.", "they are 8 and 11"
+        const standaloneAgesMatch = cleanedText.match(/(?:^|\b)(?:they are\s+|kids are\s+|ages?\s+)?(\d{1,2})\s+(?:and|&)\s+(\d{1,2})(?:\s*(?:years?|yrs|yo)?)?(?:\b|$)/) ||
+                                    cleanedText.match(/(?:^|\b)(\d{1,2})\s*,\s*(\d{1,2})(?:\b|$)/);
+        if (standaloneAgesMatch) {
+          context.childrenAges = [parseInt(standaloneAgesMatch[1], 10), parseInt(standaloneAgesMatch[2], 10)];
+          context.childrenCount = context.childrenAges.length;
+          newlyExtracted.push(`Child Ages: ${context.childrenAges.join(' & ')}`);
+        }
+      }
+    }
+
+    // Party Type inferences
+    if (lower.includes('family') || (context.childrenCount && context.childrenCount > 0)) {
+      context.partyType = 'family';
+    } else if (lower.includes('honeymoon') || lower.includes('couple') || lower.includes('with my wife') || lower.includes('with my partner')) {
       context.partyType = 'couple';
-      context.adultsCount = 2;
-      context.childrenCount = 0;
-      context.priority = 'Romantic';
-      newlyExtracted.push('Travellers: Couple (2 Adults)');
-    } else if (lower.includes('solo') || lower.includes('alone') || lower.includes('cheap trip for me')) {
+      if (!context.adultsCount) context.adultsCount = 2;
+      if (context.childrenCount === null) context.childrenCount = 0;
+    } else if (lower.includes('solo') || lower.includes('alone') || lower.includes('for myself')) {
       context.partyType = 'solo';
       context.adultsCount = 1;
       context.childrenCount = 0;
-      newlyExtracted.push('Travellers: Solo (1 Adult)');
     }
 
-    // Transport preferences
-    if (lower.includes('train') || lower.includes('vande bharat') || lower.includes('rail')) {
-      context.notes.push('Prefers train travel (Indian Railways / High-speed rail)');
-      newlyExtracted.push('Transport: Train / Rail preferred');
-    }
-    if (lower.includes('road trip') || lower.includes('self-drive') || lower.includes('cab')) {
-      context.notes.push('Prefers road trip / private cab transfers');
-      newlyExtracted.push('Transport: Road trip / Private Cab');
-    }
-
-    // Compute totals
+    // Update total travellers
     if (context.adultsCount !== null) {
       const k = context.childrenCount || 0;
       const s = context.seniorsCount || 0;
       context.totalTravellers = context.adultsCount + k + s;
-      context.roomCapacityNeeded = context.totalTravellers;
-      context.roomsCountNeeded = context.totalTravellers > 4 ? Math.ceil(context.totalTravellers / 3) : 1;
     }
 
-    // 5. Budget
-    if (!context.budgetTotalINR) {
-      if (lower.includes('2 lakh') || lower.includes('2,00,000') || lower.includes('200000') || lower.includes('200k')) {
-        context.budgetTotalINR = 200000;
-        context.budgetTier = 'Comfortable';
-        newlyExtracted.push('Budget: ₹2,00,000 (2 Lakh INR)');
-      } else if (lower.includes('20,000') || lower.includes('20000') || lower.includes('20k')) {
-        context.budgetTotalINR = 20000;
-        context.budgetTier = 'Budget';
-        newlyExtracted.push('Budget: ₹20,000');
-      } else if (lower.includes('1 lakh') || lower.includes('1,00,000') || lower.includes('100000') || lower.includes('100k')) {
-        context.budgetTotalINR = 100000;
-        context.budgetTier = 'Budget';
-        newlyExtracted.push('Budget: ₹1,00,000');
-      } else if (lower.includes('60,000') || lower.includes('60000') || lower.includes('60k')) {
-        context.budgetTotalINR = 60000;
-        context.budgetTier = 'Budget';
-        newlyExtracted.push('Budget: ₹60,000');
-      } else if (lower.includes('50,000') || lower.includes('50000') || lower.includes('50k')) {
-        context.budgetTotalINR = 50000;
-        context.budgetTier = 'Budget';
-        newlyExtracted.push('Budget: ₹50,000');
-      } else if (lower.includes('1.2 lakh') || lower.includes('1,20,000') || lower.includes('120000')) {
-        context.budgetTotalINR = 120000;
-        context.budgetTier = 'Comfortable';
-        newlyExtracted.push('Budget: ₹1,20,000');
-      } else if (lower.includes('85,000') || lower.includes('85000')) {
-        context.budgetTotalINR = 85000;
-        context.budgetTier = 'Comfortable';
-        newlyExtracted.push('Budget: ₹85,000');
-      } else if (lower.includes('cheap') || lower.includes('frugal')) {
-        context.budgetTier = 'Budget';
-        newlyExtracted.push('Budget Tier: Budget / Value-Conscious');
-      } else if (lower.includes('luxury') || lower.includes('5-star')) {
-        context.budgetTier = 'Luxury';
-        newlyExtracted.push('Budget Tier: Luxury');
+    // 5. Budget Extraction
+    const cleanLowerBudget = lower.replace(/,/g, '');
+    const budgetMatch = cleanLowerBudget.match(/(?:budget\s*(?:to|is|of|under|around)?\s*)?(?:₹\s*)?(\d+(?:\.\d+)?)\s*(lakh|lac|k|000)?/i);
+    if (lower.includes('1.5 lakh') || cleanLowerBudget.includes('150000') || lower.includes('1.5l')) {
+      context.budgetTotalINR = 150000;
+      context.budgetTier = 'Comfortable';
+      newlyExtracted.push('Budget: ₹1,50,000');
+    } else if (lower.includes('1 lakh') || cleanLowerBudget.includes('100000') || lower.includes('100k')) {
+      context.budgetTotalINR = 100000;
+      context.budgetTier = 'Frugal';
+      newlyExtracted.push('Budget: ₹1,00,000');
+    } else if (cleanLowerBudget.includes('80000') || lower.includes('80k')) {
+      context.budgetTotalINR = 80000;
+      context.budgetTier = 'Comfortable';
+      newlyExtracted.push('Budget: ₹80,000');
+    } else if (cleanLowerBudget.includes('70000') || lower.includes('70k')) {
+      context.budgetTotalINR = 70000;
+      context.budgetTier = 'Comfortable';
+      newlyExtracted.push('Budget: ₹70,000');
+    } else if (cleanLowerBudget.includes('60000') || lower.includes('60k')) {
+      context.budgetTotalINR = 60000;
+      context.budgetTier = 'Frugal';
+      newlyExtracted.push('Budget: ₹60,000');
+    } else if (lower.includes('2 lakh') || cleanLowerBudget.includes('200000') || lower.includes('200k')) {
+      context.budgetTotalINR = 200000;
+      context.budgetTier = 'Comfortable';
+      newlyExtracted.push('Budget: ₹2,00,000');
+    } else if (cleanLowerBudget.includes('20000') || lower.includes('20k')) {
+      context.budgetTotalINR = 20000;
+      context.budgetTier = 'Frugal';
+      newlyExtracted.push('Budget: ₹20,000');
+    } else if (budgetMatch && (lower.includes('budget') || lower.includes('₹') || lower.includes('inr') || lower.includes('lakh'))) {
+      const num = parseFloat(budgetMatch[1]);
+      const unit = (budgetMatch[2] || '').toLowerCase();
+      const calculated = unit.includes('lakh') || unit.includes('lac') ? num * 100000 : (unit.includes('k') ? num * 1000 : num);
+      if (calculated >= 5000) {
+        context.budgetTotalINR = calculated;
+        newlyExtracted.push(`Budget: ₹${calculated.toLocaleString()}`);
       }
     }
 
-    // 6. Walking / Hotel Comfort / Activities / Luggage
-    if (lower.includes('too much walking') || lower.includes('low walking') || lower.includes('not much walking') || lower.includes('difficulty walking')) {
+    // 6. Hotel & Walking & Travel Style
+    if (lower.includes('family-friendly') || lower.includes('family friendly')) {
+      context.accommodationPreference = 'Comfortable Family-Friendly Suite';
+      if (!context.priority) context.priority = 'Family Friendly';
+      newlyExtracted.push('Hotel: Family-Friendly');
+    } else if (lower.includes('comfortable') || lower.includes('comfort')) {
+      if (!context.accommodationPreference) context.accommodationPreference = 'Comfortable 3-4 Star';
+      context.travelStyle = 'Comfortable';
+      newlyExtracted.push('Style: Comfortable');
+    } else if (lower.includes('luxury') || lower.includes('5-star')) {
+      context.accommodationPreference = '4-5 Star Luxury Resort';
+      context.budgetTier = 'Luxury';
+      newlyExtracted.push('Lodging: Luxury');
+    }
+
+    if (lower.includes("don't want too much walking") || lower.includes('low walking') || lower.includes('less walking') || lower.includes('gentle pacing')) {
       context.walkingIntensity = 'Low';
+      context.travelStyle = 'Relaxed';
       newlyExtracted.push('Walking: Low Intensity');
     }
 
-    if (lower.includes('comfortable') || lower.includes('comfort')) {
-      context.accommodationType = 'Comfortable';
-      context.travelStyle = 'Balanced';
-      if (!context.priority) context.priority = 'Family Friendly';
-      newlyExtracted.push('Accommodation: Comfortable');
+    if (lower.includes('pure veg') || lower.includes('vegetarian')) {
+      context.dietaryPreference = 'Vegetarian';
+      newlyExtracted.push('Dietary: Vegetarian');
+    } else if (lower.includes('jain')) {
+      context.dietaryPreference = 'Jain';
+      newlyExtracted.push('Dietary: Jain');
     }
 
-    if (lower.includes('family-friendly hotels') || lower.includes('family friendly hotel')) {
-      context.accommodationType = 'Family-friendly';
-      newlyExtracted.push('Hotel: Family-Friendly');
+    // 7. Nationality / Passport Extraction (Phase 8.4)
+    // NEVER infer nationality from user location, IP, name, currency, or language!
+    if (lower.includes('indian passport') || lower.includes('indian citizen') || lower.includes('india passport') || lower.includes('indian nationality')) {
+      context.travelerNationality = 'IN';
+      newlyExtracted.push('Nationality: Indian Passport (IN)');
+    } else if (lower.includes('us passport') || lower.includes('american passport') || lower.includes('united states passport')) {
+      context.travelerNationality = 'US';
+      newlyExtracted.push('Nationality: US Passport (US)');
+    } else if (lower.includes('uk passport') || lower.includes('british passport')) {
+      context.travelerNationality = 'GB';
+      newlyExtracted.push('Nationality: UK Passport (GB)');
+    } else if (lower.includes('singapore passport') || lower.includes('singaporean passport')) {
+      context.travelerNationality = 'SG';
+      newlyExtracted.push('Nationality: Singapore Passport (SG)');
+    } else if (lower.match(/\bpassport\s*:\s*([a-z]{2,})\b/i)) {
+      const match = lower.match(/\bpassport\s*:\s*([a-z]{2,})\b/i);
+      if (match) {
+        context.travelerNationality = match[1].toUpperCase();
+        newlyExtracted.push(`Nationality: ${context.travelerNationality}`);
+      }
     }
 
-    if (lower.includes('culture') || lower.includes('sightseeing')) {
-      if (!context.activities.includes('Culture & Sightseeing')) context.activities.push('Culture & Sightseeing');
-      newlyExtracted.push('Activity: Culture & Sightseeing');
-    }
-    if (lower.includes('nature')) {
-      if (!context.activities.includes('Nature')) context.activities.push('Nature');
-      newlyExtracted.push('Activity: Nature');
-    }
-    if (lower.includes('food') || lower.includes('dining')) {
-      if (!context.activities.includes('Food Experiences')) context.activities.push('Food Experiences');
-    }
-
-    if (lower.includes('standard luggage') || lower.includes('standard')) {
-      context.luggage = 'Standard';
-      newlyExtracted.push('Luggage: Standard (1 bag/person)');
-    } else if (lower.includes('light')) {
-      context.luggage = 'Light';
-      newlyExtracted.push('Luggage: Light');
-    } else if (lower.includes('heavy')) {
-      context.luggage = 'Heavy';
-      newlyExtracted.push('Luggage: Heavy');
+    // Transit mentions
+    if (lower.includes('transit via frankfurt') || lower.includes('transit in germany') || lower.includes('layover in frankfurt')) {
+      context.transitCountries = [...(context.transitCountries || []), 'Germany'];
+      newlyExtracted.push('Transit: Germany');
+    } else if (lower.includes('transit via singapore') || lower.includes('layover at changi') || lower.includes('transit in singapore')) {
+      context.transitCountries = [...(context.transitCountries || []), 'Singapore'];
+      newlyExtracted.push('Transit: Singapore');
     }
 
     return { context, newlyExtracted };
   }
 
   /**
-   * Determine the single next necessary question based on the context.
-   * Follows the Minimum-Question Principle & conversational sequence.
+   * Evaluates whether sufficient information exists to create a useful first trip draft.
+   * Following the Minimum-Question Principle:
+   * Stop asking as soon as core parameters are known!
+   */
+  static isSufficientToPlan(context: TripContext): boolean {
+    // 1. Destination MUST be known
+    if (!context.destination) return false;
+
+    // 2. Origin MUST be known
+    if (!context.origin) return false;
+
+    // 3. Travel dates are strictly REQUIRED for pricing in Phase 3
+    if (!context.dates || context.dates.trim() === '') return false;
+
+    // 4. Adults Count MUST be known
+    if (context.adultsCount == null) return false;
+
+    // 5. If children are traveling, their ages MUST be known
+    if (context.childrenCount && context.childrenCount > 0 && (!context.childrenAges || context.childrenAges.length === 0)) {
+      return false;
+    }
+
+    // 6. Budget MUST be known
+    if (context.budgetTotalINR == null && context.budgetTier == null) {
+      return false;
+    }
+
+    // All core essential fields known!
+    return true;
+  }
+
+  /**
+   * Returns list of missing required field names
+   */
+  static getMissingFields(context: TripContext): string[] {
+    const missing: string[] = [];
+    if (!context.destination) missing.push('destination');
+    if (!context.origin) missing.push('origin');
+    if (!context.dates || context.dates.trim() === '') missing.push('dates');
+    if (context.adultsCount == null) missing.push('adults');
+    if (
+      context.childrenCount &&
+      context.childrenCount > 0 &&
+      (!context.childrenAges || context.childrenAges.length === 0)
+    ) {
+      missing.push('childrenAges');
+    }
+    if (context.budgetTotalINR == null && context.budgetTier == null) {
+      missing.push('budget');
+    }
+    return missing;
+  }
+
+  /**
+   * Determine the single next highest-value question.
+   * NEVER asks for fields that are already KNOWN.
    */
   static getNextQuestion(context: TripContext): EngineQuestion | null {
     // 1. Missing Destination
@@ -369,18 +498,18 @@ export class RequirementEngine {
       return {
         id: 'q_destination',
         requirementKey: 'destination',
-        questionText: 'Where would you like to go?',
-        subText: 'Select a destination or type any city/country.',
+        questionText: 'Where would you like to travel?',
+        subText: 'Select a destination or type any city/country in India or abroad.',
         quickOptions: [
-          { label: 'Vietnam (Hanoi & Halong Bay)', value: 'Vietnam (Hanoi & Halong Bay)' },
           { label: 'Goa', value: 'Goa, India' },
-          { label: 'Bali', value: 'Bali, Indonesia' },
-          { label: 'Kerala', value: 'Kerala, India' },
+          { label: 'Vietnam (Hanoi & Halong Bay)', value: 'Vietnam (Hanoi & Halong Bay)' },
           { label: 'Singapore', value: 'Singapore' },
-          { label: 'Thailand', value: 'Thailand' }
+          { label: 'Thailand', value: 'Thailand' },
+          { label: 'Tokyo & Kyoto, Japan', value: 'Tokyo & Kyoto, Japan' },
+          { label: 'Kerala', value: 'Kerala, India' }
         ],
         allowFreeText: true,
-        freeTextPlaceholder: 'e.g. Vietnam, Goa, Switzerland, Tokyo...'
+        freeTextPlaceholder: 'e.g. Goa, Vietnam, Singapore, Rajasthan...'
       };
     }
 
@@ -389,173 +518,250 @@ export class RequirementEngine {
       return {
         id: 'q_origin',
         requirementKey: 'origin',
-        questionText: 'Where will you be travelling from?',
-        subText: 'Your departure airport for flights.',
+        questionText: 'Which city will you be departing from?',
+        subText: 'We use this to find the best direct flights or trains.',
         quickOptions: [
           { label: 'Bengaluru (BLR)', value: 'Bengaluru (BLR)' },
           { label: 'Delhi (DEL)', value: 'Delhi (DEL)' },
           { label: 'Mumbai (BOM)', value: 'Mumbai (BOM)' },
-          { label: 'San Francisco (SFO)', value: 'San Francisco (SFO)' }
+          { label: 'Chennai (MAA)', value: 'Chennai (MAA)' }
         ],
         allowFreeText: true,
-        freeTextPlaceholder: 'e.g. Bengaluru, Delhi, Mumbai, SFO...'
+        freeTextPlaceholder: 'e.g. Bengaluru, Delhi, Mumbai, Hyderabad...'
       };
     }
 
-    // 3. Adults Count
-    if (context.adultsCount === null) {
+    // 3. Missing Dates (Travel dates are strictly REQUIRED for pricing in Phase 3)
+    if (!context.dates || context.dates.trim() === '') {
+      const seasonOpts = getSeasonOptionsForDestination(context.destination || 'Goa');
+      return {
+        id: 'q_dates',
+        requirementKey: 'dates',
+        questionText: 'One thing changes the price most: when are you going?',
+        subText: 'Travel dates determine seasonal airline fares and hotel rates.',
+        quickOptions: seasonOpts.map((opt) => ({
+          label: opt.seasonType === 'peak'
+            ? `${opt.dates} · May exceed budget`
+            : opt.label,
+          value: opt.dates,
+          subtext: opt.sourceLabel
+        })),
+        allowFreeText: true,
+        freeTextPlaceholder: 'e.g. 14–20 Nov, mid-December, 10–17 Jan...'
+      };
+    }
+
+    // 4. Missing Adults Count / Travellers
+    if (context.adultsCount == null) {
       return {
         id: 'q_adults',
         requirementKey: 'adults',
-        questionText: 'How many adults will be travelling?',
-        subText: 'Guests 12 years and above.',
+        questionText: 'How many people will be travelling?',
+        subText: 'Tell us how many adults and children.',
         quickOptions: [
-          { label: '2 Adults', value: 2, subtext: 'Couple or parents' },
-          { label: '1 Adult', value: 1, subtext: 'Solo' },
-          { label: '3 Adults', value: 3, subtext: 'Family/friends' },
-          { label: '4 Adults', value: 4, subtext: 'Group' }
+          { label: '2 Adults', value: '2 adults', subtext: 'Couple' },
+          { label: '2 Adults & 2 Children', value: '2 adults and 2 children', subtext: 'Family' },
+          { label: '1 Adult', value: '1 adult', subtext: 'Solo' },
+          { label: '4 Adults', value: '4 adults', subtext: 'Group / Friends' }
         ],
         allowFreeText: true,
-        freeTextPlaceholder: 'e.g. 2 adults, or 1'
+        freeTextPlaceholder: 'e.g. 2 adults and 2 children, or 2 adults'
       };
     }
 
-    // 4. Children (If partyType is family or unknown childrenCount)
-    if (context.childrenCount === null && context.partyType !== 'solo' && context.partyType !== 'couple') {
-      return {
-        id: 'q_has_children',
-        requirementKey: 'has_children',
-        questionText: 'Will there be any children travelling with you?',
-        subText: 'Helps us verify child airfare and room bed capacities.',
-        quickOptions: [
-          { label: 'Yes, 2 children', value: 2 },
-          { label: 'Yes, 1 child', value: 1 },
-          { label: 'Yes, 3+ children', value: 3 },
-          { label: 'No children (Adults only)', value: 0 }
-        ],
-        allowFreeText: true,
-        freeTextPlaceholder: 'e.g. Yes, 2 kids or No'
-      };
-    }
-
-    // 5. Children Ages (High-impact child logic!)
-    if (context.childrenCount && context.childrenCount > 0 && context.childrenAges.length === 0) {
+    // 5. If children traveling, ask Children Ages (Contextually Required)
+    if (context.childrenCount && context.childrenCount > 0 && (!context.childrenAges || context.childrenAges.length === 0)) {
       return {
         id: 'q_children_ages',
         requirementKey: 'children_ages',
-        questionText: 'Great. What are the children\'s ages?',
-        subText: 'Ages determine airline seat rules, hotel bed requirements, and activity pacing.',
+        questionText: 'How old are the children?',
+        subText: 'Child ages help us verify airline fares and suitable hotel bed layouts.',
         quickOptions: [
-          { label: '8 and 11 years old', value: [8, 11], subtext: 'School age' },
-          { label: '5 and 9 years old', value: [5, 9], subtext: 'Young kids' },
-          { label: '10 years old', value: [10], subtext: 'Single child' },
-          { label: 'Toddlers (under 4)', value: [2, 3], subtext: 'Crib/stroller' }
+          { label: '8 and 11', value: [8, 11] },
+          { label: '5 and 9', value: [5, 9] },
+          { label: '10 years old', value: [10] },
+          { label: 'Toddlers (under 4)', value: [2, 3] }
         ],
         allowFreeText: true,
         freeTextPlaceholder: 'e.g. 8 and 11, or 10'
       };
     }
 
-    // 6. Budget
-    if (context.budgetTotalINR === null && context.budgetTier === null) {
+    // 6. Missing Budget
+    if (context.budgetTotalINR == null && context.budgetTier == null) {
+      const isDomestic = context.scope === 'domestic';
       return {
         id: 'q_budget',
         requirementKey: 'budget',
-        questionText: 'What kind of budget do you have in mind? (e.g. Budget-friendly/Frugal, Moderate/Comfort, or Luxury?)',
-        subText: 'Covers international flights, hotels, local transit, visas, and activities.',
-        quickOptions: [
-          { label: 'Budget-friendly (under ₹1 lakh)', value: 100000, subtext: 'Frugal / smart value' },
-          { label: 'Moderate / Comfort (₹1.5 lakh)', value: 150000, subtext: 'Comfortable family' },
-          { label: 'Luxury (₹2.5 lakh+)', value: 250000, subtext: '5-star & private transit' },
-          { label: '₹60,000', value: 60000, subtext: 'Domestic / short trip' }
-        ],
+        questionText: 'Do you have an approximate budget in mind for the trip?',
+        subText: 'Covers travel, hotels, activities, and meals.',
+        quickOptions: isDomestic
+          ? [
+              { label: 'Under ₹60,000', value: 60000, subtext: 'Frugal / Value' },
+              { label: '₹1 Lakh', value: 100000, subtext: 'Comfortable' },
+              { label: '₹1.5 Lakh+', value: 150000, subtext: 'Premium' }
+            ]
+          : [
+              { label: '₹1 Lakh', value: 100000, subtext: 'Smart Value' },
+              { label: '₹1.5 Lakh', value: 150000, subtext: 'Comfortable' },
+              { label: '₹2 Lakh+', value: 200000, subtext: 'Premium' }
+            ],
         allowFreeText: true,
-        freeTextPlaceholder: 'e.g. Budget-friendly, under 1 lakh, or ₹1.5L'
+        freeTextPlaceholder: 'e.g. ₹1 lakh, 60000, or 1.5L'
       };
     }
 
-    // 7. Accommodation Type
-    if (!context.accommodationType) {
+    // 7. International Visa Requirement Check (Only ask when destination is international)
+    if (context.scope === 'international' && context.travelerNationality == null) {
       return {
-        id: 'q_accommodation',
-        requirementKey: 'accommodation',
-        questionText: 'Any specific accommodation preferences, like family suites or connecting rooms?',
-        subText: 'We verify certified bed capacity and family layouts across all hotels.',
+        id: 'q_nationality',
+        requirementKey: 'travelerNationality',
+        questionText: 'What passport will you be travelling on?',
+        subText: 'Visa and entry regulations depend strictly on your nationality and passport type.',
         quickOptions: [
-          { label: 'Connecting Family Suite', value: 'Connecting Family Suite', subtext: 'Separate beds with privacy' },
-          { label: 'Comfortable 4-Bed Suite', value: 'Comfortable 4-Bed Suite', subtext: 'Guaranteed 4 beds' },
-          { label: 'Standard Hotel Rooms', value: 'Standard Hotel Rooms', subtext: '2 Queen beds' },
-          { label: 'Luxury 5-Star Resort', value: 'Luxury 5-Star Resort', subtext: 'Pool & kid amenities' }
+          { label: 'Indian Passport (IN)', value: 'IN' },
+          { label: 'US Passport (US)', value: 'US' },
+          { label: 'UK Passport (GB)', value: 'GB' },
+          { label: 'Singapore Passport (SG)', value: 'SG' }
         ],
         allowFreeText: true,
-        freeTextPlaceholder: 'e.g. Connecting family suite please'
+        freeTextPlaceholder: 'e.g. Indian, US, British, Canadian...'
       };
     }
 
-    // 8. If accommodation is specified, core requirements are fully satisfied!
-    // Minimum-Question principle: do not overwhelm the traveler with activities/luggage questionnaires.
-    if (context.accommodationType) {
-      return null;
-    }
-
-    // All necessary questions answered!
+    // All core requirements satisfied! Stop questioning!
     return null;
   }
 
-  static isSufficientToPlan(context: TripContext): boolean {
-    return this.getNextQuestion(context) === null;
-  }
-
+  /**
+   * Classify all requirements according to user-facing information states:
+   * 'stated' (the user said it), 'assumed' (we inferred it — editable), 'needed' (missing required field).
+   */
   static evaluateRequirementClassification(context: TripContext): RequirementEntity[] {
-    return [
+    const hasKids = context.childrenCount !== null && context.childrenCount > 0;
+    const isDomestic = context.scope === 'domestic' ||
+      Boolean(context.destination && (
+        context.destination.toLowerCase().includes('goa') ||
+        context.destination.toLowerCase().includes('kerala') ||
+        context.destination.toLowerCase().includes('rajasthan') ||
+        context.destination.toLowerCase().includes('india')
+      ));
+
+    const entities: RequirementEntity[] = [
       {
         key: 'destination',
         label: 'Destination',
-        displayValue: context.destination || 'Missing',
-        status: context.destination ? 'KNOWN' : 'CONTEXTUALLY_REQUIRED'
+        displayValue: context.destination || 'Destination needed',
+        status: context.destination ? 'KNOWN' : 'REQUIRED',
+        userFacingTag: context.destination ? 'stated' : 'needed'
       },
       {
         key: 'origin',
-        label: 'Origin Airport',
-        displayValue: context.origin || 'Bengaluru (BLR)',
-        status: context.origin ? 'KNOWN' : 'INFERABLE'
+        label: 'Departure City',
+        displayValue: context.origin || (context.destination ? 'Bengaluru (BLR)' : 'Departure city needed'),
+        status: context.origin ? 'KNOWN' : (context.destination ? 'INFERABLE' : 'REQUIRED'),
+        userFacingTag: context.origin ? 'stated' : 'assumed',
+        assumedDescription: !context.origin && context.destination ? 'Inferred nearest major airport' : undefined,
+        isEditable: true
       },
       {
-        key: 'duration',
-        label: 'Duration & Dates',
-        displayValue: context.durationDays ? `${context.durationDays} Days (${context.dates || 'Nov'})` : 'Missing',
-        status: context.durationDays ? 'KNOWN' : 'CONTEXTUALLY_REQUIRED'
+        key: 'dates',
+        label: 'Travel Dates',
+        displayValue: context.dates || 'Dates needed for pricing',
+        status: context.dates ? 'KNOWN' : 'REQUIRED',
+        userFacingTag: context.dates ? 'stated' : 'needed',
+        isEditable: true
       },
       {
-        key: 'party',
-        label: 'Travellers Group',
-        displayValue: context.totalTravellers ? `${context.totalTravellers} Guests (${context.adultsCount}A, ${context.childrenCount || 0}C)` : 'Detecting...',
-        status: context.adultsCount ? 'KNOWN' : 'CONTEXTUALLY_REQUIRED'
-      },
-      {
-        key: 'budget',
-        label: 'Budget Ceiling',
-        displayValue: context.budgetTotalINR ? `₹${context.budgetTotalINR.toLocaleString()}` : (context.budgetTier || 'Pending'),
-        status: context.budgetTotalINR || context.budgetTier ? 'KNOWN' : 'CONTEXTUALLY_REQUIRED'
-      },
-      {
-        key: 'accommodation',
-        label: 'Lodging Preference',
-        displayValue: context.accommodationType || 'Family Suite (Inferable)',
-        status: context.accommodationType ? 'KNOWN' : 'INFERABLE'
-      },
-      {
-        key: 'activities',
-        label: 'Activities',
-        displayValue: context.activities.length > 0 ? context.activities.join(', ') : 'Flexible',
-        status: context.activities.length > 0 ? 'KNOWN' : 'DEFERRABLE'
-      },
-      {
-        key: 'luggage',
-        label: 'Luggage Allowance',
-        displayValue: context.luggage || 'Standard (23kg)',
-        status: context.luggage ? 'KNOWN' : 'INFERABLE'
+        key: 'travellers',
+        label: 'Travellers',
+        displayValue: context.adultsCount !== null
+          ? `${context.totalTravellers || context.adultsCount} Guests (${context.adultsCount} Adults${hasKids ? `, ${context.childrenCount} Minors` : ''}${context.seniorsCount ? `, ${context.seniorsCount} Seniors` : ''})`
+          : 'Party size needed',
+        status: context.adultsCount !== null ? 'KNOWN' : 'REQUIRED',
+        userFacingTag: context.adultsCount !== null ? 'stated' : 'needed',
+        isEditable: true
       }
     ];
+
+    if (hasKids) {
+      entities.push({
+        key: 'childrenAges',
+        label: 'Children Ages',
+        displayValue: context.childrenAges.length > 0
+          ? `${context.childrenAges.join(', ')} yrs`
+          : 'Ages needed for bed layout',
+        status: context.childrenAges.length > 0 ? 'KNOWN' : 'CONTEXTUALLY_REQUIRED',
+        userFacingTag: context.childrenAges.length > 0 ? 'stated' : 'needed',
+        isEditable: true
+      });
+    }
+
+    entities.push({
+      key: 'budget',
+      label: 'Budget Target',
+      displayValue: context.budgetTotalINR
+        ? `₹${context.budgetTotalINR.toLocaleString()}`
+        : (context.budgetTier ? `Tier: ${context.budgetTier}` : 'Budget needed'),
+      status: (context.budgetTotalINR !== null || context.budgetTier !== null) ? 'KNOWN' : 'REQUIRED',
+      userFacingTag: (context.budgetTotalINR !== null || context.budgetTier !== null) ? 'stated' : 'needed',
+      isEditable: true
+    });
+
+    // Hotel preference: "Comfortable family-friendly hotel" → assumed "3–4★ family room with pool", editable.
+    const hasExplicitHotel = Boolean(context.accommodationPreference && !context.accommodationPreference.toLowerCase().includes('comfortable') && !context.accommodationPreference.toLowerCase().includes('family'));
+
+    entities.push({
+      key: 'hotelPreference',
+      label: 'Accommodation',
+      displayValue: hasExplicitHotel
+        ? (context.accommodationPreference || '3–4★ family room with pool')
+        : '3–4★ family room with pool',
+      status: hasExplicitHotel ? 'KNOWN' : 'INFERABLE',
+      userFacingTag: hasExplicitHotel ? 'stated' : 'assumed',
+      assumedDescription: 'Inferred for family comfort with swimming pool and included breakfast',
+      isEditable: true
+    });
+
+    if (context.walkingIntensity) {
+      entities.push({
+        key: 'walkingIntensity',
+        label: 'Walking & Pacing',
+        displayValue: `${context.walkingIntensity} walking intensity`,
+        status: 'KNOWN',
+        userFacingTag: 'stated',
+        isEditable: true
+      });
+    }
+
+    // Nationality: HIDE row on domestic trip!
+    if (!isDomestic) {
+      entities.push({
+        key: 'nationality',
+        label: 'Traveler Nationality',
+        displayValue: context.travelerNationality ? `Passport: ${context.travelerNationality}` : 'Nationality needed',
+        status: context.travelerNationality ? 'KNOWN' : 'REQUIRED',
+        userFacingTag: context.travelerNationality ? 'stated' : 'needed',
+        isEditable: true
+      });
+    }
+
+    return entities;
+  }
+
+  /**
+   * Phase 9.1: Comprehensive dependency graph evaluation
+   */
+  static evaluateGraph(context: TripContext) {
+    return RequirementDependencyGraph.evaluateGraph(context);
+  }
+
+  /**
+   * Phase 9.1: Detect multi-variable contradictions and constraints
+   */
+  static detectConflicts(context: TripContext) {
+    return RequirementDependencyGraph.detectConflicts(context);
   }
 }
+
+

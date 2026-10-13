@@ -11,27 +11,46 @@ import {
   Filter,
   ShieldCheck
 } from 'lucide-react';
-import { HotelItem, Currency } from '../../types/travelBooking';
-import { MOCK_HOTELS_VIETNAM } from '../../services/travelCatalog';
+import { HotelItem, Currency, TripPreferences } from '../../types/travelBooking';
+import { getDestinationBundle, MOCK_HOTELS_GOA } from '../../services/travelCatalog';
+import { TripSummary } from '../../services/tripSummaryHelper';
+import { SourceTag } from './SourceTag';
 
 interface HotelResultsViewProps {
-  selectedHotel: HotelItem;
+  selectedHotel: HotelItem | null;
   onSelectHotel: (hotel: HotelItem) => void;
   currency: Currency;
   onContinueToItinerary?: () => void;
+  tripPreferences?: TripPreferences | null;
+  tripSummary?: TripSummary | null;
 }
 
 export const HotelResultsView: React.FC<HotelResultsViewProps> = ({
   selectedHotel,
   onSelectHotel,
   currency,
-  onContinueToItinerary
+  onContinueToItinerary,
+  tripPreferences,
+  tripSummary
 }) => {
   const [filterTag, setFilterTag] = useState<string>('ALL');
 
+  const destinationStr = tripSummary?.destination || tripPreferences?.destination || '';
+  const destBundle = getDestinationBundle(destinationStr);
+  const baseHotels = destBundle.hotels && destBundle.hotels.length > 0 ? destBundle.hotels : MOCK_HOTELS_GOA;
+
   const filteredHotels = filterTag === 'ALL'
-    ? MOCK_HOTELS_VIETNAM
-    : MOCK_HOTELS_VIETNAM.filter((h) => h.tag === filterTag || (filterTag === 'BREAKFAST' && h.breakfastIncluded));
+    ? baseHotels
+    : baseHotels.filter((h) => h.tag === filterTag || (filterTag === 'BREAKFAST' && h.breakfastIncluded));
+
+  const headerTitle = tripSummary
+    ? `Stays in ${tripSummary.destination}`
+    : (tripPreferences ? `Stays in ${tripPreferences.destination}` : 'Search hotels & stays');
+
+  const totalNights = tripSummary?.nights || (tripPreferences ? Math.max(1, tripPreferences.durationDays - 1) : 3);
+  const totalGuests = tripSummary?.totalTravellers || tripPreferences?.partySize || 3;
+
+  const headerSubtitle = `${totalNights} Nights • ${totalGuests} Guests • Family Bedding Layouts`;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
@@ -43,10 +62,10 @@ export const HotelResultsView: React.FC<HotelResultsViewProps> = ({
           </div>
           <div>
             <h1 className="text-base sm:text-lg font-bold text-white">
-              Stays in Hanoi Old Quarter (Hoan Kiem)
+              {headerTitle}
             </h1>
             <p className="text-xs text-slate-400">
-              10 Nights &bull; 4 Guests (2 Adults, 2 Children) &bull; Verified Family Suite Bedding
+              {headerSubtitle}
             </p>
           </div>
         </div>
@@ -92,7 +111,7 @@ export const HotelResultsView: React.FC<HotelResultsViewProps> = ({
       {/* Hotel Cards List */}
       <div className="space-y-5">
         {filteredHotels.map((hotel) => {
-          const isSelected = selectedHotel.id === hotel.id;
+          const isSelected = selectedHotel?.id === hotel.id;
           const displayNightlyRate = currency === 'INR' ? `₹${hotel.pricePerNightINR.toLocaleString()}` : `$${hotel.pricePerNightUSD}`;
           const displayTotalPrice = currency === 'INR' ? `₹${hotel.totalPriceINR.toLocaleString()}` : `$${hotel.totalPriceUSD}`;
 
@@ -136,7 +155,12 @@ export const HotelResultsView: React.FC<HotelResultsViewProps> = ({
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                      <SourceTag
+                        kind={hotel.source || 'sample'}
+                        label={hotel.sourceLabel || 'Sample data'}
+                        retrievedAt={hotel.retrievedAt}
+                      />
                       <div className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-xs font-bold border border-emerald-500/30">
                         {hotel.reviewScore} / 5.0
                       </div>
@@ -144,12 +168,12 @@ export const HotelResultsView: React.FC<HotelResultsViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Guaranteed Room Capacity & Bed Layout */}
+                  {/* Room Capacity & Bed Layout */}
                   <div className="mt-3 p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-white">{hotel.roomType}</span>
                       <span className="text-emerald-400 font-mono text-[11px] flex items-center gap-1">
-                        <Users className="h-3.5 w-3.5" /> 4 Guests Guaranteed
+                        <Users className="h-3.5 w-3.5" /> Sleeps {totalGuests} guests
                       </span>
                     </div>
                     <div className="text-[11px] text-teal-300 font-mono">
@@ -161,7 +185,7 @@ export const HotelResultsView: React.FC<HotelResultsViewProps> = ({
                   <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-300">
                     {hotel.breakfastIncluded && (
                       <span className="px-2 py-0.5 rounded bg-slate-850 border border-slate-800 flex items-center gap-1 text-emerald-300">
-                        <Coffee className="h-3 w-3" /> Free Buffet Breakfast for 4
+                        <Coffee className="h-3 w-3" /> Daily buffet breakfast included
                       </span>
                     )}
                     {hotel.amenities.slice(1, 4).map((a, idx) => (
@@ -180,7 +204,7 @@ export const HotelResultsView: React.FC<HotelResultsViewProps> = ({
                       <span className="text-xs text-slate-400">/ night</span>
                     </div>
                     <span className="text-[11px] text-slate-400 block font-mono">
-                      Total for 10 nights: <strong className="text-white">{displayTotalPrice}</strong> (all taxes included)
+                      Total for {totalNights} nights: <strong className="text-white">{displayTotalPrice}</strong> (all taxes included)
                     </span>
                   </div>
 

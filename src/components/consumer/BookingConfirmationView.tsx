@@ -1,150 +1,208 @@
 import React from 'react';
 import {
-  CheckCircle2,
+  Check,
+  Download,
   Plane,
   Building,
   Car,
-  Download,
-  Share2,
-  Calendar,
-  Users,
-  MapPin,
-  ExternalLink,
-  ShieldCheck,
-  Sparkles
+  Compass
 } from 'lucide-react';
 import { ConfirmedBookingRecord, Currency } from '../../types/travelBooking';
+import { TripSummary } from '../../services/tripSummaryHelper';
 
 interface BookingConfirmationViewProps {
   confirmedBooking: ConfirmedBookingRecord;
   currency: Currency;
   onGoToMyTrips: () => void;
-  onOpenTripAssistant: () => void;
+  onOpenTripAssistant?: () => void;
+  onPlanAnotherTrip?: () => void;
+  tripSummary?: TripSummary | null;
 }
 
 export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = ({
   confirmedBooking,
   currency,
   onGoToMyTrips,
-  onOpenTripAssistant
+  onPlanAnotherTrip,
+  tripSummary
 }) => {
-  const displayTotal =
-    currency === 'INR'
-      ? `₹${confirmedBooking.totalPaidINR.toLocaleString()}`
-      : `$${confirmedBooking.totalPaidUSD.toLocaleString()}`;
+  const destination = confirmedBooking?.destination || 'Goa';
+  const rawPnr = confirmedBooking?.pnr || confirmedBooking?.bookingId || 'AD-GOA-7821';
+  const tripId = rawPnr.startsWith('AD-')
+    ? `${rawPnr} (sandbox)`
+    : `AD-GOA-${rawPnr.replace(/\D/g, '').slice(-4) || '8492'} (sandbox)`;
+
+  const handleDownloadItinerary = () => {
+    window.print();
+  };
+
+  const hotel = confirmedBooking.selectedHotel;
+  const flight = confirmedBooking.selectedFlight;
+  const transfer = confirmedBooking.selectedTransfer;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-12 pt-2">
-      {/* Success Hero Card */}
-      <div className="rounded-3xl border border-teal-500/40 bg-gradient-to-br from-slate-900 via-slate-900/90 to-emerald-950/40 p-8 text-center space-y-4 shadow-2xl relative overflow-hidden">
-        <div className="h-16 w-16 mx-auto rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-          <CheckCircle2 className="h-9 w-9 text-emerald-400" />
+    <div className="max-w-3xl mx-auto px-4 py-10 space-y-8 animate-fade-in-slide">
+      {/* Demo-mode banner */}
+      <div className="card-consumer p-3 sm:px-4 bg-[#F5F6F3] border-[#E2E6E1] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[#55625E]">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold px-2 py-0.5 rounded-full bg-[#E2E6E1] text-[#15201D] text-[11px]">
+            DEMO MODE
+          </span>
+          <span>Sample catalog options · Simulated booking checkout</span>
+        </div>
+        <span className="text-[#4A5753] hidden sm:inline">
+          Live inventory disabled
+        </span>
+      </div>
+
+      {/* Print only banner for downloaded itinerary */}
+      <div className="hidden print:block text-center font-mono text-xs text-[#55625E] pb-2 border-b border-[#E2E6E1]">
+        Simulated booking — not a ticket • AeroDAG Sandbox Demo
+      </div>
+
+      {/* 1. Centered Confirmation Card */}
+      <div className="card-consumer p-8 sm:p-10 text-center space-y-6 shadow-sm">
+        {/* Check Icon */}
+        <div className="h-16 w-16 mx-auto rounded-full bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center">
+          <Check className="h-8 w-8 stroke-[3]" />
         </div>
 
+        {/* Amber Pill */}
         <div>
-          <span className="text-xs font-mono text-emerald-400 uppercase tracking-widest font-bold">
-            Booking Confirmed & Guaranteed
+          <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#FCEFD9] text-[#8A4307]">
+            SIMULATED BOOKING · SANDBOX
           </span>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-            Pack your bags, your family vacation is locked in!
+
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#15201D] font-heading mt-3">
+            Your {destination} plan is saved
           </h1>
-          <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-lg mx-auto">
-            Your flight PNR, interconnecting suite voucher, and private airport transfer have been confirmed. E-tickets have been dispatched to your email.
+
+          <p className="text-xs sm:text-sm text-[#55625E] max-w-lg mx-auto mt-2 leading-relaxed">
+            This was a demo booking — no tickets were issued and nothing was charged. In a live version, confirmations would come directly from the airline and hotel.
           </p>
         </div>
 
-        {/* References Strip */}
-        <div className="pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-center gap-4 text-xs font-mono">
-          <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800">
-            Booking ID: <strong className="text-white">{confirmedBooking.bookingId}</strong>
-          </div>
-          <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800">
-            Flight PNR: <strong className="text-teal-400">{confirmedBooking.pnr}</strong>
-          </div>
-          <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800">
-            Hotel Voucher: <strong className="text-emerald-400">{confirmedBooking.hotelVoucherId}</strong>
-          </div>
+        {/* Trip ID */}
+        <div className="p-3 rounded-xl bg-[#F5F6F3] border border-[#E2E6E1] text-xs font-semibold text-[#15201D] inline-block">
+          Trip ID: {tripId}
         </div>
 
         {/* Action Buttons */}
-        <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <button
-            onClick={() => window.print()}
-            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-emerald-600/20"
-          >
-            <Download className="h-4 w-4" />
-            <span>Download PDF Ticket & Voucher</span>
-          </button>
-
-          <button
+            type="button"
+            id="view-in-my-trips-btn"
             onClick={onGoToMyTrips}
-            className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs flex items-center gap-2 transition"
+            className="btn-primary"
           >
             <span>View in My Trips</span>
           </button>
 
           <button
-            onClick={onOpenTripAssistant}
-            className="px-4 py-2.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 font-semibold text-xs flex items-center gap-2 transition"
+            type="button"
+            onClick={handleDownloadItinerary}
+            className="btn-ghost"
           >
-            <Sparkles className="h-4 w-4 text-teal-400" />
-            <span>Ask Post-Booking Assistant</span>
+            <Download className="h-4 w-4" />
+            <span>Download itinerary</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onPlanAnotherTrip || onGoToMyTrips}
+            className="btn-ghost"
+          >
+            <span>Plan another trip</span>
           </button>
         </div>
       </div>
 
-      {/* Confirmation Details Summary */}
-      <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-5 shadow-xl">
-        <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono pb-2 border-b border-slate-800">
-          Confirmed Inclusions Summary
+      {/* 2. "What's in this trip" List with gray "Simulated" Pills */}
+      <div className="card-consumer p-6 sm:p-8 space-y-4 text-left">
+        <h2 className="text-base font-bold text-[#15201D] font-heading pb-2 border-b border-[#E2E6E1]">
+          What's in this trip
         </h2>
 
-        {/* Flights */}
-        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-white flex items-center gap-2">
-              <Plane className="h-4 w-4 text-sky-400" />
-              <span>{confirmedBooking.selectedFlight.airline} (Flight {confirmedBooking.selectedFlight.flightNumber})</span>
+        <div className="space-y-3 text-sm">
+          {/* Flight */}
+          <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#F5F6F3]/60 border border-[#E2E6E1]">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center shrink-0">
+                <Plane className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="font-bold text-[#15201D]">
+                  {flight ? `${flight.airline} (${flight.flightNumber})` : 'Air India Express (IX 924)'}
+                </div>
+                <div className="text-xs text-[#55625E]">
+                  Bengaluru (BLR) → Goa ({flight?.destinationCode || 'GOI'})
+                </div>
+              </div>
+            </div>
+            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
+              Simulated
             </span>
-            <span className="text-teal-400 font-mono font-bold">4 Seats Confirmed</span>
           </div>
-          <div className="text-slate-400">
-            {confirmedBooking.selectedFlight.originCity} &rarr; {confirmedBooking.selectedFlight.destinationCity} &bull; Adjacent family seats 24A-24B & 25A-25B
-          </div>
-        </div>
 
-        {/* Hotel */}
-        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-white flex items-center gap-2">
-              <Building className="h-4 w-4 text-emerald-400" />
-              <span>{confirmedBooking.selectedHotel.name} (10 Nights)</span>
+          {/* Stay */}
+          <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#F5F6F3]/60 border border-[#E2E6E1]">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center shrink-0">
+                <Building className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="font-bold text-[#15201D]">
+                  {hotel ? hotel.name : 'Heritage Village Resort & Spa, South Goa'}
+                </div>
+                <div className="text-xs text-[#55625E]">
+                  {hotel ? hotel.area : 'South Goa'} · {confirmedBooking.travelDates}
+                </div>
+              </div>
+            </div>
+            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
+              Simulated
             </span>
-            <span className="text-emerald-400 font-mono font-bold">Suite Voucher Active</span>
           </div>
-          <div className="text-slate-400">
-            {confirmedBooking.selectedHotel.roomType} &bull; {confirmedBooking.selectedHotel.bedConfiguration} &bull; Daily Breakfast for 4 included
-          </div>
-        </div>
 
-        {/* Transfer */}
-        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-white flex items-center gap-2">
-              <Car className="h-4 w-4 text-amber-400" />
-              <span>Private 7-Seater AC Minivan Airport Transfer</span>
+          {/* Transfers */}
+          <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#F5F6F3]/60 border border-[#E2E6E1]">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center shrink-0">
+                <Car className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="font-bold text-[#15201D]">
+                  {transfer ? transfer.title : 'Toyota Innova Crysta 7-Seater AC'}
+                </div>
+                <div className="text-xs text-[#55625E]">
+                  Direct round-trip airport chauffeur transfer
+                </div>
+              </div>
+            </div>
+            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
+              Simulated
             </span>
-            <span className="text-amber-400 font-mono font-bold">Driver Assigned</span>
           </div>
-          <div className="text-slate-400">
-            Noi Bai Airport (HAN) pickup with driver holding name board
-          </div>
-        </div>
 
-        {/* Total Paid */}
-        <div className="pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
-          <span className="text-slate-400">Total Paid (Inclusive of all taxes):</span>
-          <span className="text-lg font-bold font-mono text-emerald-400">{displayTotal}</span>
+          {/* Activities */}
+          <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#F5F6F3]/60 border border-[#E2E6E1]">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center shrink-0">
+                <Compass className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="font-bold text-[#15201D]">
+                  Curated Daily Activities & Dining Stops
+                </div>
+                <div className="text-xs text-[#55625E]">
+                  Paced with light walking and afternoon rest buffers
+                </div>
+              </div>
+            </div>
+            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
+              Simulated
+            </span>
+          </div>
         </div>
       </div>
     </div>

@@ -1,1 +1,128 @@
 @import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-page: #F5F6F3;
+    --surface: #FFFFFF;
+    --border: #E2E6E1;
+    --border-strong: #D5DBD5;
+    --ink: #15201D;
+    --muted: #55625E;
+    --muted-dark: #4A5753;
+    --accent: #0E6B59;
+    --accent-hover: #0A5546;
+    --accent-soft: #E3F1EC;
+    --warning-text: #8A4307;
+    --warning-bg: #FCEFD9;
+    --info-text: #1E4F8A;
+    --info-bg: #E4EDF8;
+    --focus-ring: #7CC4B3;
+  }
+
+  html, body {
+    background-color: var(--bg-page);
+    color: var(--ink);
+    font-family: 'Figtree', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-heading {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+
+  /* Accessible focus ring */
+  *:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--focus-ring);
+  }
+}
+
+/* Custom Utilities for AeroDAG Design System */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: #0E6B59;
+  color: #FFFFFF;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 0.625rem 1.25rem;
+  border-radius: 12px;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: #0A5546;
+}
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: #FFFFFF;
+  color: #15201D;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 0.625rem 1.25rem;
+  border-radius: 12px;
+  border: 1px solid #D5DBD5;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+}
+.btn-ghost:hover:not(:disabled) {
+  background-color: #F5F6F3;
+  border-color: #C0C8C0;
+}
+
+.card-consumer {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E6E1;
+  border-radius: 18px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.pill-chip {
+  display: inline-flex;
+  align-items: center;
+  background-color: #FFFFFF;
+  border: 1px solid #E2E6E1;
+  border-radius: 9999px;
+  color: #15201D;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.375rem 0.875rem;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+}
+.pill-chip:hover {
+  border-color: #0E6B59;
+  background-color: #E3F1EC;
+  color: #0E6B59;
+}
+
+/* Animations */
+@keyframes fadeInSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-slide {
+  animation: fadeInSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

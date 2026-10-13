@@ -10,27 +10,45 @@ import {
   Filter,
   Check
 } from 'lucide-react';
-import { FlightItem, Currency } from '../../types/travelBooking';
-import { MOCK_FLIGHTS_VIETNAM } from '../../services/travelCatalog';
+import { FlightItem, Currency, TripPreferences } from '../../types/travelBooking';
+import { getDestinationBundle, MOCK_FLIGHTS_GOA } from '../../services/travelCatalog';
+import { TripSummary } from '../../services/tripSummaryHelper';
+import { SourceTag } from './SourceTag';
 
 interface FlightResultsViewProps {
-  selectedFlight: FlightItem;
+  selectedFlight: FlightItem | null;
   onSelectFlight: (flight: FlightItem) => void;
   currency: Currency;
   onContinueToStays?: () => void;
+  tripPreferences?: TripPreferences | null;
+  tripSummary?: TripSummary | null;
 }
 
 export const FlightResultsView: React.FC<FlightResultsViewProps> = ({
   selectedFlight,
   onSelectFlight,
   currency,
-  onContinueToStays
+  onContinueToStays,
+  tripPreferences,
+  tripSummary
 }) => {
   const [filterTag, setFilterTag] = useState<string>('ALL');
 
+  const destinationStr = tripSummary?.destination || tripPreferences?.destination || '';
+  const destBundle = getDestinationBundle(destinationStr);
+  const baseFlights = destBundle.flights && destBundle.flights.length > 0 ? destBundle.flights : MOCK_FLIGHTS_GOA;
+
   const filteredFlights = filterTag === 'ALL'
-    ? MOCK_FLIGHTS_VIETNAM
-    : MOCK_FLIGHTS_VIETNAM.filter((f) => f.tag === filterTag);
+    ? baseFlights
+    : baseFlights.filter((f) => f.tag === filterTag);
+
+  const headerTitle = tripSummary
+    ? `Flights from ${tripSummary.origin} to ${tripSummary.destination}`
+    : (tripPreferences ? `Flights from ${tripPreferences.origin} to ${tripPreferences.destination}` : 'Search flights');
+
+  const headerSubtitle = tripSummary
+    ? `${tripSummary.dates} • ${tripSummary.totalTravellers} Traveller${tripSummary.totalTravellers > 1 ? 's' : ''} • Economy Class`
+    : (tripPreferences ? `${tripPreferences.targetDates} • ${tripPreferences.partySize} Travellers • Economy Class` : 'Compare and book flight tickets');
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
@@ -42,10 +60,10 @@ export const FlightResultsView: React.FC<FlightResultsViewProps> = ({
           </div>
           <div>
             <h1 className="text-base sm:text-lg font-bold text-white">
-              Flights from Bengaluru (BLR) to Hanoi (HAN)
+              {headerTitle}
             </h1>
             <p className="text-xs text-slate-400">
-              Nov 10 – Nov 20, 2026 &bull; 4 Travellers (2 Adults, 2 Children) &bull; Economy Class
+              {headerSubtitle}
             </p>
           </div>
         </div>
@@ -91,7 +109,7 @@ export const FlightResultsView: React.FC<FlightResultsViewProps> = ({
       {/* Flight Cards List */}
       <div className="space-y-4">
         {filteredFlights.map((flight) => {
-          const isSelected = selectedFlight.id === flight.id;
+          const isSelected = selectedFlight?.id === flight.id;
           const displayPricePerPerson = currency === 'INR' ? `₹${flight.pricePerPersonINR.toLocaleString()}` : `$${flight.pricePerPersonUSD}`;
           const displayTotalPrice = currency === 'INR' ? `₹${flight.totalPriceINR.toLocaleString()}` : `$${flight.totalPriceUSD}`;
 
@@ -119,6 +137,11 @@ export const FlightResultsView: React.FC<FlightResultsViewProps> = ({
                           {flight.tag}
                         </span>
                       )}
+                      <SourceTag
+                        kind={flight.source || 'sample'}
+                        label={flight.sourceLabel || 'Sample'}
+                        retrievedAt={flight.retrievedAt}
+                      />
                     </div>
                     <span className="text-xs text-slate-400">{flight.cabinClass}</span>
                   </div>
@@ -127,7 +150,7 @@ export const FlightResultsView: React.FC<FlightResultsViewProps> = ({
                 {/* Price Display */}
                 <div className="text-left sm:text-right">
                   <span className="text-lg font-bold font-mono text-emerald-400">{displayPricePerPerson}</span>
-                  <span className="text-xs text-slate-400 block">per traveller ({displayTotalPrice} total for 4)</span>
+                  <span className="text-xs text-slate-400 block">per traveller ({displayTotalPrice} total for {tripSummary?.totalTravellers || 3})</span>
                 </div>
               </div>
 
@@ -165,10 +188,10 @@ export const FlightResultsView: React.FC<FlightResultsViewProps> = ({
                     <span>{flight.baggage}</span>
                   </span>
 
-                  {flight.adjacentFamilySeatsGuaranteed && (
+                  {flight.adjacentFamilySeatsRequested !== false && (
                     <span className="flex items-center gap-1 text-teal-300 font-medium">
                       <Users className="h-3.5 w-3.5" />
-                      <span>Adjacent family seating block guaranteed</span>
+                      <span>Seats together requested</span>
                     </span>
                   )}
                 </div>
