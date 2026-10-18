@@ -228,7 +228,14 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     setTripContext(updated);
   };
 
-  const handleHolidaySubmit = async (e: React.FormEvent) => {
+  const statedDuration = initialContext.durationDays;
+  const chosenDuration = tripContext.durationDays;
+  const isShortenedTrip = Boolean(statedDuration && chosenDuration && chosenDuration < statedDuration);
+  const shortenedTripNote = isShortenedTrip
+    ? `Your trip is now ${chosenDuration} days instead of ${statedDuration} — change dates?`
+    : null;
+
+  const handleHolidaySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!holidayFrom || !holidayTo) {
       setDateError('Pick both the first and the last day of your holidays.');
@@ -254,7 +261,6 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
       fieldSources: { ...tripContext.fieldSources, dates: 'stated' as const, duration: 'stated' as const }
     };
     setTripContext(updated);
-    await triggerPlanGeneration(updated);
   };
   const [isLoading, setIsLoading] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -275,16 +281,20 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     value: opt.dates.includes('2026') ? opt.dates : `${opt.dates} 2026`
   }));
 
-  const handleSelectDate = async (dateVal: string) => {
+  const handleSelectDate = (dateVal: string) => {
     const r = resolveTravelDates(dateVal);
     const updated = r && r.ok
       ? { ...tripContext, dates: r.label, durationDays: r.days, fieldSources: { ...tripContext.fieldSources, dates: 'stated' as const, duration: 'stated' as const } }
       : { ...tripContext, dates: dateVal };
+    if (r && r.ok) {
+      setHolidayFrom(toIso(r.start));
+      setHolidayTo(toIso(r.end));
+    }
+    setDateError(null);
     setTripContext(updated);
-    await triggerPlanGeneration(updated);
   };
 
-  const handleCustomDateSubmit = async (e: React.FormEvent) => {
+  const handleCustomDateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!freeTextDate.trim()) return;
     const resolved = resolveTravelDates(freeTextDate);
@@ -294,6 +304,8 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     }
     if (resolved && resolved.ok) {
       setDateError(null);
+      setHolidayFrom(toIso(resolved.start));
+      setHolidayTo(toIso(resolved.end));
       const updatedExact = {
         ...tripContext,
         dates: resolved.label,
@@ -301,7 +313,6 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
         fieldSources: { ...tripContext.fieldSources, dates: 'stated' as const, duration: 'stated' as const }
       };
       setTripContext(updatedExact);
-      await triggerPlanGeneration(updatedExact);
       return;
     }
     const res = validateTravelDate(freeTextDate);
@@ -310,9 +321,26 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
       return;
     }
     setDateError(null);
-    const updated = { ...tripContext, dates: res.normalized || freeTextDate.trim() };
+    const updated = {
+      ...tripContext,
+      dates: res.normalized || freeTextDate.trim(),
+      fieldSources: { ...tripContext.fieldSources, dates: 'stated' as const }
+    };
     setTripContext(updated);
-    await triggerPlanGeneration(updated);
+  };
+
+  const handleSelectLongWeekend = (lw: { startDateIso: string; endDateIso: string; daysCount: number; label: string }) => {
+    setHolidayFrom(lw.startDateIso);
+    setHolidayTo(lw.endDateIso);
+    setDateError(null);
+    const rangeFormatted = formatDateRange(fromIso(lw.startDateIso), fromIso(lw.endDateIso));
+    const updated = {
+      ...tripContext,
+      dates: rangeFormatted,
+      durationDays: lw.daysCount,
+      fieldSources: { ...tripContext.fieldSources, dates: 'stated' as const, duration: 'stated' as const }
+    };
+    setTripContext(updated);
   };
 
   const triggerPlanGeneration = async (ctx: TripContext) => {
@@ -495,7 +523,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                 <span className="text-xs text-[#55625E]">{headerPill}</span>
               </div>
               <h2 className="text-lg sm:text-xl font-bold text-[#15201D] font-heading">
-                Let's tailor your {tripContext.destination?.replace(/,.*$/, '') || 'trip'}
+                Let's tailor your {tripContext.destination?.replace(/,\s*India$/i, '').split(',')[0].trim() || 'trip'}
               </h2>
               <p className="text-xs sm:text-sm text-[#55625E]">
                 {headerDescription}
@@ -610,7 +638,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
               {/* Cheaper weeks pills */}
               <div className="pt-2 space-y-2">
                 <div className="text-xs font-semibold text-[#55625E]">
-                  Flexible? Seasonal value weeks in {tripContext.destination?.replace(/,.*$/, '') || 'destination'}:
+                  Flexible? Seasonal value weeks in {tripContext.destination?.replace(/,\s*India$/i, '').split(',')[0].trim() || 'destination'}:
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {dateOptions.filter((opt) => resolveTravelDates(opt.value)?.ok).map((opt) => (
@@ -645,11 +673,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                         <button
                           key={`${lw.startDateIso}-${lw.endDateIso}`}
                           type="button"
-                          onClick={() => {
-                            setHolidayFrom(lw.startDateIso);
-                            setHolidayTo(lw.endDateIso);
-                            setDateError(null);
-                          }}
+                          onClick={() => handleSelectLongWeekend(lw)}
                           className={`pill-chip text-xs transition border flex items-center gap-1.5 ${
                             isSelected
                               ? 'bg-[#0E6B59] text-white border-[#0E6B59] font-bold shadow-xs'
@@ -666,6 +690,29 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                       );
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* Shortened trip warning note */}
+              {shortenedTripNote && (
+                <div id="shortened-trip-note" className="p-3 rounded-xl bg-[#FCEFD9] border border-[#8A4307]/30 text-xs text-[#8A4307] flex items-center justify-between gap-2 mt-2">
+                  <span>{shortenedTripNote}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHolidayFrom('');
+                      setHolidayTo('');
+                      setFreeTextDate('');
+                      setTripContext((prev) => ({
+                        ...prev,
+                        dates: initialContext.dates || null,
+                        durationDays: initialContext.durationDays || 7
+                      }));
+                    }}
+                    className="text-xs font-bold underline hover:text-[#B45309] shrink-0 cursor-pointer"
+                  >
+                    Change dates
+                  </button>
                 </div>
               )}
             </div>
@@ -841,7 +888,11 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                   }`}
                 >
                   <div className="font-bold text-[#15201D]">🌿 Nature / Relaxation</div>
-                  <div className="text-[11px] text-[#55625E]">Quiet coffee estates, calm sunset strolls, leisurely pace.</div>
+                  <div className="text-[11px] text-[#55625E]">
+                    {(tripContext.destination || '').toLowerCase().includes('coorg')
+                      ? 'Quiet coffee estates, calm sunset strolls, leisurely pace.'
+                      : 'Scenic nature walks, calm sunset strolls, leisurely pace.'}
+                  </div>
                 </button>
 
                 <button
@@ -1007,7 +1058,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                 <div>
                   <div className="text-xs text-[#55625E]">Destination</div>
                   <div className="font-semibold text-[#15201D]">
-                    {tripContext.destination || 'Goa, India'}
+                    {tripContext.destination?.replace(/,\s*India$/i, '').trim() || 'Goa'}
                   </div>
                 </div>
                 <SourceTag kind={tripContext.fieldSources?.destination || 'stated'} label={tripContext.fieldSources?.destination || 'stated'} />
@@ -1045,6 +1096,11 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                 </div>
                 <SourceTag kind={tripContext.fieldSources?.duration || 'assumed'} label={tripContext.fieldSources?.duration || 'assumed'} />
               </div>
+              {shortenedTripNote && (
+                <div className="text-[11px] text-[#8A4307] bg-[#FCEFD9] p-2 rounded-lg font-medium">
+                  {shortenedTripNote}
+                </div>
+              )}
 
               {/* Target Budget */}
               <div className="flex items-center justify-between gap-2">
@@ -1083,13 +1139,17 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
               <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#E2E6E1]/60">
                 <div>
                   <div className="text-xs text-[#55625E]">Travel dates</div>
-                  <div className="font-semibold text-[#8A4307]">
+                  <div className={`font-semibold ${tripContext.dates ? 'text-[#15201D]' : 'text-[#8A4307]'}`}>
                     {tripContext.dates || 'Selecting above'}
                   </div>
                 </div>
-                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-[#FCEFD9] text-[#8A4307]">
-                  Needed
-                </span>
+                {tripContext.dates ? (
+                  <SourceTag kind={tripContext.fieldSources?.dates || 'stated'} label={tripContext.fieldSources?.dates || 'stated'} />
+                ) : (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-[#FCEFD9] text-[#8A4307]">
+                    Needed
+                  </span>
+                )}
               </div>
 
               {/* Selected Trip Needs */}
@@ -1108,12 +1168,6 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Domestic Trip Note at Bottom */}
-            <div className="pt-3 border-t border-[#E2E6E1] text-xs text-[#55625E] flex items-center gap-1.5">
-              <span>🇮🇳</span>
-              <span>Domestic trip — no passport or visa details needed.</span>
             </div>
           </div>
         </div>

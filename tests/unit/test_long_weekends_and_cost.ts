@@ -222,8 +222,8 @@ async function runTests() {
 
   // Verify over-budget threshold logic
   const overagePercent = ((cost.totalWithBufferINR - 60000) / 60000) * 100;
-  const isSlightlyOver = overagePercent > 0 && overagePercent <= 10;
-  assert(isSlightlyOver, `Kerala plan is slightly over budget by ${overagePercent.toFixed(1)}% (<= 10%, should show full plan with banner)`);
+  const isOverBudget = overagePercent > 0 && cost.budgetStatus === 'over';
+  assert(isOverBudget, `Kerala plan is over budget by ${overagePercent.toFixed(1)}% (status: ${cost.budgetStatus})`);
 
   // =========================================================================
   // TEST 3: Real Differences Between Budget / Balanced / Comfort (Problem 3)

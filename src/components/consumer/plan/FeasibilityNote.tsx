@@ -68,7 +68,7 @@ export const FeasibilityNote: React.FC<FeasibilityNoteProps> = ({
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-[#0E6B59]" />
             <span className="font-medium">
-              {passCount} checks passed {naCount > 0 ? `· ${naCount} not applicable` : ''}
+              Trip verification checks
               {warnings.length > 0 ? ` · ${warnings.length} advisory` : ''}
             </span>
           </div>

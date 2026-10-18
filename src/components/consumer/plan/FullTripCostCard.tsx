@@ -14,6 +14,8 @@ export const FullTripCostCard: React.FC<FullTripCostCardProps> = ({
   preferences
 }) => {
   const cost = computeFullTripCost(plan, preferences);
+  const childrenCount = (plan.travellers?.children ?? (plan.travellers?.childAges?.length || 0)) || (preferences?.childrenCount ?? (preferences?.childrenAges?.length || 0)) || 0;
+  const hasChildren = childrenCount > 0;
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
 
   const handleShareClick = async () => {
@@ -94,7 +96,7 @@ export const FullTripCostCard: React.FC<FullTripCostCardProps> = ({
             ₹{cost.perPersonINR.toLocaleString('en-IN')}
           </div>
           <div className="text-xs text-[#55625E]">
-            Across {cost.totalTravellers} traveller{cost.totalTravellers === 1 ? '' : 's'} (including children)
+            Across {cost.totalTravellers} traveller{cost.totalTravellers === 1 ? '' : 's'}{hasChildren ? ' (including children)' : ''}
           </div>
         </div>
       </div>

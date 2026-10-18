@@ -87,6 +87,24 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
           Trip ID: {tripId}
         </div>
 
+        {/* Trip Total & Per Person Cost */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto p-4 rounded-2xl bg-[#F5F6F3] border border-[#E2E6E1] text-left">
+          <div>
+            <div className="text-xs font-medium text-[#55625E]">Trip Total (with 15% buffer)</div>
+            <div className="text-xl font-extrabold text-[#15201D] font-heading">
+              ₹{(confirmedBooking.totalPaidINR || 0).toLocaleString('en-IN')}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-[#55625E]">
+              Per person ({Math.max(1, confirmedBooking.passengers?.length || 2)} traveller{Math.max(1, confirmedBooking.passengers?.length || 2) > 1 ? 's' : ''})
+            </div>
+            <div className="text-xl font-extrabold text-[#0E6B59] font-heading">
+              ₹{Math.round((confirmedBooking.totalPaidINR || 0) / Math.max(1, confirmedBooking.passengers?.length || 2)).toLocaleString('en-IN')}
+            </div>
+          </div>
+        </div>
+
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 pt-2 w-full">
           <button

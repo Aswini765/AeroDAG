@@ -294,23 +294,27 @@ export function generatePlanOptions(
     diffFromBalanced: comfortDiffText
   };
 
-  // Check for duplicates between options
-  const allOptions = [budgetOption, balancedOption, comfortOption];
+  // Check if Budget and Balanced would have the same hotel and travel
+  const budgetTransitKey = budgetOption.flight?.id || budgetOption.train?.id || budgetOption.travelMode;
+  const balancedTransitKey = balancedOption.flight?.id || balancedOption.train?.id || balancedOption.travelMode;
+  const isBudgetIdenticalToBalanced =
+    (budgetOption.hotel.id === balancedOption.hotel.id || budgetOption.hotel.name === balancedOption.hotel.name) &&
+    budgetTransitKey === balancedTransitKey;
+
+  const candidateOptions = isBudgetIdenticalToBalanced
+    ? [balancedOption, comfortOption]
+    : [budgetOption, balancedOption, comfortOption];
+
   const distinctOptions: PlanTierOption[] = [];
   const seenKeys = new Set<string>();
 
-  for (const opt of allOptions) {
+  for (const opt of candidateOptions) {
     const transitKey = opt.flight?.id || opt.train?.id || opt.travelMode;
-    const key = `${opt.hotel.id}_${transitKey}_${opt.totalCostINR}`;
+    const key = `${opt.hotel.id || opt.hotel.name}_${transitKey}`;
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
       distinctOptions.push(opt);
     }
-  }
-
-  // Ensure balanced is retained if possible
-  if (!distinctOptions.some((o) => o.id === 'balanced') && allOptions.some((o) => o.id === 'balanced')) {
-    distinctOptions.splice(1, 0, balancedOption);
   }
 
   return distinctOptions;

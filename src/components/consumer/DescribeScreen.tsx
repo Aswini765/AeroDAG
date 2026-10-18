@@ -122,10 +122,22 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
 
   const unsupportedError = (place: string) => {
     const suggestion = suggestAlternative(place);
+    let text = '';
+    if (suggestion) {
+      if (suggestion.destination === 'Goa') {
+        text = `AeroDAG plans trips within India. For beaches like ${place}, try Goa, Gokarna or the Andamans.`;
+      } else if (suggestion.destination === 'Coorg') {
+        text = `AeroDAG plans trips within India. For hills like ${place}, try Coorg, Ooty or Munnar.`;
+      } else if (suggestion.destination === 'Mysuru') {
+        text = `AeroDAG plans trips within India. For heritage and palaces like ${place}, try Mysuru, Udaipur or Jaipur.`;
+      } else {
+        text = `AeroDAG plans trips within India. For nature like ${place}, try Kerala, Wayanad or Kabini.`;
+      }
+    } else {
+      text = `AeroDAG plans trips within India. Try popular destinations like Goa, Coorg, Kerala, or Mysuru.`;
+    }
     return {
-      text: suggestion
-        ? `We can't plan ${place} yet. ${suggestion.destination} is the closest match: ${suggestion.reason}.`
-        : `We can't plan ${place} yet. AeroDAG currently covers: ${SUPPORTED_DESTINATIONS.join(', ')}.`,
+      text,
       showChips: true,
       place,
       suggestion

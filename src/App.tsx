@@ -33,6 +33,8 @@ import { buildPlanFromDestinationProfile } from './services/aiDestinationPlanBui
 import { suggestAlternative } from './services/destinationSuggestions';
 import { DestinationProfile } from './types/destinationProfile';
 import { KeepTripsCard } from './components/consumer/KeepTripsCard';
+import { computeFullTripCost } from './services/fullTripCostHelper';
+import { ExternalLink } from 'lucide-react';
 
 const APP_NOT_PLACES = new Set([
   'the', 'a', 'an', 'my', 'our', 'weekend', 'week', 'days', 'day', 'budget', 'summer', 'winter', 'monsoon',
@@ -177,7 +179,7 @@ export default function App() {
 
     const initDemo = async () => {
       const ctx = RequirementEngine.createEmptyContext();
-      ctx.destination = 'Goa, India';
+      ctx.destination = 'Goa';
       ctx.origin = 'Bengaluru (BLR)';
       ctx.durationDays = 7;
       ctx.budgetTotalINR = 60000;
@@ -224,20 +226,22 @@ export default function App() {
         scope: 'domestic'
       };
 
+      const demoCost = computeFullTripCost(plan, prefs);
+
       const sampleBooking: ConfirmedBookingRecord = {
         bookingId: 'AD-GOA-7821',
         pnr: 'AD-GOA-7821',
         hotelVoucherId: 'HTL-GOA-901',
         tripTitle: '7 days in Goa',
-        destination: 'Goa, India',
+        destination: 'Goa',
         origin: 'Bengaluru (BLR)',
         travelDates: '12–18 Nov 2026',
         createdAt: new Date().toISOString(),
         status: 'SIMULATED',
-        totalPaidINR: plan.budget.grandTotalINR,
-        totalPaidUSD: Math.round(plan.budget.grandTotalINR / 84),
+        totalPaidINR: demoCost.totalWithBufferINR,
+        totalPaidUSD: Math.round(demoCost.totalWithBufferINR / 84),
         budgetTotalINR: 60000,
-        remainingBudgetINR: Math.max(0, 60000 - plan.budget.grandTotalINR),
+        remainingBudgetINR: Math.max(0, 60000 - demoCost.totalWithBufferINR),
         passengers: [
           { type: 'ADULT', title: 'Mr', firstName: 'Aarav', lastName: 'Kumar' },
           { type: 'ADULT', title: 'Ms', firstName: 'Priya', lastName: 'Kumar' },
@@ -326,7 +330,7 @@ export default function App() {
   // Handle deterministic demo mode from Screen 1 (Describe)
   const handleTryDemo = async () => {
     const ctx = RequirementEngine.createEmptyContext();
-    ctx.destination = 'Goa, India';
+    ctx.destination = 'Goa';
     ctx.origin = 'Bengaluru (BLR)';
     ctx.durationDays = 7;
     ctx.budgetTotalINR = 60000;
@@ -396,15 +400,15 @@ export default function App() {
 
     // Destination
     if (lower.includes('goa')) {
-      ctx.destination = 'Goa, India';
+      ctx.destination = 'Goa';
     } else if (lower.includes('coorg') || lower.includes('kodagu') || lower.includes('madikeri')) {
-      ctx.destination = 'Coorg, Karnataka';
+      ctx.destination = 'Coorg';
     } else if (lower.includes('kerala') || lower.includes('munnar') || lower.includes('alleppey') || lower.includes('alappuzha') || /\b(kumarakom|thekkady|wayanad|varkala|kovalam|fort kochi)\b/.test(lower)) {
-      ctx.destination = 'Kerala, India';
+      ctx.destination = 'Kerala';
     } else if (lower.includes('mysuru') || lower.includes('mysore')) {
-      ctx.destination = 'Mysuru, Karnataka';
+      ctx.destination = 'Mysuru';
     } else if (ai.kind === 'ok' && ai.data.destination) {
-      ctx.destination = ai.data.destination;
+      ctx.destination = ai.data.destination.replace(/,\s*India$/i, '').trim();
     } else {
       const destMatch = promptText.match(/(?:trip\s+to|going\s+to|holiday\s+in|vacation\s+in|visit(?:ing)?|travel\s+to|explore|in|to)\s+([A-Za-z\s]+?)(?:\s+(?:with|for|under|from|starting|on|in|budget|\d|$))/i);
       if (destMatch && destMatch[1] && !APP_NOT_PLACES.has(destMatch[1].toLowerCase().trim())) {
@@ -433,9 +437,19 @@ export default function App() {
 
       if ('unsupported' in profileResult && profileResult.unsupported) {
         const suggestion = suggestAlternative(ctx.destination || '');
-        return suggestion
-          ? `We can't plan ${ctx.destination} right now. ${suggestion.destination} is the closest match: ${suggestion.reason}.`
-          : `We can't plan ${ctx.destination} yet. AeroDAG currently plans any trip across India.`;
+        const place = ctx.destination || '';
+        if (suggestion) {
+          if (suggestion.destination === 'Goa') {
+            return `AeroDAG plans trips within India. For beaches like ${place}, try Goa, Gokarna or the Andamans.`;
+          } else if (suggestion.destination === 'Coorg') {
+            return `AeroDAG plans trips within India. For hills like ${place}, try Coorg, Ooty or Munnar.`;
+          } else if (suggestion.destination === 'Mysuru') {
+            return `AeroDAG plans trips within India. For heritage and palaces like ${place}, try Mysuru, Udaipur or Jaipur.`;
+          } else {
+            return `AeroDAG plans trips within India. For nature like ${place}, try Kerala, Wayanad or Kabini.`;
+          }
+        }
+        return `AeroDAG plans trips within India. Try popular destinations like Goa, Coorg, Kerala, or Mysuru.`;
       }
 
       profileData = profileResult as DestinationProfile;
@@ -702,21 +716,23 @@ export default function App() {
       ...(t.childAges || []).map((age, i) => ({ type: 'CHILD' as const, title: '', firstName: `Child ${i + 1}`, lastName: '', age })),
       ...Array.from({ length: t.seniors || 0 }, (_, i) => ({ type: 'SENIOR' as const, title: '', firstName: `Senior ${i + 1}`, lastName: '' }))
     ];
-    const total = plan.budget.grandTotalINR;
+    const fullCost = computeFullTripCost(plan, tripPreferences);
+    const total = fullCost.totalWithBufferINR;
+    const cleanDest = plan.destination.replace(/,\s*India$/i, '').trim();
     const draft: ConfirmedBookingRecord = {
       bookingId: `draft_${Date.now()}`,
       pnr: 'Saved plan',
       hotelVoucherId: '',
       createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       status: 'SELECTED',
-      tripTitle: `${plan.durationDays}-Day Trip to ${plan.destination}`,
-      destination: plan.destination,
+      tripTitle: `${plan.durationDays}-Day Trip to ${cleanDest}`,
+      destination: cleanDest,
       origin: plan.origin,
       travelDates: plan.dates,
       totalPaidINR: total,
       totalPaidUSD: Math.round(total / 84),
-      budgetTotalINR: plan.budget.targetINR,
-      remainingBudgetINR: plan.budget.remainingBudgetINR,
+      budgetTotalINR: fullCost.targetBudgetINR,
+      remainingBudgetINR: fullCost.budgetStatus === 'over' ? 0 : (fullCost.targetBudgetINR - total),
       passengers,
       selectedFlight: plan.flight,
       selectedTrain: plan.selectedTrain || null,
@@ -734,6 +750,138 @@ export default function App() {
     } catch (err) {
       console.warn('Failed to save draft trip:', err);
       return false;
+    }
+  };
+
+  const hydratePlanFromRecord = (record: ConfirmedBookingRecord) => {
+    const adults = record.passengers?.filter((p) => p.type === 'ADULT').length || 2;
+    const children = record.passengers?.filter((p) => p.type === 'CHILD').length || 0;
+    const seniors = record.passengers?.filter((p) => p.type === 'SENIOR').length || 0;
+    const childAges = record.passengers?.filter((p) => p.type === 'CHILD' && p.age !== undefined).map((p) => p.age!) || [];
+
+    const prefs: TripPreferences = {
+      destination: record.destination,
+      origin: record.origin,
+      targetDates: record.travelDates,
+      durationDays: record.itinerary?.length || 3,
+      partySize: adults + children + seniors,
+      adultsCount: adults,
+      childrenCount: children,
+      childrenAges: childAges,
+      budgetTotalINR: record.budgetTotalINR || 60000,
+      budgetTotalUSD: Math.round((record.budgetTotalINR || 60000) / 84),
+      budgetTier: 'Comfortable',
+      travelStyle: 'Relaxed',
+      priority: 'Family Friendly',
+      accommodationPreference: 'Standard 3-Star',
+      dietaryOrNotes: '',
+      scope: 'domestic'
+    };
+
+    const plan: TripPlan = {
+      id: `plan-${record.bookingId}`,
+      title: record.tripTitle || '',
+      summary: '',
+      destination: record.destination,
+      origin: record.origin,
+      dates: record.travelDates,
+      durationDays: record.itinerary?.length || 3,
+      scope: 'domestic',
+      flight: record.selectedFlight || null,
+      selectedTrain: record.selectedTrain || undefined,
+      hotel: record.selectedHotel || {
+        id: 'ht-default',
+        name: `${record.destination} Selected Hotel`,
+        area: record.destination,
+        city: record.destination,
+        starRating: 3,
+        reviewScore: 0,
+        reviewsCount: 0,
+        roomType: 'Standard Room',
+        bedConfiguration: '1 Queen Bed',
+        maxCapacity: adults + children,
+        pricePerNightINR: 3500,
+        totalPriceINR: 3500 * Math.max(1, (record.itinerary?.length || 3) - 1),
+        pricePerNightUSD: 42,
+        totalPriceUSD: 42 * Math.max(1, (record.itinerary?.length || 3) - 1),
+        amenities: [],
+        breakfastIncluded: true,
+        freeCancellation: true,
+        distanceFromCenter: 'Central',
+        imageUrl: ''
+      },
+      transfer: record.selectedTransfer || {
+        id: 'tr-default',
+        title: 'Airport Transfer',
+        vehicleType: 'Private Cab Transfer',
+        capacityPassengers: adults + children,
+        luggageCapacity: 3,
+        priceINR: 0,
+        priceUSD: 0,
+        description: 'Airport ↔ Hotel transfer',
+        duration: 'approx. 1 hour',
+        pickupLocation: record.destination,
+        dropLocation: 'Hotel'
+      },
+      itinerary: record.itinerary || [],
+      travellers: {
+        total: adults + children + seniors,
+        adults,
+        children,
+        seniors,
+        childAges
+      },
+      budget: {
+        targetINR: record.budgetTotalINR || 60000,
+        flightsCostINR: record.selectedFlight?.totalPriceINR || 0,
+        hotelCostINR: record.selectedHotel?.totalPriceINR || 0,
+        transportCostINR: record.selectedTransfer?.priceINR || 0,
+        diningEstimateINR: 0,
+        foodCostINR: 0,
+        activitiesCostINR: 0,
+        localTransportCostINR: 0,
+        otherCostsINR: 0,
+        bufferCostINR: 0,
+        grandTotalINR: record.totalPaidINR,
+        remainingBudgetINR: record.remainingBudgetINR || 0,
+        overBudgetAmountINR: Math.max(0, record.totalPaidINR - (record.budgetTotalINR || 60000)),
+        isOverBudget: record.totalPaidINR > (record.budgetTotalINR || 60000)
+      },
+      availableHotels: record.selectedHotel ? [record.selectedHotel] : [],
+      availableFlights: record.selectedFlight ? [record.selectedFlight] : [],
+      availableTransfers: record.selectedTransfer ? [record.selectedTransfer] : [],
+      activities: [],
+      availableActivities: [],
+      diningSuggestions: [],
+      mapWaypoints: [],
+      recommendations: [],
+      verificationChecks: [],
+      createdAt: record.createdAt || new Date().toISOString()
+    };
+
+    return { prefs, plan };
+  };
+
+  const handleContinuePlanning = (trip: ConfirmedBookingRecord) => {
+    const { prefs, plan } = hydratePlanFromRecord(trip);
+    setTripPreferences(prefs);
+    setActiveTripPlan(plan);
+    setCurrentStep('plan');
+  };
+
+  const handleBookSavedPlan = (trip: ConfirmedBookingRecord) => {
+    const { prefs, plan } = hydratePlanFromRecord(trip);
+    setTripPreferences(prefs);
+    setActiveTripPlan(plan);
+    setCurrentStep('review');
+  };
+
+  const handleDeleteSavedPlan = async (bookingId: string) => {
+    try {
+      await getTripStore(isOfflineMode).deleteTrip(bookingId);
+      await fetchTrips(isOfflineMode);
+    } catch (err) {
+      console.warn('Failed to delete saved plan:', err);
     }
   };
 
@@ -870,11 +1018,11 @@ export default function App() {
         {!isLoadingPlan && currentStep === 'review' && tripPreferences && (
           <CheckoutBookingFlow
             preferences={tripPreferences}
+            tripPlan={activeTripPlan}
             selectedFlight={activeTripPlan?.flight}
             selectedHotel={activeTripPlan?.hotel}
             selectedTransfer={activeTripPlan?.transfer}
-            visaDetails={activeTripPlan?.visa}
-            totalCostINR={activeTripPlan?.budget.grandTotalINR}
+            totalCostINR={activeTripPlan ? computeFullTripCost(activeTripPlan, tripPreferences).totalWithBufferINR : 0}
             currency={currency}
             onBookingSuccess={handleBookingSuccess}
             onBackToTrip={() => setCurrentStep('plan')}
@@ -914,6 +1062,9 @@ export default function App() {
             confirmedTrips={confirmedTrips}
             currency={currency}
             onExploreMore={() => setCurrentStep('describe')}
+            onContinuePlanning={handleContinuePlanning}
+            onBookSavedPlan={handleBookSavedPlan}
+            onDeleteSavedPlan={handleDeleteSavedPlan}
             isOffline={isOfflineMode}
             isLoading={isLoadingTrips}
             loadError={tripsLoadError}
@@ -932,12 +1083,15 @@ export default function App() {
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-xs">
-            <button
-              onClick={() => setIsSurveyOpen(true)}
+            <a
+              href="PASTE_YOUR_GOOGLE_FORM_LINK"
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-[#0E6B59] hover:underline cursor-pointer font-semibold inline-flex items-center gap-1"
             >
-              <span>Feedback Survey (Shwetha & Nani Feedback)</span>
-            </button>
+              <span>Give feedback</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
             <span>·</span>
             <button
               onClick={() => setIsHowItWorksOpen(true)}

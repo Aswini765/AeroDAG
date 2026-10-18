@@ -25,12 +25,17 @@ interface MyTripsViewProps {
   onRetry?: () => void;
   /** Which tab to open on. Omit to open Booked trips (or Saved plans if nothing is booked yet). */
   initialTab?: 'booked' | 'saved';
+  onContinuePlanning?: (trip: ConfirmedBookingRecord) => void;
+  onBookSavedPlan?: (trip: ConfirmedBookingRecord) => void;
+  onDeleteSavedPlan?: (bookingId: string) => Promise<void> | void;
 }
 
-const DEFAULT_ASSISTANT_MESSAGE = {
+const getInitialAssistantMessage = (isSaved: boolean) => ({
   sender: 'assistant' as const,
-  text: "Hello! I'm your AeroDAG Trip Assistant. Your saved journey is ready. How can I help with dining, day pacing, or packing questions?"
-};
+  text: isSaved
+    ? "Hello! I'm your AeroDAG Trip Assistant. Your saved plan is ready. How can I help with dining, day pacing, or budget questions?"
+    : "Hello! I'm your AeroDAG Trip Assistant. Your booked trip is ready. How can I help with dining, day pacing, or packing questions?"
+});
 
 export const MyTripsView: React.FC<MyTripsViewProps> = ({
   confirmedTrips,
@@ -40,7 +45,10 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
   isLoading = false,
   loadError = null,
   onRetry,
-  initialTab
+  initialTab,
+  onContinuePlanning,
+  onBookSavedPlan,
+  onDeleteSavedPlan
 }) => {
   const isSavedPlan = (t: ConfirmedBookingRecord) => !!t.bookingId?.startsWith('draft_');
   const bookedTrips = confirmedTrips.filter((t) => !isSavedPlan(t));
@@ -63,16 +71,18 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
   const activeTrip = selectedTripIndex !== null ? visibleTrips[selectedTripIndex] ?? null : null;
   const activeIsSavedPlan = !!activeTrip && isSavedPlan(activeTrip);
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<Array<{ sender: 'user' | 'assistant'; text: string }>>([
-    DEFAULT_ASSISTANT_MESSAGE
+    getInitialAssistantMessage(activeIsSavedPlan)
   ]);
   const [isTyping, setIsTyping] = useState(false);
 
   // Load chat from localStorage whenever activeTrip changes
   useEffect(() => {
+    const defaultMsg = getInitialAssistantMessage(activeIsSavedPlan);
     if (!activeTrip?.bookingId) {
-      setChatMessages([DEFAULT_ASSISTANT_MESSAGE]);
+      setChatMessages([defaultMsg]);
       return;
     }
 
@@ -88,8 +98,8 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
     } catch {
       // ignore localStorage errors
     }
-    setChatMessages([DEFAULT_ASSISTANT_MESSAGE]);
-  }, [activeTrip?.bookingId]);
+    setChatMessages([defaultMsg]);
+  }, [activeTrip?.bookingId, activeIsSavedPlan]);
 
   const handleSendMessage = (textToSend?: string) => {
     const q = textToSend || chatInput;
@@ -127,10 +137,13 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
         // 2. Budget questions: answer directly from trip data
         const targetBudget = activeTrip?.budgetTotalINR || 60000;
         const totalPaid = activeTrip?.totalPaidINR || 0;
-        const remaining = activeTrip?.remainingBudgetINR !== undefined
-          ? activeTrip.remainingBudgetINR
-          : Math.max(0, targetBudget - totalPaid);
-        reply = `You have ₹${remaining.toLocaleString('en-IN')} remaining from your ₹${targetBudget.toLocaleString('en-IN')} target budget (Allocated plan total: ₹${totalPaid.toLocaleString('en-IN')}).`;
+        if (totalPaid > targetBudget) {
+          const overAmt = totalPaid - targetBudget;
+          reply = `Your trip is ₹${overAmt.toLocaleString('en-IN')} over your ₹${targetBudget.toLocaleString('en-IN')} target budget (Allocated plan total: ₹${totalPaid.toLocaleString('en-IN')}).`;
+        } else {
+          const remaining = targetBudget - totalPaid;
+          reply = `You have ₹${remaining.toLocaleString('en-IN')} remaining from your ₹${targetBudget.toLocaleString('en-IN')} target budget (Allocated plan total: ₹${totalPaid.toLocaleString('en-IN')}).`;
+        }
       } else if (lower.includes('food') || lower.includes('dinner') || lower.includes('restaurant')) {
         const dest = (activeTrip?.destination || '').toLowerCase();
         if (dest.includes('coorg')) {
@@ -362,10 +375,17 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                   {trip.bookingId?.startsWith('draft_') && <span className="text-xs font-medium text-[#55625E] mr-1">Est.</span>}
                   ₹{trip.totalPaidINR.toLocaleString('en-IN')}
                 </div>
-                <span className="text-xs font-semibold text-[#0E6B59] hover:underline flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedTripIndex(idx);
+                  }}
+                  className="text-xs font-semibold text-[#0E6B59] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+                >
                   <span>{isSelected ? 'Viewing' : 'Open trip'}</span>
                   <ArrowRight className="h-3 w-3" />
-                </span>
+                </button>
               </div>
             </div>
           );
@@ -465,6 +485,102 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                 ₹{activeTrip.totalPaidINR.toLocaleString('en-IN')}
               </span>
             </div>
+
+            {/* Saved Plan Action Buttons */}
+            {activeIsSavedPlan && (
+              <div className="pt-3 border-t border-[#E2E6E1] flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  id="saved-plan-continue-btn"
+                  onClick={() => onContinuePlanning?.(activeTrip)}
+                  className="btn-primary text-xs py-2 px-3.5 min-h-[38px] flex items-center gap-1.5 shadow-xs"
+                >
+                  <span>Continue planning</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  id="saved-plan-book-btn"
+                  onClick={() => onBookSavedPlan?.(activeTrip)}
+                  className="btn-secondary text-xs py-2 px-3.5 min-h-[38px] font-bold text-[#0E6B59]"
+                >
+                  <span>Book</span>
+                </button>
+                {deleteConfirmId === activeTrip.bookingId ? (
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <span className="text-xs text-[#DC2626] font-medium">Delete this saved plan?</span>
+                    <button
+                      type="button"
+                      id="saved-plan-confirm-delete-btn"
+                      onClick={async () => {
+                        await onDeleteSavedPlan?.(activeTrip.bookingId);
+                        setDeleteConfirmId(null);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#DC2626] text-white hover:bg-[#B91C1C] cursor-pointer"
+                    >
+                      Yes, delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirmId(null)}
+                      className="px-2 py-1.5 rounded-lg text-xs text-[#55625E] hover:text-[#15201D] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    id="saved-plan-delete-btn"
+                    onClick={() => setDeleteConfirmId(activeTrip.bookingId)}
+                    className="btn-ghost text-xs py-2 px-3 min-h-[38px] text-[#DC2626] hover:bg-red-50 ml-auto cursor-pointer"
+                  >
+                    <span>Delete</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Day-by-Day Itinerary in Details Panel */}
+            {activeTrip.itinerary && activeTrip.itinerary.length > 0 && (
+              <div className="space-y-3 pt-4 border-t border-[#E2E6E1]">
+                <h4 className="text-sm font-bold text-[#15201D] font-heading">
+                  Day-by-Day Itinerary ({activeTrip.itinerary.length} days)
+                </h4>
+                <div className="space-y-2.5">
+                  {activeTrip.itinerary.map((dayItem) => (
+                    <div key={dayItem.day} className="p-3.5 rounded-xl bg-[#F5F6F3] border border-[#E2E6E1] space-y-1.5 text-xs text-left">
+                      <div className="font-bold text-[#15201D] flex items-center justify-between">
+                        <span>Day {dayItem.day} · {dayItem.title}</span>
+                        {dayItem.estimatedCostINR ? (
+                          <span className="text-[11px] font-semibold text-[#0E6B59] bg-[#E3F1EC] px-2 py-0.5 rounded-full">
+                            ₹{dayItem.estimatedCostINR.toLocaleString('en-IN')}
+                          </span>
+                        ) : null}
+                      </div>
+                      {dayItem.theme && (
+                        <div className="text-[11px] text-[#55625E] font-medium">{dayItem.theme}</div>
+                      )}
+                      {dayItem.morning && (
+                        <div className="text-[#55625E]">
+                          <strong className="text-[#15201D]">Morning:</strong> {dayItem.morning}
+                        </div>
+                      )}
+                      {dayItem.afternoon && (
+                        <div className="text-[#55625E]">
+                          <strong className="text-[#15201D]">Afternoon:</strong> {dayItem.afternoon}
+                        </div>
+                      )}
+                      {dayItem.evening && (
+                        <div className="text-[#55625E]">
+                          <strong className="text-[#15201D]">Evening:</strong> {dayItem.evening}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Assistant Side Panel (5 cols) */}
@@ -472,7 +588,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
             <div className="flex items-center gap-2 pb-2 border-b border-[#E2E6E1]">
               <Sparkles className="h-4 w-4 text-[#0E6B59]" />
               <h3 className="text-sm font-bold text-[#15201D] font-heading">
-                Post-Booking Assistant
+                Trip assistant
               </h3>
             </div>
 

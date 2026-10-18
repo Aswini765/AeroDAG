@@ -1,7 +1,8 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Check, Sparkles, Building2, Plane, Train, Car, ArrowRight } from 'lucide-react';
 import { TripPlan, TripPreferences } from '../../../types/travelBooking';
 import { PlanTierOption, generatePlanOptions } from '../../../services/planOptionsGenerator';
+import { computeFullTripCost } from '../../../services/fullTripCostHelper';
 
 interface PlanOptionsSelectorProps {
   currentPlan: TripPlan;
@@ -29,6 +30,31 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
 
   const basePlan = baseRef.current;
   const options = useMemo(() => generatePlanOptions(basePlan, preferences), [basePlan, preferences]);
+
+  const targetBudget = preferences?.budgetTotalINR || basePlan.budget?.targetINR || 60000;
+  const fullCost = useMemo(() => computeFullTripCost(basePlan, preferences), [basePlan, preferences]);
+  const isOverBudget = fullCost.budgetStatus === 'over';
+
+  const bestFitOption = useMemo(() => {
+    if (!isOverBudget) return null;
+    const fitting = options.filter((o) => o.totalCostINR <= targetBudget);
+    if (fitting.length > 0) {
+      return [...fitting].sort((a, b) => a.totalCostINR - b.totalCostINR)[0];
+    }
+    return options.find((o) => o.id === 'budget') || options[0];
+  }, [isOverBudget, options, targetBudget]);
+
+  const hasAutoSelectedRef = useRef(false);
+  useEffect(() => {
+    if (isOverBudget && bestFitOption && !hasAutoSelectedRef.current) {
+      hasAutoSelectedRef.current = true;
+      setSelectedTier(bestFitOption.id);
+      if (bestFitOption.plan !== currentPlan) {
+        emittedRef.current = bestFitOption.plan;
+        onSelectOptionPlan(bestFitOption.plan);
+      }
+    }
+  }, [isOverBudget, bestFitOption, currentPlan, onSelectOptionPlan]);
 
   const handleSelect = (option: PlanTierOption) => {
     setSelectedTier(option.id);
@@ -63,7 +89,7 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
           </p>
         </div>
         <div className="text-[11px] font-semibold text-[#0E6B59] bg-[#E3F1EC] px-2.5 py-1 rounded-full self-start sm:self-auto">
-          {options.length === 2 ? 'Only 2 options fit your budget' : '3 Real Options'}
+          {options.length === 2 ? '2 Real Options' : '3 Real Options'}
         </div>
       </div>
 
@@ -90,13 +116,15 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
                     {opt.tier}
                   </span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    opt.id === 'balanced'
+                    isOverBudget && opt.id === bestFitOption?.id
+                      ? 'bg-[#E3F1EC] text-[#0A5546] ring-1 ring-[#0E6B59]'
+                      : opt.id === 'balanced'
                       ? 'bg-[#0E6B59] text-white'
                       : opt.id === 'budget'
                       ? 'bg-[#E3F1EC] text-[#0A5546]'
                       : 'bg-[#FCEFD9] text-[#8A4307]'
                   }`}>
-                    {opt.badge}
+                    {isOverBudget && opt.id === bestFitOption?.id ? 'Fits your budget' : opt.badge}
                   </span>
                 </div>
                 <div className="text-base font-extrabold text-[#15201D]">

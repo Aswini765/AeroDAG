@@ -195,10 +195,6 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
                   <div className="font-bold text-[#15201D]">3. Daily Road Transit Limit (&lt;5 Hours)</div>
                   <div className="text-[#55625E]">Total daily road transit across all excursion stops cannot exceed 5 hours to prevent traveller fatigue.</div>
                 </div>
-                <div className="card-consumer p-3 space-y-1">
-                  <div className="font-bold text-[#15201D]">4. Domestic Regulatory Scope Filtering</div>
-                  <div className="text-[#55625E]">Domestic Indian routes automatically return 'not_applicable' for international visa and layover checks.</div>
-                </div>
               </div>
             </div>
           )}

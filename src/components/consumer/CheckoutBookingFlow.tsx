@@ -12,7 +12,7 @@ import {
   FlightItem,
   HotelItem,
   TransferItem,
-  VisaDetails,
+  TripPlan,
   TripPreferences,
   Passenger,
   BookingState,
@@ -25,6 +25,7 @@ import {
   generateSandboxBookingId,
   deriveDestinationCode
 } from '../../services/tripSummaryHelper';
+import { computeFullTripCost } from '../../services/fullTripCostHelper';
 import { SourceTag } from './SourceTag';
 
 export interface TravellerFormItem {
@@ -41,10 +42,10 @@ export interface TravellerFormItem {
 
 interface CheckoutBookingFlowProps {
   preferences: TripPreferences;
+  tripPlan?: TripPlan | null;
   selectedFlight?: FlightItem | null;
   selectedHotel?: HotelItem | null;
   selectedTransfer?: TransferItem | null;
-  visaDetails?: VisaDetails | null;
   totalCostINR?: number;
   totalCostUSD?: number;
   currency: Currency;
@@ -56,25 +57,62 @@ interface CheckoutBookingFlowProps {
 
 export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
   preferences,
+  tripPlan,
   selectedFlight,
   selectedHotel,
   selectedTransfer,
-  visaDetails,
   totalCostINR,
   currency,
   onBookingSuccess,
   onBackToTrip,
   tripSummary: propSummary
 }) => {
-  // Authoritative Trip Summary (Single Source of Truth)
+  // Authoritative full trip cost from fullTripCostHelper (Single source of truth)
+  const fullCost = tripPlan
+    ? computeFullTripCost(tripPlan, preferences)
+    : computeFullTripCost({
+        id: 'plan-checkout',
+        title: 'Trip Plan',
+        destination: preferences.destination,
+        origin: preferences.origin,
+        dates: preferences.targetDates,
+        durationDays: preferences.durationDays,
+        flight: selectedFlight || null,
+        hotel: selectedHotel || null,
+        selectedTransfer: selectedTransfer || null,
+        transfer: selectedTransfer || null,
+        travellers: {
+          total: preferences.partySize || 2,
+          adults: preferences.adultsCount || 2,
+          children: preferences.childrenCount || 0,
+          seniors: 0,
+          childAges: preferences.childrenAges || []
+        },
+        budget: {
+          targetINR: preferences.budgetTotalINR || 60000,
+          flightsCostINR: (selectedFlight?.totalPriceINR || (selectedFlight?.pricePerPersonINR ? selectedFlight.pricePerPersonINR * (preferences.partySize || 2) : 0)),
+          hotelCostINR: selectedHotel ? (selectedHotel.totalPriceINR || (selectedHotel.pricePerNightINR * Math.max(1, preferences.durationDays - 1))) : 0,
+          transportCostINR: selectedTransfer?.priceINR || 0,
+          diningEstimateINR: 0,
+          foodCostINR: 0,
+          activitiesCostINR: 0,
+          localTransportCostINR: 0,
+          bufferCostINR: 0,
+          grandTotalINR: 0,
+          remainingBudgetINR: 0,
+          overBudgetAmountINR: 0,
+          isOverBudget: false
+        }
+      } as any, preferences);
+
+  // Authoritative Trip Summary (for passenger count and travel metadata)
   const summary =
     propSummary ||
     getTripSummary({
       preferences,
       flight: selectedFlight,
       hotel: selectedHotel,
-      transfer: selectedTransfer,
-      visa: visaDetails
+      transfer: selectedTransfer
     });
 
   // Dynamic Passenger Form State derived strictly from summary / preferences
@@ -165,7 +203,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
     );
   };
 
-  const finalTotalINR = summary?.totalINR ?? totalCostINR ?? 0;
+  const finalTotalINR = fullCost.totalWithBufferINR || summary?.totalINR || totalCostINR || 0;
   const isSubmittingRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentStep, setPaymentStep] = useState<number>(0);
@@ -176,7 +214,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
     setIsSubmitting(true);
     setPaymentStep(1);
 
-    // Timed step feedback: Nani Srinivas usability fix
+    // Timed step feedback: Usability enhancement
     setTimeout(() => {
       setPaymentStep(2);
     }, 400);
@@ -418,19 +456,39 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
 
             {/* Line items identical to plan */}
             <div className="space-y-2.5">
-              {summary?.lineItems.map((item: any) => (
-                <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
+              {fullCost.lines.map((item: any) => {
+                const itemSource = item.isEstimate ? 'estimate' : 'sample';
+                return (
+                  <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
+                    <div className="truncate text-[#55625E]">
+                      <span className="font-semibold text-[#15201D]">{item.name}</span>
+                      {item.subtitle && <span className="text-[11px] text-[#55625E] block truncate">{item.subtitle}</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="font-bold text-[#15201D]">
+                        ₹{item.amountINR.toLocaleString('en-IN')}
+                      </span>
+                      <SourceTag kind={item.source || itemSource} label={item.sourceLabel || (item.isEstimate ? 'AI estimate' : 'Selected')} />
+                    </div>
+                  </div>
+                );
+              })}
+              {fullCost.bufferAmountINR > 0 && (
+                <div className="flex items-center justify-between gap-2 text-xs">
                   <div className="truncate text-[#55625E]">
-                    <span className="font-semibold text-[#15201D]">{item.title}</span>
+                    <span className="font-semibold text-[#15201D]">{fullCost.bufferPercent}% Buffer for surprises</span>
+                    <span className="text-[11px] text-[#55625E] block truncate">Reserved for unexpected delays and price changes</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="font-bold text-[#15201D]">
-                      ₹{item.amountINR.toLocaleString('en-IN')}
+                      ₹{fullCost.bufferAmountINR.toLocaleString('en-IN')}
                     </span>
-                    <SourceTag kind={item.source} label={item.sourceLabel || item.source} />
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F5EFE6] text-[#8A4307] border border-[#8A4307]/20">
+                      Reserved
+                    </span>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
 
             {/* Total */}
@@ -479,7 +537,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
         </div>
       </div>
 
-      {/* Staged Payment Loading & Confirmation Modal (Nani Srinivas feedback) */}
+      {/* Staged Payment Loading & Confirmation Modal */}
       {isSubmitting && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#15201D]/70 backdrop-blur-sm animate-fade-in"

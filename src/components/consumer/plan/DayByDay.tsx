@@ -65,15 +65,19 @@ export const DayByDay: React.FC<DayByDayProps> = ({ itinerary, onAdjustDay }) =>
 
       {/* Day Title & Theme */}
       <div className="space-y-1">
-        <div className="text-xs font-bold uppercase tracking-wider text-[#0E6B59]">
-          Day {currentDay.day} · {currentDay.dateStr || `Day ${currentDay.day}`}
-        </div>
         <h3 className="text-base font-bold text-[#15201D] font-heading">
-          {currentDay.title}
+          Day {currentDay.day} · {currentDay.title}
         </h3>
-        <p className="text-xs text-[#55625E]">
-          {currentDay.theme}
-        </p>
+        {currentDay.dateStr && !/^day\s*\d+$/i.test(currentDay.dateStr.trim()) && (
+          <div className="text-xs font-semibold text-[#0E6B59]">
+            {currentDay.dateStr}
+          </div>
+        )}
+        {currentDay.theme && (
+          <p className="text-xs text-[#55625E]">
+            {currentDay.theme}
+          </p>
+        )}
       </div>
 
       {/* Timeline List: (Time · What · Note with drive time) */}

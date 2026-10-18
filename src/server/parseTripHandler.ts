@@ -51,16 +51,11 @@ const tripSchema = z.object({
 // Destinations the catalog can actually plan, mapped to the app's canonical names.
 // (Origins like Bengaluru/Delhi are NOT destinations.)
 const SUPPORTED_DESTINATIONS: Array<{ canonical: string; aliases: string[] }> = [
-  { canonical: 'Goa, India', aliases: ['goa', 'panaji', 'panjim', 'calangute', 'baga', 'colva', 'palolem'] },
-  { canonical: 'Coorg, Karnataka', aliases: ['coorg', 'kodagu', 'madikeri'] },
-  { canonical: 'Kerala, India', aliases: ['kerala', 'munnar', 'alleppey', 'alappuzha', 'kumarakom', 'thekkady', 'wayanad', 'varkala', 'kovalam', 'fort kochi'] },
-  { canonical: 'Mysuru, Karnataka', aliases: ['mysuru', 'mysore'] },
-  { canonical: 'Araku Valley, Andhra Pradesh', aliases: ['araku', 'araku valley', 'borra caves'] },
-  { canonical: 'Himachal, India', aliases: ['himachal', 'manali', 'kullu', 'spiti', 'dharamshala'] },
-  { canonical: 'Rajasthan, India', aliases: ['rajasthan', 'jaipur', 'udaipur', 'jodhpur', 'jaisalmer'] },
-  { canonical: 'Vietnam', aliases: ['vietnam', 'hanoi', 'da nang', 'danang', 'ha long', 'hoi an'] },
-  { canonical: 'Singapore', aliases: ['singapore', 'sentosa'] },
-  { canonical: 'Thailand', aliases: ['thailand', 'bangkok', 'phuket', 'krabi', 'chiang mai'] }
+  { canonical: 'Goa', aliases: ['goa', 'panaji', 'panjim', 'calangute', 'baga', 'colva', 'palolem'] },
+  { canonical: 'Coorg', aliases: ['coorg', 'kodagu', 'madikeri'] },
+  { canonical: 'Kerala', aliases: ['kerala', 'munnar', 'alleppey', 'alappuzha', 'kumarakom', 'thekkady', 'wayanad', 'varkala', 'kovalam', 'fort kochi'] },
+  { canonical: 'Mysuru', aliases: ['mysuru', 'mysore'] },
+  { canonical: 'Araku Valley', aliases: ['araku', 'araku valley', 'borra caves'] }
 ];
 
 export function matchSupportedDestination(destination: string): string | null {

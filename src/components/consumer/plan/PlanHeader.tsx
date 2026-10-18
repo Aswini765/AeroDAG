@@ -23,8 +23,8 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
   const state = saveState || (isSaved ? 'saved' : 'idle');
   const saveLabel =
     state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : state === 'error' ? "Couldn't save · Retry" : 'Save trip';
-  const areaName = plan.hotelZone || plan.hotel.area || plan.destination;
-  const cleanCity = (plan.destination || 'Goa').replace(/,.*$/, '').trim();
+  const cleanCity = (plan.destination || 'Goa').replace(/,\s*India$/i, '').split(',')[0].trim();
+  const areaName = plan.hotelZone || plan.hotel?.area || '';
 
   // B7: Trusted booking URLs (city only, zero PII)
   const isTrainTrip = Boolean(plan.selectedTrain && !plan.flight);
@@ -77,12 +77,18 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pt-1">
         <div className="space-y-1.5 flex-1">
           <div className="text-xs font-semibold uppercase tracking-wider text-[#0E6B59]">
-            Draft plan · domestic
+            Draft plan
           </div>
 
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-[#15201D] font-heading">
-            {plan.durationDays} days in {areaName}
+            {plan.durationDays} days in {cleanCity}
           </h1>
+
+          {areaName && areaName.toLowerCase() !== cleanCity.toLowerCase() && (
+            <div className="text-xs sm:text-sm font-semibold text-[#0E6B59]">
+              Staying in {areaName}
+            </div>
+          )}
 
           <div className="text-xs sm:text-sm text-[#55625E] flex flex-wrap items-center gap-2">
             <span>{plan.dates}</span>
