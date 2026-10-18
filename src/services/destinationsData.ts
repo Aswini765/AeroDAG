@@ -646,6 +646,32 @@ export const MOCK_DINING_COORG: DiningItem[] = [
     isFamilyFriendly: true,
     recommendedDishes: ['Koli Curry with Nooputtu', 'Ghee Roast Dosa', 'Cardamom Tea'],
     imageUrl: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=600&q=80'
+  },
+  {
+    id: 'din-coorg-3',
+    name: 'Taste of Coorg',
+    cuisine: 'Authentic Kodava Specialties',
+    area: 'Stuart Hill, Madikeri',
+    priceForTwoINR: 700,
+    rating: 4.5,
+    isPureVeg: false,
+    isJainFriendly: false,
+    isFamilyFriendly: true,
+    recommendedDishes: ['Kadambuttu & Coorg Spiced Curry', 'Akki Rotti', 'Fresh Passion Fruit Juice'],
+    imageUrl: ''
+  },
+  {
+    id: 'din-coorg-4',
+    name: 'Udupi The Veg Restaurant',
+    cuisine: 'Pure Vegetarian South Indian & Thalis',
+    area: 'College Road, Madikeri',
+    priceForTwoINR: 500,
+    rating: 4.5,
+    isPureVeg: true,
+    isJainFriendly: true,
+    isFamilyFriendly: true,
+    recommendedDishes: ['South Indian Special Thali', 'Bisi Bele Bath', 'Filter Coffee'],
+    imageUrl: ''
   }
 ];
 
@@ -760,6 +786,61 @@ export const MOCK_TRANSFERS_KERALA: TransferItem[] = [
     dropLocation: 'Munnar & Alleppey Resorts',
     source: 'sample',
     sourceLabel: 'Sample data'
+  }
+];
+
+export const MOCK_DINING_KERALA: DiningItem[] = [
+  {
+    id: 'din-ker-1',
+    name: 'Saravana Bhavan Munnar',
+    cuisine: 'Pure Vegetarian South Indian & Kerala Sadya',
+    area: 'Post Office Junction, Munnar',
+    priceForTwoINR: 500,
+    rating: 4.6,
+    isPureVeg: true,
+    isJainFriendly: true,
+    isFamilyFriendly: true,
+    recommendedDishes: ['Kerala Veg Sadya on Banana Leaf', 'Crispy Ghee Roast Dosa', 'Appam with Coconut Vegetable Stew'],
+    imageUrl: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=600&q=80'
+  },
+  {
+    id: 'din-ker-2',
+    name: 'Rapsy Restaurant Munnar',
+    cuisine: 'Authentic Kerala Local & Continental Comforts',
+    area: 'Main Bazaar, Munnar',
+    priceForTwoINR: 650,
+    rating: 4.5,
+    isPureVeg: false,
+    isJainFriendly: false,
+    isFamilyFriendly: true,
+    recommendedDishes: ['Malabar Parotta with Veg Kurma', 'Spanish Omelette', 'Fresh Cardamom Spiced Tea'],
+    imageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80'
+  },
+  {
+    id: 'din-ker-3',
+    name: 'Hotel Gurubhavan Munnar',
+    cuisine: 'Traditional Kerala Spiced Kitchen & Homestyle Curries',
+    area: 'Tea County Road, Munnar',
+    priceForTwoINR: 750,
+    rating: 4.6,
+    isPureVeg: false,
+    isJainFriendly: false,
+    isFamilyFriendly: true,
+    recommendedDishes: ['Homestyle Kerala Thali', 'Fish Pollichathu wrapped in banana leaf', 'Appam & Vegetable Stew'],
+    imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'
+  },
+  {
+    id: 'din-ker-4',
+    name: 'Copper Castle Panorama Bistro',
+    cuisine: 'Scenic Mountain View Dining & Kerala Grills',
+    area: 'Kannan Devan Hills, Munnar',
+    priceForTwoINR: 1200,
+    rating: 4.7,
+    isPureVeg: false,
+    isJainFriendly: false,
+    isFamilyFriendly: true,
+    recommendedDishes: ['Claypot Kerala Biryani', 'Grilled Mountain Fish with Herbs', 'Fresh Hill Berry Crumble'],
+    imageUrl: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&w=600&q=80'
   }
 ];
 
@@ -893,6 +974,61 @@ export const MOCK_TRAINS_MYSURU: TrainItem[] = [
     isVandeBharatOrRajdhani: true,
     source: 'sample',
     sourceLabel: 'Sample data'
+  }
+];
+
+export const MOCK_DINING_MYSURU: DiningItem[] = [
+  {
+    id: 'din-mys-1',
+    name: 'Original Hotel Vinayaka Mylari',
+    cuisine: 'Legendary Mysuru Heritage Dosa & Filter Coffee',
+    area: 'Nazarbad, Mysuru',
+    priceForTwoINR: 350,
+    rating: 4.8,
+    isPureVeg: true,
+    isJainFriendly: true,
+    isFamilyFriendly: true,
+    recommendedDishes: ['Original Mylari Butter Masala Dosa', 'Steamed Idli with Fresh Coconut Chutney', 'Traditional Mysuru Filter Coffee'],
+    imageUrl: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&w=600&q=80'
+  },
+  {
+    id: 'din-mys-2',
+    name: 'Hotel RRR Mysuru',
+    cuisine: 'Authentic Karnataka & Andhra Banana Leaf Dining',
+    area: 'Gandhi Square, Mysuru',
+    priceForTwoINR: 650,
+    rating: 4.6,
+    isPureVeg: false,
+    isJainFriendly: false,
+    isFamilyFriendly: true,
+    recommendedDishes: ['RRR Special Spiced Biryani', 'Guntur Paneer', 'Traditional Meals on Plantain Leaf'],
+    imageUrl: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=600&q=80'
+  },
+  {
+    id: 'din-mys-3',
+    name: 'Om Shanti Pure Veg Restaurant',
+    cuisine: 'Pure Vegetarian South Indian & Heritage Karnataka Thali',
+    area: 'Central Mysuru',
+    priceForTwoINR: 550,
+    rating: 4.5,
+    isPureVeg: true,
+    isJainFriendly: true,
+    isFamilyFriendly: true,
+    recommendedDishes: ['Mysore Special Maharaja Veg Thali', 'Bisi Bele Bath with Boondi', 'Melt-in-mouth Mysore Pak'],
+    imageUrl: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&w=600&q=80'
+  },
+  {
+    id: 'din-mys-4',
+    name: 'Gufha Restaurant Mysuru',
+    cuisine: 'Themed Cave Dining & Regional Royal Mughlai',
+    area: 'Nazarbad, Mysuru',
+    priceForTwoINR: 1100,
+    rating: 4.5,
+    isPureVeg: false,
+    isJainFriendly: false,
+    isFamilyFriendly: true,
+    recommendedDishes: ['Mysore Royal Paneer Tikka', 'Tandoori Roti with Dal Tadka', 'Saffron Kulfi Falooda'],
+    imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'
   }
 ];
 

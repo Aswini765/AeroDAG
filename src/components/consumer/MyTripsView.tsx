@@ -152,8 +152,10 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
           reply = `Recommended dinner in Kerala: Saravana Bhavan for traditional vegetarian sadhya, or Rapsy Restaurant in Munnar market for local malabar dishes.`;
         } else if (dest.includes('mysuru')) {
           reply = `Recommended dinner in Mysuru: Mylari Hotel in Nazarbad for legendary butter masala dose, or Gufha Restaurant for multi-cuisine dining.`;
-        } else {
+        } else if (dest.includes('goa')) {
           reply = "Recommended dinner: Martin's Corner in Betalbatim (12 min drive from Heritage Village Resort). Known for fresh coastal Goan curries and family seating.";
+        } else {
+          reply = `Recommended dining in ${activeTrip?.destination || 'your destination'}: Check your daily itinerary cards for hand-picked regional restaurants and pure-veg options.`;
         }
       } else if (lower.includes('pace') || lower.includes('less tiring') || lower.includes('relax')) {
         reply = "Your itinerary already schedules 2-hour afternoon rest downtime at the accommodation so your family can recharge before evening sightseeing.";
@@ -551,7 +553,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                   {activeTrip.itinerary.map((dayItem) => (
                     <div key={dayItem.day} className="p-3.5 rounded-xl bg-[#F5F6F3] border border-[#E2E6E1] space-y-1.5 text-xs text-left">
                       <div className="font-bold text-[#15201D] flex items-center justify-between">
-                        <span>Day {dayItem.day} · {dayItem.title}</span>
+                        <span>Day {dayItem.day} · {(dayItem.title || '').replace(/^Day\s*\d+\s*[:·\-–—]\s*/i, '').trim()}</span>
                         {dayItem.estimatedCostINR ? (
                           <span className="text-[11px] font-semibold text-[#0E6B59] bg-[#E3F1EC] px-2 py-0.5 rounded-full">
                             ₹{dayItem.estimatedCostINR.toLocaleString('en-IN')}

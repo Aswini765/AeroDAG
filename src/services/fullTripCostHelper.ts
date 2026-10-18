@@ -81,9 +81,16 @@ export function computeFullTripCost(
 
   // 2. Travel to destination (flight / train + transfer counted once)
   const transferItem = (plan as any).selectedTransfer || plan.transfer;
-  const transferCost = (transferItem && transferItem.priceINR && transferItem.priceINR > 0)
+  let transferCost = (transferItem && typeof transferItem.priceINR === 'number' && transferItem.priceINR > 0)
     ? transferItem.priceINR
-    : 0;
+    : ((plan.budget?.transportCostINR && plan.budget.transportCostINR > 0)
+      ? plan.budget.transportCostINR
+      : 0);
+
+  // If a transfer is selected or required for flight/train transit but transferCost is 0, add standard transfer
+  if (transferCost <= 0 && (transferItem || plan.flight || plan.selectedTrain)) {
+    transferCost = (plan.scope === 'international') ? 3200 : 1800;
+  }
 
   let travelCost = 0;
   let travelSubtitle = 'Direct transport';
@@ -92,20 +99,23 @@ export function computeFullTripCost(
     travelCost = flightCost + transferCost;
     const isRound = plan.flight.isRoundTrip !== false;
     travelSubtitle = transferCost > 0
-      ? `${plan.flight.airline} (${isRound ? 'Return' : 'One-way'}) + ${transferItem?.vehicleType || 'Transfer'} · ${totalTravellers} traveller${totalTravellers > 1 ? 's' : ''}`
+      ? `${plan.flight.airline} (${isRound ? 'Return' : 'One-way'}) + ${transferItem?.vehicleType || 'Private AC Sedan'} · ${totalTravellers} traveller${totalTravellers > 1 ? 's' : ''}`
       : `${plan.flight.airline} (${isRound ? 'Return' : 'One-way'}) · ${totalTravellers} traveller${totalTravellers > 1 ? 's' : ''}`;
   } else if (plan.selectedTrain) {
     const trainCost = plan.selectedTrain.totalPriceINR || (plan.selectedTrain.pricePerPersonINR * totalTravellers) || 0;
     travelCost = trainCost + transferCost;
     travelSubtitle = transferCost > 0
-      ? `${plan.selectedTrain.trainName} + ${transferItem?.vehicleType || 'Transfer'} · ${totalTravellers} traveller${totalTravellers > 1 ? 's' : ''}`
+      ? `${plan.selectedTrain.trainName} + ${transferItem?.vehicleType || 'Private AC Sedan'} · ${totalTravellers} traveller${totalTravellers > 1 ? 's' : ''}`
       : `${plan.selectedTrain.trainName} · ${totalTravellers} traveller${totalTravellers > 1 ? 's' : ''}`;
   } else if (plan.transfer) {
-    travelCost = plan.transfer.priceINR || 0;
+    travelCost = plan.transfer.priceINR || transferCost || 0;
     travelSubtitle = `${plan.transfer.vehicleType || 'Private Cab Transfer'}`;
   } else if (plan.budget?.flightsCostINR) {
     travelCost = plan.budget.flightsCostINR + transferCost;
     travelSubtitle = `Transit to destination · ${totalTravellers} travellers`;
+  } else if (transferCost > 0) {
+    travelCost = transferCost;
+    travelSubtitle = `${transferItem?.vehicleType || 'Private Cab Transfer'}`;
   }
   const travelLine: CostLineItem = {
     id: 'cost-travel',

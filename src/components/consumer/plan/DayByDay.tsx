@@ -66,7 +66,7 @@ export const DayByDay: React.FC<DayByDayProps> = ({ itinerary, onAdjustDay }) =>
       {/* Day Title & Theme */}
       <div className="space-y-1">
         <h3 className="text-base font-bold text-[#15201D] font-heading">
-          Day {currentDay.day} · {currentDay.title}
+          Day {currentDay.day} · {(currentDay.title || '').replace(/^Day\s*\d+\s*[:·\-–—]\s*/i, '').trim()}
         </h3>
         {currentDay.dateStr && !/^day\s*\d+$/i.test(currentDay.dateStr.trim()) && (
           <div className="text-xs font-semibold text-[#0E6B59]">

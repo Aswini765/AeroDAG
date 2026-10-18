@@ -286,6 +286,8 @@ export interface ConfirmedBookingRecord {
   itinerary: ActivityDayItem[];
   visa?: VisaDetails | null;
   scope?: TripScope;
+  savedPlan?: TripPlan;
+  savedPreferences?: TripPreferences;
 }
 
 export type ActivityCategory =

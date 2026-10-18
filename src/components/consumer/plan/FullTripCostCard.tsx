@@ -126,7 +126,7 @@ export const FullTripCostCard: React.FC<FullTripCostCardProps> = ({
                   <span>{item.name}</span>
                   {item.isEstimate && (
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#E4EDF8] text-[#1E4F8A]">
-                      Estimate
+                      {(plan as any).isAiEstimatedDestination ? 'AI estimate' : 'Estimate'}
                     </span>
                   )}
                 </div>

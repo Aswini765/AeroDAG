@@ -119,6 +119,38 @@ export class SupabaseTripStore implements ITripStore {
     const totalINR = trip.totalPaidINR || 0;
     const sanitized = sanitizePlanForStorage(trip as ConfirmedBookingRecord);
 
+    if (trip.bookingId) {
+      const { data: existing } = await supabase
+        .from('trips')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'draft')
+        .filter('plan->>bookingId', 'eq', trip.bookingId)
+        .maybeSingle();
+
+      if (existing) {
+        const { data, error } = await supabase
+          .from('trips')
+          .update({
+            destination,
+            origin: trip.origin || null,
+            adults: trip.passengers?.filter(p => p.type !== 'CHILD').length || 1,
+            children_ages: trip.passengers?.filter(p => p.type === 'CHILD').map(p => p.age || 0) || [],
+            budget_inr: totalINR,
+            total_inr: totalINR,
+            plan: sanitized,
+            schema_version: 1
+          })
+          .eq('id', existing.id)
+          .select()
+          .single();
+
+        if (!error && data) {
+          return validateTripPlan(data) || (sanitized as ConfirmedBookingRecord);
+        }
+      }
+    }
+
     const { data, error } = await supabase
       .from('trips')
       .insert({
@@ -394,8 +426,23 @@ export class InMemoryTripStore implements ITripStore {
   }
 
   async saveDraft(trip: Partial<ConfirmedBookingRecord>): Promise<ConfirmedBookingRecord> {
-    const id = `draft_${Date.now()}`;
     const sanitized = sanitizePlanForStorage(trip as ConfirmedBookingRecord);
+    let id = trip.bookingId;
+    if (id) {
+      for (const [key, item] of this.trips.entries()) {
+        if (key === id || item.id === id || item.plan?.bookingId === id) {
+          item.destination = trip.destination || item.destination;
+          item.plan = sanitized;
+          this.trips.set(key, item);
+          this.syncToStorage();
+          return sanitized;
+        }
+      }
+    } else {
+      id = `draft_${Date.now()}`;
+      sanitized.bookingId = id;
+    }
+
     this.trips.set(id, {
       id,
       status: 'draft',

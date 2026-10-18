@@ -642,6 +642,16 @@ import {
   MOCK_VISA_GOA,
   MOCK_ITINERARY_GOA,
   MOCK_DINING_GOA,
+  MOCK_HOTELS_COORG,
+  MOCK_TRANSFERS_COORG,
+  MOCK_DINING_COORG,
+  MOCK_HOTELS_KERALA,
+  MOCK_TRANSFERS_KERALA,
+  MOCK_DINING_KERALA,
+  MOCK_HOTELS_MYSURU,
+  MOCK_TRAINS_MYSURU,
+  MOCK_TRANSFERS_MYSURU,
+  MOCK_DINING_MYSURU,
   MOCK_FLIGHTS_JAPAN,
   MOCK_HOTELS_JAPAN,
   MOCK_TRANSFERS_JAPAN,
@@ -739,6 +749,54 @@ export function getDestinationBundle(destinationStr: string) {
       dining: MOCK_DINING_GOA,
       contingencyBuffer: defaultContingency
     };
+  } else if (/\b(coorg|kodagu|madikeri)\b/.test(lower)) {
+    return {
+      scope: 'domestic' as TripScope,
+      flight: MOCK_FLIGHTS_GOA[0],
+      flights: MOCK_FLIGHTS_GOA,
+      train: undefined,
+      trains: [],
+      hotel: MOCK_HOTELS_COORG[0],
+      hotels: MOCK_HOTELS_COORG,
+      transfer: MOCK_TRANSFERS_COORG[0],
+      transfers: MOCK_TRANSFERS_COORG,
+      visa: MOCK_VISA_GOA,
+      itinerary: [],
+      dining: MOCK_DINING_COORG,
+      contingencyBuffer: defaultContingency
+    };
+  } else if (/\b(kerala|munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad)\b/.test(lower)) {
+    return {
+      scope: 'domestic' as TripScope,
+      flight: MOCK_FLIGHTS_GOA[0],
+      flights: MOCK_FLIGHTS_GOA,
+      train: undefined,
+      trains: [],
+      hotel: MOCK_HOTELS_KERALA[0],
+      hotels: MOCK_HOTELS_KERALA,
+      transfer: MOCK_TRANSFERS_KERALA[0],
+      transfers: MOCK_TRANSFERS_KERALA,
+      visa: MOCK_VISA_GOA,
+      itinerary: [],
+      dining: MOCK_DINING_KERALA,
+      contingencyBuffer: defaultContingency
+    };
+  } else if (/\b(mysuru|mysore)\b/.test(lower)) {
+    return {
+      scope: 'domestic' as TripScope,
+      flight: MOCK_FLIGHTS_GOA[0],
+      flights: MOCK_FLIGHTS_GOA,
+      train: MOCK_TRAINS_MYSURU[0],
+      trains: MOCK_TRAINS_MYSURU,
+      hotel: MOCK_HOTELS_MYSURU[0],
+      hotels: MOCK_HOTELS_MYSURU,
+      transfer: MOCK_TRANSFERS_MYSURU[0],
+      transfers: MOCK_TRANSFERS_MYSURU,
+      visa: MOCK_VISA_GOA,
+      itinerary: [],
+      dining: MOCK_DINING_MYSURU,
+      contingencyBuffer: defaultContingency
+    };
   } else if (lower.includes('japan') || lower.includes('tokyo') || lower.includes('kyoto')) {
     return {
       scope: 'international' as TripScope,
@@ -788,15 +846,15 @@ export function getDestinationBundle(destinationStr: string) {
       scope: 'domestic' as TripScope,
       flight: MOCK_FLIGHTS_GOA[0],
       flights: MOCK_FLIGHTS_GOA,
-      train: MOCK_TRAINS_GOA[0],
-      trains: MOCK_TRAINS_GOA,
+      train: undefined,
+      trains: [],
       hotel: MOCK_HOTELS_GOA[0],
       hotels: MOCK_HOTELS_GOA,
       transfer: MOCK_TRANSFERS_GOA[0],
       transfers: MOCK_TRANSFERS_GOA,
       visa: MOCK_VISA_GOA,
-      itinerary: MOCK_ITINERARY_GOA,
-      dining: MOCK_DINING_GOA,
+      itinerary: [],
+      dining: [],
       contingencyBuffer: defaultContingency
     };
   }

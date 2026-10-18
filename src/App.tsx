@@ -78,6 +78,7 @@ export default function App() {
   // Confirmed bookings list
   const [confirmedTrips, setConfirmedTrips] = useState<ConfirmedBookingRecord[]>([]);
   const [latestConfirmedRecord, setLatestConfirmedRecord] = useState<ConfirmedBookingRecord | null>(null);
+  const [activeDraftBookingId, setActiveDraftBookingId] = useState<string | null>(null);
   const [isAiAvailable, setIsAiAvailable] = useState(false);
   // Optional "keep your trips" email card after booking (guests only)
   const [bookingContactEmail, setBookingContactEmail] = useState<string | undefined>(undefined);
@@ -647,6 +648,7 @@ export default function App() {
     ctx.fieldSources = fieldSources;
     setCurrentPrompt(promptText);
 
+    setActiveDraftBookingId(null);
     const hasDates = !!ctx.dates;
     setTripContext(ctx);
     if (hasDates) {
@@ -719,8 +721,10 @@ export default function App() {
     const fullCost = computeFullTripCost(plan, tripPreferences);
     const total = fullCost.totalWithBufferINR;
     const cleanDest = plan.destination.replace(/,\s*India$/i, '').trim();
+    const draftBookingId = activeDraftBookingId || (plan.id && !plan.id.startsWith('plan_') ? plan.id : `draft_${Date.now()}`);
+    setActiveDraftBookingId(draftBookingId);
     const draft: ConfirmedBookingRecord = {
-      bookingId: `draft_${Date.now()}`,
+      bookingId: draftBookingId,
       pnr: 'Saved plan',
       hotelVoucherId: '',
       createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
@@ -740,7 +744,9 @@ export default function App() {
       selectedTransfer: plan.transfer,
       itinerary: plan.itinerary,
       visa: null,
-      scope: plan.scope
+      scope: plan.scope,
+      savedPlan: plan,
+      savedPreferences: tripPreferences || undefined
     };
     try {
       await getTripStore(isOfflineMode).saveDraft(draft);
@@ -863,20 +869,35 @@ export default function App() {
   };
 
   const handleContinuePlanning = (trip: ConfirmedBookingRecord) => {
-    const { prefs, plan } = hydratePlanFromRecord(trip);
-    setTripPreferences(prefs);
-    setActiveTripPlan(plan);
+    setActiveDraftBookingId(trip.bookingId);
+    if (trip.savedPlan && trip.savedPreferences) {
+      setTripPreferences(trip.savedPreferences);
+      setActiveTripPlan(trip.savedPlan);
+    } else {
+      const { prefs, plan } = hydratePlanFromRecord(trip);
+      setTripPreferences(prefs);
+      setActiveTripPlan(plan);
+    }
     setCurrentStep('plan');
   };
 
   const handleBookSavedPlan = (trip: ConfirmedBookingRecord) => {
-    const { prefs, plan } = hydratePlanFromRecord(trip);
-    setTripPreferences(prefs);
-    setActiveTripPlan(plan);
+    setActiveDraftBookingId(trip.bookingId);
+    if (trip.savedPlan && trip.savedPreferences) {
+      setTripPreferences(trip.savedPreferences);
+      setActiveTripPlan(trip.savedPlan);
+    } else {
+      const { prefs, plan } = hydratePlanFromRecord(trip);
+      setTripPreferences(prefs);
+      setActiveTripPlan(plan);
+    }
     setCurrentStep('review');
   };
 
   const handleDeleteSavedPlan = async (bookingId: string) => {
+    if (activeDraftBookingId === bookingId) {
+      setActiveDraftBookingId(null);
+    }
     try {
       await getTripStore(isOfflineMode).deleteTrip(bookingId);
       await fetchTrips(isOfflineMode);
@@ -887,6 +908,7 @@ export default function App() {
 
   // Handle plan finalized from Clarify Screen
   const handlePlanReadyFromClarify = (plan: TripPlan, prefs: TripPreferences) => {
+    setActiveDraftBookingId(null);
     setActiveTripPlan(plan);
     setTripPreferences(prefs);
     setCurrentStep('plan');
@@ -1084,7 +1106,7 @@ export default function App() {
 
           <div className="flex flex-wrap items-center gap-4 text-xs">
             <a
-              href="PASTE_YOUR_GOOGLE_FORM_LINK"
+              href="YOUR_FORM_LINK"
               target="_blank"
               rel="noopener noreferrer"
               className="text-[#0E6B59] hover:underline cursor-pointer font-semibold inline-flex items-center gap-1"

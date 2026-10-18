@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import { generateJsonWithFallback } from './geminiModels';
+import { impliedPartySize } from './partySize';
 import { getModelRouter } from '../services/optimization';
 import { getTelemetryTracer, getTelemetryMetricsCollector, TraceContext } from '../services/telemetry';
 import { z } from 'zod';
@@ -81,7 +82,7 @@ export async function handleParseTrip(req: Request, res: Response) {
     // Lightweight model: reading a trip description doesn't need a big model, and it has its own free-tier quota.
     const ai = new GoogleGenAI({apiKey: apiKey.trim()});
     const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
-    const prompt = `Today is ${today} (India). Extract the fields from the user message and return JSON matching the schema. Include "<field>Source" (stated|assumed|missing) and, if stated, "<field>Quote" with the exact phrase from the message.\nFor "dates", convert relative phrases ("20th to 27th this month", "next weekend") to an exact range written like "20-27 Oct 2026" or "28 Oct - 2 Nov 2026"; the quote must still be the user's own words. Ages: "children" are under 18, "seniors" are 60 or older.\nUser: \"${userMessage}\"\nSchema: ${JSON.stringify(tripSchema.shape)}\n`;
+    const prompt = `Today is ${today} (India). Extract the fields from the user message and return JSON matching the schema. Include "<field>Source" (stated|assumed|missing) and, if stated, "<field>Quote" with the exact phrase from the message.\nFor "dates", convert relative phrases ("20th to 27th this month", "next weekend") to an exact range written like "20-27 Oct 2026" or "28 Oct - 2 Nov 2026"; the quote must still be the user's own words. Ages: "children" are under 18, "seniors" are 60 or older. The person writing is one of the travellers: "me, my wife and our son" is 2 adults + 1 child.\nUser: \"${userMessage}\"\nSchema: ${JSON.stringify(tripSchema.shape)}\n`;
     const { text: raw } = await generateJsonWithFallback(ai, prompt, [process.env.MODEL_PARSE_TRIP]);
     let parsed;
     try { parsed = JSON.parse(raw); } catch { return res.status(502).json({error:'Invalid JSON from Gemini',code:'BAD_GEMINI_RESPONSE'}); }
@@ -102,9 +103,15 @@ export async function handleParseTrip(req: Request, res: Response) {
         }
       }
     }
-    const adults = data.adults ?? 0;
+    let adults = data.adults ?? 0;
     const childrenCount = (data.children ?? []).length;
     const seniorsCount = (data.seniors ?? []).length;
+    // Never count fewer people than the message clearly names (models often forget the writer).
+    const implied = impliedPartySize(userMessage);
+    if (implied && adults + childrenCount + seniorsCount < implied.total) {
+      adults = implied.total - childrenCount - seniorsCount;
+      data.adultsSource = 'stated';
+    }
     const totalTravellers = adults + childrenCount + seniorsCount;
     // Destination must exist – otherwise unparseable
     if (!data.destination || data.destination.trim() === '') {

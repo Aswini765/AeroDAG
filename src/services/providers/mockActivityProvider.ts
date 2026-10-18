@@ -96,6 +96,48 @@ export class MockActivityProvider implements ActivityProvider {
           description: 'Panoramic sunset views across Western Ghat valleys from Raja\'s Seat.',
           timeSlot: 'Evening',
           isIncluded: true
+        },
+        {
+          id: 'act-coorg-4',
+          name: 'Namdroling Monastery (Golden Temple) & Tibetan Handicrafts',
+          category: 'Culture',
+          location: 'Bylakuppe, Coorg',
+          duration: '2.5 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 500,
+          walkingLevel: 'Low',
+          description: 'Visit the magnificent 40-foot gilded Buddha statues and explore traditional Tibetan art and craft stalls.',
+          timeSlot: 'Morning',
+          isIncluded: true
+        },
+        {
+          id: 'act-coorg-5',
+          name: 'Talacauvery & Brahmagiri Hills Viewpoint',
+          category: 'Nature',
+          location: 'Bhagamandala, Coorg',
+          duration: '3 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 700,
+          walkingLevel: 'Low',
+          description: 'Sacred birthplace of River Cauvery with breathtaking panoramic views of mist-covered Western Ghat ranges.',
+          timeSlot: 'Morning',
+          isIncluded: true
+        },
+        {
+          id: 'act-coorg-6',
+          name: 'Madikeri Fort & Heritage Museum Walk',
+          category: 'Culture',
+          location: 'Madikeri, Coorg',
+          duration: '2 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 400,
+          walkingLevel: 'Low',
+          description: 'Historical 17th-century fort palace, stone ramparts, and museum showcasing Kodava weapons and royal history.',
+          timeSlot: 'Afternoon',
+          isIncluded: true
         }
       ];
     } else if (dest.includes('kerala') || dest.includes('munnar')) {
@@ -127,6 +169,62 @@ export class MockActivityProvider implements ActivityProvider {
           description: 'Tranquil shaded boat ride along serene canal waterways with coconut water refreshments.',
           timeSlot: 'Afternoon',
           isIncluded: true
+        },
+        {
+          id: 'act-ker-3',
+          name: 'Eravikulam National Park Nilgiri Tahr Safari',
+          category: 'Nature',
+          location: 'Rajamalai, Munnar',
+          duration: '3 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 800,
+          walkingLevel: 'Low',
+          description: 'Scenic park safari bus ride through rolling mist grasslands to spot endangered Nilgiri Tahr mountain goats.',
+          timeSlot: 'Morning',
+          isIncluded: true
+        },
+        {
+          id: 'act-ker-4',
+          name: 'Mattupetty Dam & Eco Point Lake Boating',
+          category: 'Sightseeing',
+          location: 'Mattupetty, Munnar',
+          duration: '2.5 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 650,
+          walkingLevel: 'Low',
+          description: 'Serene mountain reservoir boat cruise surrounded by tea estates, eucalyptus forests, and famous natural echo phenomenon.',
+          timeSlot: 'Morning',
+          isIncluded: true
+        },
+        {
+          id: 'act-ker-5',
+          name: 'Marayoor Sandalwood Forest & Dolmens Heritage Walk',
+          category: 'Culture',
+          location: 'Marayoor, Munnar',
+          duration: '3 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 750,
+          walkingLevel: 'Low',
+          description: 'Natural aromatic sandalwood reserve and prehistoric megalithic stone dolmens with ancient rock paintings.',
+          timeSlot: 'Morning',
+          isIncluded: true
+        },
+        {
+          id: 'act-ker-6',
+          name: 'Punarjani Traditional Kathakali & Martial Arts Show',
+          category: 'Culture',
+          location: 'Pallivasal, Munnar',
+          duration: '2 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 500,
+          walkingLevel: 'Low',
+          description: 'Spellbinding performance of classical Kerala Kathakali mudras, colorful facial makeup, and ancient Kalaripayattu martial arts.',
+          timeSlot: 'Evening',
+          isIncluded: true
         }
       ];
     } else if (dest.includes('mysuru') || dest.includes('mysore')) {
@@ -156,6 +254,62 @@ export class MockActivityProvider implements ActivityProvider {
           estimatedPriceINR: 400,
           walkingLevel: 'Low',
           description: 'Panoramic city vista followed by famous melt-in-mouth Mysore Pak tasting.',
+          timeSlot: 'Afternoon',
+          isIncluded: true
+        },
+        {
+          id: 'act-mys-3',
+          name: 'Brindavan Gardens Musical Fountain & Illumination',
+          category: 'Sightseeing',
+          location: 'KRS Dam, Mysuru',
+          duration: '2.5 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 500,
+          walkingLevel: 'Low',
+          description: 'Terraced ornamental gardens and synchronized evening musical fountain illumination show along the Cauvery river.',
+          timeSlot: 'Evening',
+          isIncluded: true
+        },
+        {
+          id: 'act-mys-4',
+          name: 'St. Philomena\'s Cathedral & Artisan Silk Weaving Tour',
+          category: 'Culture',
+          location: 'Central Mysuru',
+          duration: '2 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 350,
+          walkingLevel: 'Low',
+          description: 'Magnificent Neo-Gothic twin spires cathedral followed by live demonstration of pure Mysore mulberry silk weaving.',
+          timeSlot: 'Morning',
+          isIncluded: true
+        },
+        {
+          id: 'act-mys-5',
+          name: 'Ranganathittu Bird Sanctuary Gentle Boat Safari',
+          category: 'Nature',
+          location: 'Srirangapatna, Mysuru',
+          duration: '2.5 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 600,
+          walkingLevel: 'Low',
+          description: 'Ranger-guided rowboat safari navigating river islets to observe nesting painted storks, spoonbills, and marsh mugger crocodiles.',
+          timeSlot: 'Morning',
+          isIncluded: true
+        },
+        {
+          id: 'act-mys-6',
+          name: 'Jaganmohan Palace Art Gallery & Royal Artifacts',
+          category: 'Culture',
+          location: 'Mysuru',
+          duration: '2 Hours',
+          ageSuitability: 'All Ages',
+          minAge: 0,
+          estimatedPriceINR: 350,
+          walkingLevel: 'Low',
+          description: 'Historic royal residence housing Raja Ravi Varma oil masterpieces, antique musical clocks, and sandalwood carvings.',
           timeSlot: 'Afternoon',
           isIncluded: true
         }

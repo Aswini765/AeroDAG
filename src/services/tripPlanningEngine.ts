@@ -34,6 +34,9 @@ import { getTravelProviders } from './providers';
 import { inferTripScope, formatINR, generateVerificationChecks } from './travelCatalog';
 import {
   MOCK_DINING_GOA,
+  MOCK_DINING_COORG,
+  MOCK_DINING_KERALA,
+  MOCK_DINING_MYSURU,
   MOCK_DINING_VIETNAM,
   MOCK_DINING_SINGAPORE,
   MOCK_DINING_THAILAND,
@@ -187,7 +190,7 @@ export class TripPlanningEngine {
       description: 'Chauffeured pickup and drop between airport and resort.',
       duration: '45 mins',
       pickupLocation: `${destination} Airport`,
-      dropLocation: 'Goa Resort'
+      dropLocation: `${destination} Stay / Resort`
     };
     const transferCostINR = selectedTransfer.priceINR;
 
@@ -662,6 +665,11 @@ export class TripPlanningEngine {
     const originCity = origin.replace(/\s*\(.*\)/, '').trim();
     const destinationCity = selectedFlight?.destinationCity || arrivalAirportName || destination;
 
+    const destLower = destination.toLowerCase();
+    const isBeach = /\b(goa|beach|alibaug|varkala|kovalam|puri|gokarna|andaman)\b/.test(destLower);
+    const isHill = /\b(coorg|kodagu|madikeri|munnar|kerala|ooty|kodaikanal|manali|shimla|wayanad)\b/.test(destLower);
+    const isHeritage = /\b(mysuru|mysore|jaipur|udaipur|agra|hampi)\b/.test(destLower);
+
     const days: ActivityDayItem[] = [];
 
     for (let dayNum = 1; dayNum <= durationDays; dayNum++) {
@@ -674,14 +682,14 @@ export class TripPlanningEngine {
           theme: 'Arrival & Scenic Welcome',
           morning: selectedFlight
             ? `Flight ${originCity} → ${destinationCity}. Arrival and meet private chauffeur for ${airportDriveMinutes}-min drive to ${selectedHotel.name}.`
-            : `Morning highway road drive from ${originCity} to ${destination}. Scenic drive through Western Ghats with coffee break; arrive and check-in to ${selectedHotel.name}.`,
+            : `Morning highway road drive from ${originCity} to ${destination}. Scenic drive with coffee break; arrive and check-in to ${selectedHotel.name}.`,
           afternoon: `Smooth check-in at ${selectedHotel.name}. Unpack, rest, and settle into ${selectedHotel.roomType}. Dedicated rest downtime.`,
           evening: `Light orientation stroll along ${selectedHotel.area}. Welcome dinner featuring authentic regional cuisine.`,
           estimatedCostINR: 1200,
           estimatedCostUSD: 14,
           localDining: [
-            diningSuggestions[0]?.name || 'Hotel Signature Restaurant',
-            'Fresh Coconut & Tropical Juice Bar'
+            diningSuggestions[0]?.name || `${destination} Signature Dining`,
+            isBeach ? 'Fresh Coconut & Tropical Juice Bar' : (isHill ? 'Fresh Mountain Filter Coffee & Cardamom Tea Bar' : 'Fresh Regional Refreshments & Juice Bar')
           ],
           transitTip: selectedFlight ? `Private AC transfer (${airportDriveMinutes}-min drive). Meet-and-greet pickup included.` : `Private AC road transit.`,
           walkingLevel: 'very light',
@@ -709,31 +717,74 @@ export class TripPlanningEngine {
           ]
         });
       } else {
-        // INTERMEDIATE DAYS
-        const actIndex = (dayNum - 2) % allActivities.length;
-        const mainAct = allActivities[actIndex];
-        const nextAct = allActivities[(actIndex + 1) % allActivities.length];
+        // INTERMEDIATE DAYS: Each activity used at most once. If sights < days, use free/rest day.
+        const actIndex = dayNum - 2;
+        const mainAct = (allActivities && actIndex < allActivities.length) ? allActivities[actIndex] : null;
 
-        const dining1 = diningSuggestions[(dayNum - 1) % diningSuggestions.length]?.name || 'Local Heritage Bistro';
-        const dining2 = diningSuggestions[dayNum % diningSuggestions.length]?.name || 'Scenic Waterfront Cafe';
+        const dining1 = diningSuggestions[(dayNum - 1) % diningSuggestions.length]?.name || 'Local Signature Bistro';
+        const dining2 = diningSuggestions[dayNum % diningSuggestions.length]?.name || 'Scenic Regional Cafe';
 
-        const theme = mainAct ? `${mainAct.category} & Excursions` : `Highlights of ${destination}`;
+        let dayTitle = mainAct ? mainAct.name : 'Free day · explore at your own pace';
+        let theme = mainAct ? `${mainAct.category} & Excursions` : 'Rest & Self-Paced Exploration';
 
-        let morningSchedule = mainAct
-          ? `${mainAct.name}: ${mainAct.description} (Duration: ${mainAct.duration}).`
-          : `Morning guided exploration of central landmarks and scenic photo viewpoints.`;
+        let morningSchedule: string;
+        let afternoonSchedule: string;
+        let eveningSchedule: string;
 
-        let afternoonSchedule = isGentlePacing
-          ? `Gentle afternoon downtime: Shaded poolside rest at ${selectedHotel.name} or relaxing air-conditioned cafe break to recharge.`
-          : `Afternoon local highlights: Explore artisan craft stalls, botanical gardens, and scenic viewpoint promenade.`;
+        if (mainAct) {
+          morningSchedule = mainAct.timeSlot === 'Evening'
+            ? `Leisure morning at ${selectedHotel.name}. Gentle local stroll and relaxed breakfast.`
+            : `${mainAct.name}: ${mainAct.description} (Duration: ${mainAct.duration}).`;
 
-        if (hasKids && dayNum === 2) {
-          afternoonSchedule = `Family Fun: Sandcastle building and splash in gentle shallows, followed by delicious fresh tropical fruit ice creams.`;
+          if (isGentlePacing) {
+            afternoonSchedule = `Gentle afternoon downtime: Shaded poolside rest at ${selectedHotel.name} or relaxing air-conditioned cafe break to recharge.`;
+          } else {
+            afternoonSchedule = isHill
+              ? `Afternoon local exploration: Wander through nearby tea and spice plantations, craft stalls, and scenic viewpoints.`
+              : isHeritage
+              ? `Afternoon heritage discovery: Explore artisan craft stalls, traditional silk markets, and royal garden pathways.`
+              : isBeach
+              ? `Afternoon local highlights: Explore beachside shacks, artisan craft stalls, and scenic seaside paths.`
+              : `Afternoon local highlights: Explore artisan craft stalls, botanical gardens, and scenic viewpoint promenade.`;
+          }
+
+          if (hasKids && dayNum === 2) {
+            if (isBeach) {
+              afternoonSchedule = `Family Fun: Sandcastle building and splash in gentle shallows, followed by delicious fresh tropical fruit ice creams.`;
+            } else if (isHill) {
+              afternoonSchedule = `Family Fun: Gentle nature walk, butterfly spotting amidst tea gardens, and fresh local fruit ice creams.`;
+            } else if (isHeritage) {
+              afternoonSchedule = `Family Fun: Interactive palace gallery exploration, royal garden stroll, and traditional melt-in-mouth sweet tasting.`;
+            } else {
+              afternoonSchedule = `Family Fun: Exploring scenic landscaped gardens, relaxed open-air playtime, and local sweet treats.`;
+            }
+          }
+
+          if (mainAct.timeSlot === 'Evening') {
+            eveningSchedule = `${mainAct.name}: ${mainAct.description}. Dinner at ${dining1}.`;
+          } else {
+            if (isBeach) {
+              eveningSchedule = `Sunset promenade along the beach, followed by a delicious family dinner at ${dining1}.`;
+            } else if (isHill) {
+              eveningSchedule = `Scenic sunset valley viewpoint walk, followed by a delicious family dinner at ${dining1}.`;
+            } else if (isHeritage) {
+              eveningSchedule = `Illuminated heritage walk and palace gardens stroll, followed by a delicious family dinner at ${dining1}.`;
+            } else {
+              eveningSchedule = `Relaxed evening stroll around ${destination}, followed by a delicious family dinner at ${dining1}.`;
+            }
+          }
+        } else {
+          // Free / Rest Day (when fewer sights than days)
+          morningSchedule = `Free morning · explore at your own pace. Relax at ${selectedHotel.name}, stroll nearby markets, or discover local viewpoints.`;
+          afternoonSchedule = `Unwind at your leisure: enjoy hotel amenities, visit a local tea stall or cafe, and immerse in the surrounding atmosphere.`;
+          eveningSchedule = isHill
+            ? `Scenic sunset stroll around the hill town, followed by a relaxing regional dinner at ${dining1}.`
+            : isHeritage
+            ? `Evening walk through vibrant local bazaars and illuminated monuments, followed by dinner at ${dining1}.`
+            : isBeach
+            ? `Relaxed sunset seaside walk, followed by a pleasant dinner at ${dining1}.`
+            : `Relaxed evening stroll at your own pace, followed by dinner at ${dining1}.`;
         }
-
-        let eveningSchedule = nextAct && nextAct.timeSlot === 'Evening'
-          ? `${nextAct.name}: ${nextAct.description}. Dinner at ${dining1}.`
-          : `Sunset promenade along the water, followed by a delicious family dinner at ${dining1}.`;
 
         const walkingLevel: 'very light' | 'light' | 'moderate' = isGentlePacing ? 'light' : (walkingIntensity === 'Moderate' ? 'moderate' : 'light');
         const walkingFlag = (walkingLevel === 'moderate' && isGentlePacing)
@@ -743,13 +794,13 @@ export class TripPlanningEngine {
         days.push({
           day: dayNum,
           dateStr: `Day ${dayNum}`,
-          title: `Day ${dayNum}: ${mainAct ? mainAct.name : `Discovering ${destination}`}`,
+          title: dayTitle,
           theme,
           morning: morningSchedule,
           afternoon: afternoonSchedule,
           evening: eveningSchedule,
-          estimatedCostINR: (mainAct?.estimatedPriceINR || 1000) + 500,
-          estimatedCostUSD: Math.round(((mainAct?.estimatedPriceINR || 1000) + 500) / 84),
+          estimatedCostINR: (mainAct?.estimatedPriceINR || 500) + 500,
+          estimatedCostUSD: Math.round(((mainAct?.estimatedPriceINR || 500) + 500) / 84),
           localDining: [dining1, dining2],
           transitTip: isGentlePacing
             ? 'Comfortable private AC cab transfers provided. Low walking required.'
@@ -873,10 +924,18 @@ export class TripPlanningEngine {
    * Resolves dining suggestions
    */
   static resolveDiningSuggestions(destination: string, dietary?: string): DiningItem[] {
-    const dest = destination.toLowerCase();
-    let list = MOCK_DINING_GOA;
+    const dest = (destination || '').toLowerCase();
+    let list: DiningItem[];
 
-    if (dest.includes('singapore')) {
+    if (/\b(coorg|kodagu|madikeri)\b/.test(dest)) {
+      list = MOCK_DINING_COORG;
+    } else if (/\b(kerala|munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad|varkala|kovalam|fort kochi)\b/.test(dest)) {
+      list = MOCK_DINING_KERALA;
+    } else if (/\b(mysuru|mysore)\b/.test(dest)) {
+      list = MOCK_DINING_MYSURU;
+    } else if (/\b(goa|panaji|panjim|calangute|baga|colva|palolem)\b/.test(dest)) {
+      list = MOCK_DINING_GOA;
+    } else if (dest.includes('singapore')) {
       list = MOCK_DINING_SINGAPORE;
     } else if (dest.includes('thailand')) {
       list = MOCK_DINING_THAILAND;
@@ -884,6 +943,50 @@ export class TripPlanningEngine {
       list = MOCK_DINING_JAPAN;
     } else if (dest.includes('vietnam')) {
       list = MOCK_DINING_VIETNAM;
+    } else {
+      // Generic fallback for any other destination in India (never Goa restaurants)
+      const cleanName = destination.replace(/,\s*India$/i, '').trim();
+      list = [
+        {
+          id: 'din-gen-1',
+          name: `${cleanName} Heritage Kitchen`,
+          cuisine: 'Local Regional & North Indian',
+          area: `${cleanName} Central`,
+          priceForTwoINR: 800,
+          rating: 4.6,
+          isPureVeg: false,
+          isJainFriendly: false,
+          isFamilyFriendly: true,
+          recommendedDishes: ['Regional Special Thali', 'Paneer Tikka', 'Fresh Roti Basket'],
+          imageUrl: ''
+        },
+        {
+          id: 'din-gen-2',
+          name: `${cleanName} Pure Veg Swagath`,
+          cuisine: 'Pure Vegetarian Regional & Indian Thalis',
+          area: `${cleanName} Main Bazaar`,
+          priceForTwoINR: 550,
+          rating: 4.5,
+          isPureVeg: true,
+          isJainFriendly: true,
+          isFamilyFriendly: true,
+          recommendedDishes: ['Special Veg Thali', 'Dal Makhani', 'Jeera Rice'],
+          imageUrl: ''
+        },
+        {
+          id: 'din-gen-3',
+          name: `${cleanName} Panorama Viewpoint Bistro`,
+          cuisine: 'Multi-cuisine & Regional Specialties',
+          area: `${cleanName} Hill / Promenade View`,
+          priceForTwoINR: 1100,
+          rating: 4.7,
+          isPureVeg: false,
+          isJainFriendly: false,
+          isFamilyFriendly: true,
+          recommendedDishes: ['Grilled Platter', 'Fresh Fruit Juices', 'Local Spiced Curry'],
+          imageUrl: ''
+        }
+      ];
     }
 
     if (dietary === 'Vegetarian' || dietary === 'Jain') {

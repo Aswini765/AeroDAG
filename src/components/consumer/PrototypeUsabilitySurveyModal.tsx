@@ -64,7 +64,7 @@ export const PrototypeUsabilitySurveyModal: React.FC<PrototypeUsabilitySurveyMod
 
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
             <a
-              href="PASTE_YOUR_GOOGLE_FORM_LINK"
+              href="YOUR_FORM_LINK"
               target="_blank"
               rel="noopener noreferrer"
               className="btn-primary w-full sm:w-auto min-h-[44px] py-2.5 px-6 inline-flex items-center justify-center gap-2 text-sm font-bold shadow-xs"

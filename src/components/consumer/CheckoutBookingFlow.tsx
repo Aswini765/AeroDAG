@@ -458,6 +458,8 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
             <div className="space-y-2.5">
               {fullCost.lines.map((item: any) => {
                 const itemSource = item.isEstimate ? 'estimate' : 'sample';
+                const isAiEstimated = Boolean((tripPlan as any)?.isAiEstimatedDestination);
+                const estimateLabel = isAiEstimated ? 'AI estimate' : 'Estimate';
                 return (
                   <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
                     <div className="truncate text-[#55625E]">
@@ -468,7 +470,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
                       <span className="font-bold text-[#15201D]">
                         ₹{item.amountINR.toLocaleString('en-IN')}
                       </span>
-                      <SourceTag kind={item.source || itemSource} label={item.sourceLabel || (item.isEstimate ? 'AI estimate' : 'Selected')} />
+                      <SourceTag kind={item.source || itemSource} label={item.sourceLabel || (item.isEstimate ? estimateLabel : 'Selected')} />
                     </div>
                   </div>
                 );
