@@ -27,6 +27,9 @@ import { SeasonalAndPersonaCard } from './plan/SeasonalAndPersonaCard';
 import { BudgetBufferAndQuirksCard } from './plan/BudgetBufferAndQuirksCard';
 import { TrustAndVerificationCard } from './plan/TrustAndVerificationCard';
 import { FullTripCostCard } from './plan/FullTripCostCard';
+import { AlertTriangle, ArrowRight, Sparkles } from 'lucide-react';
+import { computeFullTripCost } from '../../services/fullTripCostHelper';
+import { generatePlanOptions } from '../../services/planOptionsGenerator';
 import { PlanOptionsSelector } from './plan/PlanOptionsSelector';
 import { NearbyAmenitiesCard } from './plan/NearbyAmenitiesCard';
 
@@ -80,8 +83,16 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
   if (!summary) return null;
 
   const nightsCount = Math.max(1, plan.durationDays - 1);
-  const targetBudget = plan.budget.targetINR || preferences.budgetTotalINR || 60000;
-  const isPlanInfeasible = plan.status === 'infeasible' && plan.shortfallINR && plan.shortfallINR > 0;
+  const cost = computeFullTripCost(plan, preferences);
+  const targetBudget = cost.targetBudgetINR;
+  const isOverBudget = cost.budgetStatus === 'over';
+  const overAmountINR = cost.budgetDifferenceINR;
+  const percentOver = isOverBudget && targetBudget > 0 ? (overAmountINR / targetBudget) * 100 : 0;
+
+  // Blocking only when MORE than 10% over budget
+  const isBlockingInfeasible = isOverBudget && percentOver > 10;
+  // Banner when slightly over budget (10% or less)
+  const isSlightlyOverBudget = isOverBudget && percentOver <= 10;
 
   // Handle Upgrade Selection
   const handleSelectUpgrade = (upgrade: PlanUpgradeOption) => {
@@ -236,19 +247,96 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
         </div>
       )}
 
-      {/* 2. INFEASIBLE STATE CHECK: Replaces the plan body with a clear shortfall card */}
-      {isPlanInfeasible && plan.concreteFixes && plan.concreteFixes.length > 0 ? (
+      {/* 2. INFEASIBLE STATE CHECK: Only block when trip is MORE than 10% over budget */}
+      {isBlockingInfeasible && plan.concreteFixes && plan.concreteFixes.length > 0 ? (
         <InfeasiblePlanCard
           destination={plan.destination}
           targetBudgetINR={targetBudget}
-          calculatedCostINR={plan.budget.grandTotalINR}
-          shortfallINR={plan.shortfallINR || 0}
+          calculatedCostINR={cost.totalWithBufferINR}
+          shortfallINR={overAmountINR}
           concreteFixes={plan.concreteFixes}
           onApplyFix={handleApplyConcreteFix}
           onModifyPrompt={onDescribeAgain}
         />
       ) : (
         <>
+          {/* Over-budget banner when 10% or less over budget */}
+          {isSlightlyOverBudget && (
+            <div className="card-consumer p-4 sm:p-5 mb-6 border-[#8A4307]/40 bg-[#FFFDF7] space-y-3.5 text-left rounded-2xl shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#E2E6E1]/60">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded-lg bg-[#FCEFD9] text-[#8A4307]">
+                    <AlertTriangle className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-[#15201D] font-heading">
+                      Trip is slightly over budget by ₹{overAmountINR.toLocaleString('en-IN')} ({percentOver.toFixed(1)}%)
+                    </h3>
+                    <p className="text-xs text-[#55625E]">
+                      We've shown your full plan below. Choose a fix or pick the Budget option to fit within your ₹{targetBudget.toLocaleString('en-IN')} budget:
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const options = generatePlanOptions(plan, preferences);
+                    const budgetOpt = options.find((o) => o.id === 'budget');
+                    if (budgetOpt) {
+                      onPlanChange(budgetOpt.plan);
+                    }
+                  }}
+                  className="btn-primary text-xs py-2 px-3.5 shrink-0 min-h-[38px] flex items-center gap-1.5 shadow-xs"
+                >
+                  <span>Choose Budget option</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {/* Choose a fix buttons */}
+              {plan.concreteFixes && plan.concreteFixes.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#55625E]">
+                    Choose a fix:
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {plan.concreteFixes.map((fix) => (
+                      <button
+                        key={fix.id}
+                        type="button"
+                        onClick={() => handleApplyConcreteFix(fix)}
+                        className="p-2.5 rounded-xl border border-[#E2E6E1] bg-white hover:border-[#0E6B59] hover:bg-[#E3F1EC]/40 transition text-left space-y-0.5 group cursor-pointer"
+                      >
+                        <div className="text-xs font-bold text-[#15201D] group-hover:text-[#0E6B59] flex items-center justify-between">
+                          <span className="truncate">{fix.title}</span>
+                          <span className="text-[10px] text-[#0A5546] font-semibold bg-[#E3F1EC] px-1.5 py-0.2 rounded shrink-0 ml-1">
+                            Save ₹{fix.rupeeImpactINR.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#55625E] line-clamp-1">
+                          {fix.description}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* AI Destination Honest Estimate Banner */}
+          {plan.isAiEstimatedDestination && (
+            <div
+              id="ai-destination-estimate-banner"
+              className="bg-[#EFF8F5] border border-[#0E6B59]/30 rounded-2xl p-4 flex items-start gap-3 shadow-xs text-left"
+            >
+              <Sparkles className="h-5 w-5 text-[#0E6B59] shrink-0 mt-0.5" />
+              <div className="text-xs sm:text-sm text-[#15201D] leading-relaxed">
+                <span className="font-bold text-[#0E6B59]">New destination</span> — details are AI estimates. Check on Google Maps and booking sites before you book.
+              </div>
+            </div>
+          )}
+
           {/* A3. FULL TRIP COST CARD near the top of PlanScreen */}
           <FullTripCostCard plan={plan} preferences={preferences} />
 
@@ -290,6 +378,7 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
               hotel={plan.hotel}
               transfer={plan.transfer}
               nightsCount={nightsCount}
+              isAiEstimated={plan.isAiEstimatedDestination}
               onOpenFlightsModal={() => setMoreOptionsView('flights')}
               onOpenStaysModal={() => setMoreOptionsView('hotels')}
             />
@@ -333,6 +422,8 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
           <div className="lg:col-span-5 space-y-6 sticky top-24">
             {/* "Total trip cost" Card */}
             <BudgetCard
+              plan={plan}
+              preferences={preferences}
               summary={summary}
               targetBudgetINR={targetBudget}
             />

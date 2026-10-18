@@ -431,6 +431,7 @@ export interface TripPlan {
   routeComparison?: RouteDiscoveryComparison;
   budgetBuffer?: RealisticBudgetBuffer;
   trustVerification?: TrustVerificationDetails;
+  isAiEstimatedDestination?: boolean;
 }
 
 export interface RouteOption {

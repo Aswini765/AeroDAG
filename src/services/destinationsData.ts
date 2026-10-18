@@ -8,6 +8,20 @@ import {
   VisaDetails
 } from '../types/travelBooking';
 
+/**
+ * Checks if a destination name maps to one of the 4 hand-built detailed destinations:
+ * Goa, Coorg, Kerala, Mysuru.
+ */
+export function isDetailedDestination(destination: string): boolean {
+  const lower = (destination || '').toLowerCase();
+  return (
+    /\b(goa|panaji|panjim|calangute|baga|colva|palolem)\b/.test(lower) ||
+    /\b(coorg|kodagu|madikeri)\b/.test(lower) ||
+    /\b(kerala|munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad|varkala|kovalam|fort kochi)\b/.test(lower) ||
+    /\b(mysuru|mysore)\b/.test(lower)
+  );
+}
+
 // ==========================================
 // 1. GOA (DOMESTIC INDIA BENCHMARK)
 // ==========================================
@@ -451,6 +465,36 @@ export const MOCK_DINING_GOA: DiningItem[] = [
 // ==========================================
 export const MOCK_HOTELS_COORG: HotelItem[] = [
   {
+    id: 'ht-coorg-budget',
+    name: 'Coorg Coffee Country Homestay',
+    area: 'Madikeri, Coorg',
+    city: 'Coorg',
+    starRating: 3,
+    reviewScore: 4.5,
+    reviewsCount: 310,
+    roomType: 'Standard Plantation Suite',
+    bedConfiguration: '1 King Bed + 1 Rollaway Bed (Capacity: 3-4 guests)',
+    maxCapacity: 4,
+    capacityVerifiedForFamily: true,
+    pricePerNightINR: 1800,
+    totalPriceINR: 3600,
+    pricePerNightUSD: 22,
+    totalPriceUSD: 44,
+    amenities: [
+      'Estate Coffee Walk',
+      'Complimentary Kodava Breakfast Included',
+      'Campfire on Request',
+      'Free High-Speed Wi-Fi'
+    ],
+    breakfastIncluded: true,
+    freeCancellation: true,
+    distanceFromCenter: '3 km from Madikeri town',
+    imageUrl: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80',
+    tag: 'Within Budget',
+    source: 'sample',
+    sourceLabel: 'Sample data'
+  },
+  {
     id: 'ht-coorg-1',
     name: 'Misty Woods Plantation Resort, Coorg',
     area: 'Madikeri, Coorg',
@@ -459,8 +503,8 @@ export const MOCK_HOTELS_COORG: HotelItem[] = [
     reviewScore: 4.7,
     reviewsCount: 520,
     roomType: 'Coffee Plantation Cottage Suite',
-    bedConfiguration: '1 King Bed (Capacity: 2-3 guests)',
-    maxCapacity: 3,
+    bedConfiguration: '1 King Bed + 1 Rollaway Bed (Capacity: 3-4 guests)',
+    maxCapacity: 4,
     capacityVerifiedForFamily: true,
     pricePerNightINR: 3200,
     totalPriceINR: 6400,
@@ -490,9 +534,9 @@ export const MOCK_HOTELS_COORG: HotelItem[] = [
     reviewScore: 4.9,
     reviewsCount: 890,
     roomType: 'Luxury Cottage with Forest View',
-    bedConfiguration: '1 King Bed (Capacity: 2 guests)',
-    maxCapacity: 2,
-    capacityVerifiedForFamily: false,
+    bedConfiguration: '1 King Bed + 2 Twin Beds (Capacity: 4 guests)',
+    maxCapacity: 4,
+    capacityVerifiedForFamily: true,
     pricePerNightINR: 8500,
     totalPriceINR: 17000,
     pricePerNightUSD: 101,
@@ -610,6 +654,36 @@ export const MOCK_DINING_COORG: DiningItem[] = [
 // ==========================================
 export const MOCK_HOTELS_KERALA: HotelItem[] = [
   {
+    id: 'ht-kerala-budget',
+    name: 'Munnar Misty Garden Homestay',
+    area: 'Old Munnar, Munnar',
+    city: 'Munnar',
+    starRating: 3,
+    reviewScore: 4.4,
+    reviewsCount: 420,
+    roomType: 'Ground Floor Valley View Family Suite',
+    bedConfiguration: '1 King Bed + 1 Rollaway Bed (Capacity: 3-4 guests)',
+    maxCapacity: 4,
+    capacityVerifiedForFamily: true,
+    pricePerNightINR: 1600,
+    totalPriceINR: 6400,
+    pricePerNightUSD: 19,
+    totalPriceUSD: 76,
+    amenities: [
+      'Valley View Balcony',
+      'Complimentary Kerala Breakfast Included',
+      '24/7 Hot Water & Room Service',
+      'Doctor on Call & Taxi Assistance'
+    ],
+    breakfastIncluded: true,
+    freeCancellation: true,
+    distanceFromCenter: '1.5 km from Munnar town',
+    imageUrl: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80',
+    tag: 'Within Budget',
+    source: 'sample',
+    sourceLabel: 'Sample data'
+  },
+  {
     id: 'ht-kerala-1',
     name: 'Tea Valley Homestay & Resort, Munnar',
     area: 'Tea Valley, Munnar',
@@ -638,6 +712,36 @@ export const MOCK_HOTELS_KERALA: HotelItem[] = [
     tag: 'Family-Friendly',
     source: 'sample',
     sourceLabel: 'Sample data'
+  },
+  {
+    id: 'ht-kerala-luxury',
+    name: 'Fragrant Nature Munnar Resort',
+    area: 'Pothamedu, Munnar',
+    city: 'Munnar',
+    starRating: 5,
+    reviewScore: 4.9,
+    reviewsCount: 950,
+    roomType: 'Premium Valley View Suite with Fireplace',
+    bedConfiguration: '1 King Bed + 2 Twin Beds (Capacity: 4 guests)',
+    maxCapacity: 4,
+    capacityVerifiedForFamily: true,
+    pricePerNightINR: 6500,
+    totalPriceINR: 26000,
+    pricePerNightUSD: 77,
+    totalPriceUSD: 308,
+    amenities: [
+      'In-room Fireplace & Panoramic Valley Balcony',
+      'Complimentary Lavish Buffet Breakfast & High Tea',
+      'Ayurvedic Wellness Spa',
+      'Indoor Kids Play Zone & Game Room'
+    ],
+    breakfastIncluded: true,
+    freeCancellation: true,
+    distanceFromCenter: 'Pothamedu Viewpoint road',
+    imageUrl: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80',
+    tag: 'Luxury Splurge',
+    source: 'sample',
+    sourceLabel: 'Sample data'
   }
 ];
 
@@ -664,6 +768,36 @@ export const MOCK_TRANSFERS_KERALA: TransferItem[] = [
 // ==========================================
 export const MOCK_HOTELS_MYSURU: HotelItem[] = [
   {
+    id: 'ht-mysuru-budget',
+    name: 'Hotel Roopa Heritage, Mysuru',
+    area: 'Central Mysuru',
+    city: 'Mysuru',
+    starRating: 3,
+    reviewScore: 4.3,
+    reviewsCount: 510,
+    roomType: 'Heritage Deluxe Family Room',
+    bedConfiguration: '1 King Bed + 1 Single Bed (Capacity: 3-4 guests)',
+    maxCapacity: 4,
+    capacityVerifiedForFamily: true,
+    pricePerNightINR: 1500,
+    totalPriceINR: 1500,
+    pricePerNightUSD: 18,
+    totalPriceUSD: 18,
+    amenities: [
+      'Near Mysore Palace',
+      'Complimentary South Indian Breakfast',
+      'Free High-Speed Wi-Fi',
+      'Lift Access & Parking'
+    ],
+    breakfastIncluded: true,
+    freeCancellation: true,
+    distanceFromCenter: '800m from Mysore Palace',
+    imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80',
+    tag: 'Within Budget',
+    source: 'sample',
+    sourceLabel: 'Sample data'
+  },
+  {
     id: 'ht-mysuru-1',
     name: 'Radisson Blu Plaza Hotel Mysuru',
     area: 'MG Road, Mysuru',
@@ -672,8 +806,8 @@ export const MOCK_HOTELS_MYSURU: HotelItem[] = [
     reviewScore: 4.7,
     reviewsCount: 1200,
     roomType: 'Superior King Room with Chamundi View',
-    bedConfiguration: '1 King Bed (Capacity: 2 guests)',
-    maxCapacity: 2,
+    bedConfiguration: '1 King Bed + 1 Rollaway (Capacity: 3-4 guests)',
+    maxCapacity: 4,
     capacityVerifiedForFamily: true,
     pricePerNightINR: 3500,
     totalPriceINR: 3500,
@@ -685,6 +819,36 @@ export const MOCK_HOTELS_MYSURU: HotelItem[] = [
     distanceFromCenter: '1 km from Mysore Palace',
     imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80',
     tag: 'Best Match',
+    source: 'sample',
+    sourceLabel: 'Sample data'
+  },
+  {
+    id: 'ht-mysuru-luxury',
+    name: 'Grand Mercure Mysuru',
+    area: 'Nelson Mandela Road, Mysuru',
+    city: 'Mysuru',
+    starRating: 5,
+    reviewScore: 4.8,
+    reviewsCount: 880,
+    roomType: 'Executive Suite with Chamundi Hills View',
+    bedConfiguration: '1 King Bed + 2 Rollaways (Capacity: 4 guests)',
+    maxCapacity: 4,
+    capacityVerifiedForFamily: true,
+    pricePerNightINR: 5800,
+    totalPriceINR: 5800,
+    pricePerNightUSD: 69,
+    totalPriceUSD: 69,
+    amenities: [
+      'Rooftop Swimming Pool',
+      'Lavish Buffet Breakfast Included',
+      'Ayurvedic Spa & Fitness Centre',
+      'Chamundi Hills Panoramic View'
+    ],
+    breakfastIncluded: true,
+    freeCancellation: true,
+    distanceFromCenter: '2.5 km from Railway Station',
+    imageUrl: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80',
+    tag: 'Luxury Splurge',
     source: 'sample',
     sourceLabel: 'Sample data'
   }
@@ -1474,21 +1638,21 @@ export function selectArrivalAirportByDriveTime(
   }
 
   // Kerala: fly into Kochi (COK); hill stations and backwaters are reached by road
-  if (destLower.includes('kerala') || /munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad|varkala|kovalam/.test(areaLower)) {
+  if (destLower.includes('kerala') || destLower.includes('munnar') || destLower.includes('alleppey') || /munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad|varkala|kovalam/.test(areaLower) || /munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad|varkala|kovalam/.test(destLower)) {
     const zone =
-      areaLower.includes('munnar') ? 'Munnar, Kerala'
-      : /alleppey|alappuzha|kumarakom/.test(areaLower) ? 'Alleppey, Kerala'
+      (areaLower.includes('munnar') || destLower.includes('munnar')) ? 'Munnar, Kerala'
+      : (/alleppey|alappuzha|kumarakom/.test(areaLower) || /alleppey|alappuzha|kumarakom/.test(destLower)) ? 'Alleppey, Kerala'
       : areaLower.includes('thekkady') ? 'Thekkady, Kerala'
       : areaLower.includes('wayanad') ? 'Wayanad, Kerala'
       : /varkala|kovalam/.test(areaLower) ? 'South Kerala coast'
       : 'Kerala';
     // Approximate road times from each airport (estimates)
-    const fromKochi = areaLower.includes('munnar') ? 210 : /alleppey|alappuzha|kumarakom/.test(areaLower) ? 90 : areaLower.includes('thekkady') ? 240 : areaLower.includes('wayanad') ? 300 : 150;
-    const fromTrivandrum = areaLower.includes('munnar') ? 330 : /alleppey|alappuzha|kumarakom/.test(areaLower) ? 180 : areaLower.includes('thekkady') ? 270 : /varkala|kovalam/.test(areaLower) ? 60 : 300;
+    const fromKochi = (areaLower.includes('munnar') || destLower.includes('munnar')) ? 210 : /alleppey|alappuzha|kumarakom/.test(areaLower) ? 90 : areaLower.includes('thekkady') ? 240 : areaLower.includes('wayanad') ? 300 : 150;
+    const fromTrivandrum = (areaLower.includes('munnar') || destLower.includes('munnar')) ? 330 : /alleppey|alappuzha|kumarakom/.test(areaLower) ? 180 : areaLower.includes('thekkady') ? 270 : /varkala|kovalam/.test(areaLower) ? 60 : 300;
     const useTrivandrum = fromTrivandrum < fromKochi;
     const sel = useTrivandrum ? { code: 'TRV', name: 'Thiruvananthapuram', minutes: fromTrivandrum } : { code: 'COK', name: 'Kochi', minutes: fromKochi };
     const alt = useTrivandrum ? { code: 'COK', name: 'Kochi', minutes: fromKochi } : { code: 'TRV', name: 'Thiruvananthapuram', minutes: fromTrivandrum };
-    const hrs = (m: number) => (m >= 120 ? `about ${(m / 60).toFixed(1).replace('.0', '')} hours` : `${m} minutes`);
+    const hrs = (m: number) => (m >= 120 ? `approx. ${(m / 60).toFixed(1).replace('.0', '')} hours` : `${m} minutes`);
     return {
       selectedAirportCode: sel.code,
       selectedAirportName: sel.name,
@@ -1501,40 +1665,54 @@ export function selectArrivalAirportByDriveTime(
     };
   }
 
-  // Goa
-  const mapping = HOTEL_ZONE_AIRPORT_DRIVE_TIMES.find((z) =>
-    z.aliases.some((alias) => areaLower.includes(alias))
-  ) || (areaLower.includes('north') ? HOTEL_ZONE_AIRPORT_DRIVE_TIMES[1] : HOTEL_ZONE_AIRPORT_DRIVE_TIMES[0]);
+  // Goa (only when destination or area actually matches Goa)
+  if (destLower.includes('goa') || areaLower.includes('goa')) {
+    const mapping = HOTEL_ZONE_AIRPORT_DRIVE_TIMES.find((z) =>
+      z.aliases.some((alias) => areaLower.includes(alias))
+    ) || (areaLower.includes('north') ? HOTEL_ZONE_AIRPORT_DRIVE_TIMES[1] : HOTEL_ZONE_AIRPORT_DRIVE_TIMES[0]);
 
-  const sortedArrivals = [...mapping.candidateArrivals].sort((a, b) => a.driveMinutes - b.driveMinutes);
+    const sortedArrivals = [...mapping.candidateArrivals].sort((a, b) => a.driveMinutes - b.driveMinutes);
 
-  let selected = sortedArrivals[0];
-  let alternative = sortedArrivals[1] || sortedArrivals[0];
+    let selected = sortedArrivals[0];
+    let alternative = sortedArrivals[1] || sortedArrivals[0];
 
-  if (userSpecifiedAirportCode) {
-    const userMatch = mapping.candidateArrivals.find(
-      (a) => a.code.toUpperCase() === userSpecifiedAirportCode.toUpperCase()
-    );
-    if (userMatch) {
-      selected = userMatch;
-      alternative = sortedArrivals.find((a) => a.code !== selected.code) || selected;
+    if (userSpecifiedAirportCode) {
+      const userMatch = mapping.candidateArrivals.find(
+        (a) => a.code.toUpperCase() === userSpecifiedAirportCode.toUpperCase()
+      );
+      if (userMatch) {
+        selected = userMatch;
+        alternative = sortedArrivals.find((a) => a.code !== selected.code) || selected;
+      }
     }
+
+    const altHours = (alternative.driveMinutes / 60).toFixed(1).replace('.0', '');
+    const altText = alternative.driveMinutes >= 120 ? `approx. ${altHours} hours` : `${alternative.driveMinutes} minutes`;
+
+    const reasonNote = `Why ${selected.name}, not ${alternative.name}: your hotel is in ${mapping.zone}. Flying into ${selected.name} means an approx. ${selected.driveMinutes}-minute drive instead of ${altText}.`;
+
+    return {
+      selectedAirportCode: selected.code,
+      selectedAirportName: selected.name,
+      driveMinutes: selected.driveMinutes,
+      alternativeAirportCode: alternative.code,
+      alternativeAirportName: alternative.name,
+      alternativeDriveMinutes: alternative.driveMinutes,
+      hotelZone: mapping.zone,
+      reasonNote
+    };
   }
 
-  const altHours = (alternative.driveMinutes / 60).toFixed(1).replace('.0', '');
-  const altText = alternative.driveMinutes >= 120 ? `about ${altHours} hours` : `${alternative.driveMinutes} minutes`;
-
-  const reasonNote = `Why ${selected.name}, not ${alternative.name}: your hotel is in ${mapping.zone}. Flying into ${selected.name} means a ${selected.driveMinutes}-minute drive instead of ${altText}.`;
-
+  // General Domestic / Other Destination Fallback
   return {
-    selectedAirportCode: selected.code,
-    selectedAirportName: selected.name,
-    driveMinutes: selected.driveMinutes,
-    alternativeAirportCode: alternative.code,
-    alternativeAirportName: alternative.name,
-    alternativeDriveMinutes: alternative.driveMinutes,
-    hotelZone: mapping.zone,
-    reasonNote
+    selectedAirportCode: 'DIRECT',
+    selectedAirportName: 'Direct City Transit',
+    driveMinutes: 45,
+    alternativeAirportCode: 'DIRECT',
+    alternativeAirportName: 'Direct City Transit',
+    alternativeDriveMinutes: 45,
+    hotelZone: hotelArea || destination || 'City Center',
+    reasonNote: `Direct convenient transit to your stay in ${hotelArea || destination}.`
   };
 }
 

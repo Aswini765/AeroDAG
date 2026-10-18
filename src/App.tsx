@@ -27,7 +27,18 @@ import {
 import { TripContext, RequirementEngine } from './services/requirementEngine';
 import { TripPlanningEngine } from './services/tripPlanningEngine';
 import { getTripSummary } from './services/tripSummaryHelper';
+import { isDetailedDestination } from './services/destinationsData';
+import { fetchDestinationProfile } from './services/destinationProfileClient';
+import { buildPlanFromDestinationProfile } from './services/aiDestinationPlanBuilder';
+import { suggestAlternative } from './services/destinationSuggestions';
+import { DestinationProfile } from './types/destinationProfile';
 import { KeepTripsCard } from './components/consumer/KeepTripsCard';
+
+const APP_NOT_PLACES = new Set([
+  'the', 'a', 'an', 'my', 'our', 'weekend', 'week', 'days', 'day', 'budget', 'summer', 'winter', 'monsoon',
+  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec', 'india', 'total', 'peace', 'style', 'friends', 'family'
+]);
 import {
   initializeAuth,
   continueWithEmail,
@@ -392,26 +403,44 @@ export default function App() {
       ctx.destination = 'Kerala, India';
     } else if (lower.includes('mysuru') || lower.includes('mysore')) {
       ctx.destination = 'Mysuru, Karnataka';
-    } else if (lower.includes('araku')) {
-      ctx.destination = 'Araku Valley, Andhra Pradesh';
-      ctx.transportMode = 'Train'; // Famous Vistadome scenic route
-    } else if (lower.includes('himachal') || lower.includes('manali') || lower.includes('shimla') || lower.includes('kullu')) {
-      ctx.destination = 'Himachal, India';
-    } else if (lower.includes('rajasthan') || lower.includes('jaipur') || lower.includes('udaipur')) {
-      ctx.destination = 'Rajasthan, India';
-    } else if (lower.includes('vietnam') || lower.includes('hanoi') || lower.includes('da nang') || lower.includes('danang')) {
-      ctx.destination = 'Vietnam';
-      ctx.scope = 'international';
-    } else if (lower.includes('singapore')) {
-      ctx.destination = 'Singapore';
-      ctx.scope = 'international';
-    } else if (lower.includes('thailand') || lower.includes('bangkok') || lower.includes('phuket')) {
-      ctx.destination = 'Thailand';
-      ctx.scope = 'international';
-    } else if (ai.kind !== 'ok') {
-      return `We couldn't find a destination we cover in that. ${SUPPORTED_MSG}`;
+    } else if (ai.kind === 'ok' && ai.data.destination) {
+      ctx.destination = ai.data.destination;
+    } else {
+      const destMatch = promptText.match(/(?:trip\s+to|going\s+to|holiday\s+in|vacation\s+in|visit(?:ing)?|travel\s+to|explore|in|to)\s+([A-Za-z\s]+?)(?:\s+(?:with|for|under|from|starting|on|in|budget|\d|$))/i);
+      if (destMatch && destMatch[1] && !APP_NOT_PLACES.has(destMatch[1].toLowerCase().trim())) {
+        ctx.destination = destMatch[1].trim();
+      } else {
+        const words = promptText.trim().split(/\s+/);
+        if (words.length <= 4 && !APP_NOT_PLACES.has(words[0].toLowerCase())) {
+          ctx.destination = promptText.trim();
+        } else {
+          return `We couldn't understand that. Try something like "5 days in Ooty for 2, ₹40,000".`;
+        }
+      }
     }
     fieldSources.destination = 'stated';
+
+    // Check profile if destination is outside the 4 detailed destinations
+    let profileData: DestinationProfile | null = null;
+    if (!isDetailedDestination(ctx.destination || '')) {
+      setIsLoadingPlan(true);
+      const profileResult = await fetchDestinationProfile(ctx.destination || '', 'Bengaluru');
+      setIsLoadingPlan(false);
+
+      if (!profileResult) {
+        return 'AI planning is busy right now — try again in a minute, or plan one of our detailed destinations.';
+      }
+
+      if ('unsupported' in profileResult && profileResult.unsupported) {
+        const suggestion = suggestAlternative(ctx.destination || '');
+        return suggestion
+          ? `We can't plan ${ctx.destination} right now. ${suggestion.destination} is the closest match: ${suggestion.reason}.`
+          : `We can't plan ${ctx.destination} yet. AeroDAG currently plans any trip across India.`;
+      }
+
+      profileData = profileResult as DestinationProfile;
+      ctx.destination = profileData.name;
+    }
 
     // Origin
     if (lower.includes('delhi')) {
@@ -610,7 +639,20 @@ export default function App() {
       // Dates are present -> generate plan directly
       setIsLoadingPlan(true);
       try {
-        const plan = await TripPlanningEngine.buildDeterministicPlan(ctx);
+        let plan: TripPlan;
+        if (isDetailedDestination(ctx.destination || '')) {
+          plan = await TripPlanningEngine.buildDeterministicPlan(ctx);
+        } else {
+          if (!profileData) {
+            const fetched = await fetchDestinationProfile(ctx.destination || '', ctx.origin || 'Bengaluru');
+            if (!fetched || ('unsupported' in fetched)) {
+              setIsLoadingPlan(false);
+              return 'AI planning is busy right now — try again in a minute, or plan one of our detailed destinations.';
+            }
+            profileData = fetched as DestinationProfile;
+          }
+          plan = buildPlanFromDestinationProfile(ctx, profileData);
+        }
         const style: TripPreferences['travelStyle'] =
           ctx.travelStyle === 'Relaxed' || ctx.travelStyle === 'Action-Packed' ? ctx.travelStyle : 'Balanced';
         const prefs: TripPreferences = {

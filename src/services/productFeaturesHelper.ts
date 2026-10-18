@@ -6,6 +6,7 @@ import {
   HotelItem,
   TransferItem
 } from '../types/travelBooking';
+import { getDestinationContent } from '../config/destinationContent';
 
 /**
  * Generates Contextual & Seasonal Recommendations based on destination and traveler persona.
@@ -123,51 +124,27 @@ export function buildRouteDiscoveryComparison(
   budgetTotalINR: number,
   partySize: number
 ): RouteDiscoveryComparison {
-  const dest = (destination || '').toLowerCase();
+  const destContent = getDestinationContent(destination);
 
-  if (dest.includes('goa')) {
+  if (destContent.key !== 'other') {
     return {
-      recommendedMode: 'Flight',
-      sensoryHighlights: [
-        'Coastal aerial banking view over the turquoise Arabian Sea into Dabolim/Mopa',
-        'Dudhsagar Waterfall spray mist touching train windows on the Vasco Express rail bridge',
-        'Winding Western Ghats Chorla Ghat road with stops at ancient rock temples & spice plantations'
-      ],
-      options: [
-        {
-          mode: 'Flight',
-          title: 'Direct Non-Stop Flight (BLR/DEL ↔ GOI/GOX)',
-          duration: '1h 15m',
-          costINR: 3500 * partySize,
-          timeSavedText: 'Saves 12h 45m vs Train',
-          scenicScore: 7,
-          scenicHighlight: 'Coastal flight approach over Mandovi estuary and North Goa palm coastline.',
-          tradeOffNote: 'Fastest journey — unlocks half-day beach time on Day 1. Slightly higher fare.',
-          isRecommended: true
-        },
-        {
-          mode: 'Train',
-          title: 'Yesvantpur – Vasco da Gama Express (2A AC Sleeper)',
-          duration: '14h 00m',
-          costINR: 1680 * partySize,
-          timeSavedText: 'Overnight journey (saves 1 hotel night)',
-          scenicScore: 10,
-          scenicHighlight: 'World-famous Dudhsagar Waterfall crossing where mountain mist sprays the carriages.',
-          tradeOffNote: 'Unmatched scenic Western Ghats rail adventure. Takes 14 hours; confirmed 2A berths guaranteed.'
-        },
-        {
-          mode: 'Road',
-          title: 'Private Chauffeured AC Innova Cab (Door-to-Door)',
-          duration: '11h 30m',
-          costINR: 12500,
-          timeSavedText: 'Flexible highway departure',
-          scenicScore: 9,
-          scenicHighlight: 'Scenic Western Ghats mountain pass with stops for highway filter coffee and spice plantations.',
-          tradeOffNote: 'Full freedom for en-route stops and heavy family luggage. Long 11+ hour driving day.'
-        }
-      ]
+      recommendedMode: destContent.routeComparison.recommendedMode,
+      sensoryHighlights: destContent.routeComparison.sensoryHighlights,
+      options: destContent.routeComparison.options.map((opt) => ({
+        mode: opt.mode,
+        title: opt.title,
+        duration: opt.duration,
+        costINR: opt.costPerPersonINR * partySize,
+        timeSavedText: opt.timeSavedText,
+        scenicHighlight: opt.scenicHighlight,
+        scenicScore: opt.scenicScore ?? 8,
+        tradeOffNote: opt.tradeOffNote,
+        isRecommended: opt.isRecommended
+      }))
     };
   }
+
+  const dest = (destination || '').toLowerCase();
 
   if (dest.includes('araku') || dest.includes('vizag')) {
     return {
@@ -181,7 +158,7 @@ export function buildRouteDiscoveryComparison(
         {
           mode: 'Train',
           title: 'Vizag – Araku Vistadome Glass-Roof Rail Express',
-          duration: '3h 30m',
+          duration: 'approx. 3h 30m',
           costINR: 650 * partySize,
           timeSavedText: 'Direct mountain rail',
           scenicScore: 10,
@@ -192,7 +169,7 @@ export function buildRouteDiscoveryComparison(
         {
           mode: 'Road',
           title: 'Private Chauffeured AC Sedan / SUV (Via Tyda)',
-          duration: '3h 00m',
+          duration: 'approx. 3h 00m',
           costINR: 2800,
           timeSavedText: '30 mins faster than train',
           scenicScore: 8,
@@ -202,7 +179,7 @@ export function buildRouteDiscoveryComparison(
         {
           mode: 'Flight',
           title: 'Flight to Visakhapatnam (VTZ) + Mountain Transfer',
-          duration: '1h 30m flight + 3h drive',
+          duration: 'approx. 1h 30m flight + 3h drive',
           costINR: 4200 * partySize,
           timeSavedText: 'Saves 16h vs outstation rail',
           scenicScore: 8,
@@ -225,7 +202,7 @@ export function buildRouteDiscoveryComparison(
         {
           mode: 'Flight',
           title: 'Flight to Chandigarh (IXC) + Chauffeured AC SUV',
-          duration: '1h 45m flight + 5h highway',
+          duration: 'approx. 1h 45m flight + 5h highway',
           costINR: 5800 * partySize,
           timeSavedText: 'Saves 18 hours vs train/bus',
           scenicScore: 9,
@@ -236,7 +213,7 @@ export function buildRouteDiscoveryComparison(
         {
           mode: 'Bus',
           title: 'Luxury Volvo Multi-Axle AC Sleeper (Overnight)',
-          duration: '12h 30m',
+          duration: 'approx. 12h 30m',
           costINR: 1800 * partySize,
           timeSavedText: 'Overnight transit (saves 1 hotel night)',
           scenicScore: 7,
@@ -246,7 +223,7 @@ export function buildRouteDiscoveryComparison(
         {
           mode: 'Road',
           title: 'Private Chauffeured Innova Crysta (Delhi/Chandigarh)',
-          duration: '8h 00m from Chandigarh',
+          duration: 'approx. 8h 00m from Chandigarh',
           costINR: 14000,
           timeSavedText: 'Customized pacing',
           scenicScore: 10,
@@ -257,36 +234,21 @@ export function buildRouteDiscoveryComparison(
     };
   }
 
-  // Coorg / Mysuru / general domestic route comparison
+  // General fallback
   return {
-    recommendedMode: 'Road',
-    sensoryHighlights: [
-      'Lush Western Ghats green coffee and pepper plantations',
-      'Highway stop at Channapatna wooden toy artisans and famous South Indian filter coffee'
-    ],
-    options: [
-      {
-        mode: 'Road',
-        title: 'Private Chauffeured AC Sedan (Bengaluru ↔ Destination)',
-        duration: '4h 30m',
-        costINR: 5500,
-        timeSavedText: 'Door-to-door direct service',
-        scenicScore: 9,
-        scenicHighlight: 'Western Ghats highway through rolling green paddy fields and spice estates.',
-        tradeOffNote: 'Most convenient and flexible mode with zero airport luggage hassles.',
-        isRecommended: true
-      },
-      {
-        mode: 'Train',
-        title: 'Vande Bharat / Express Rail (to closest junction)',
-        duration: '2h 15m rail + 2h road',
-        costINR: 950 * partySize,
-        timeSavedText: 'High-speed rail',
-        scenicScore: 8,
-        scenicHighlight: 'High-speed rail journey with onboard breakfast and scenic Karnataka countryside.',
-        tradeOffNote: 'Economical and on-time. Requires local transfer from railhead.'
-      }
-    ]
+    recommendedMode: destContent.routeComparison.recommendedMode,
+    sensoryHighlights: destContent.routeComparison.sensoryHighlights,
+    options: destContent.routeComparison.options.map((opt) => ({
+      mode: opt.mode,
+      title: opt.title,
+      duration: opt.duration,
+      costINR: opt.costPerPersonINR * partySize,
+      timeSavedText: opt.timeSavedText,
+      scenicHighlight: opt.scenicHighlight,
+      scenicScore: opt.scenicScore ?? 8,
+      tradeOffNote: opt.tradeOffNote,
+      isRecommended: opt.isRecommended
+    }))
   };
 }
 
@@ -300,7 +262,6 @@ export function buildRealisticBudgetBuffer(
   durationDays: number,
   partySize: number
 ): RealisticBudgetBuffer {
-  const dest = (destination || '').toLowerCase();
   const bufferPercentage = 15; // 15% standard buffer
   const bufferAmountINR = Math.round(targetBudgetINR * (bufferPercentage / 100));
 
@@ -309,54 +270,7 @@ export function buildRealisticBudgetBuffer(
   const autoShare = Math.round(bufferAmountINR * 0.35); // 35% for unexpected cab/auto fares & quirks
   const shoppingShare = bufferAmountINR - foodShare - autoShare; // 20% for shopping / emergencies
 
-  // Local transport quirks & warnings based on real destination realities
-  const hiddenCostWarnings: string[] = [];
-
-  if (dest.includes('goa')) {
-    hiddenCostWarnings.push(
-      'Remote Airport Pickup: Manohar Mopa Airport (GOX) is ~55 km from South Goa resorts. Prepaid taxis cost ₹2,200–₹2,500 each way (vs ₹900 from Dabolim GOI).'
-    );
-    hiddenCostWarnings.push(
-      'App-Cab Restrictions: Uber and Ola are restricted by local taxi unions in Goa. Pre-book chauffeured private transfers or use the state GoaMiles app.'
-    );
-    hiddenCostWarnings.push(
-      'Daily Driver Night Batta: Chauffeured cabs charge ₹400–₹500 night driver allowance for driving post 9:30 PM.'
-    );
-  } else if (dest.includes('araku') || dest.includes('vizag')) {
-    hiddenCostWarnings.push(
-      'Ghat Road Night Driving: Hill road driving between Vizag and Araku is strictly discouraged post 7:00 PM due to sudden thick valley mist.'
-    );
-    hiddenCostWarnings.push(
-      'Driver Daily Allowance: Outstation cab packages include a mandatory ₹500/day driver food & stay batta.'
-    );
-    hiddenCostWarnings.push(
-      'Tribal Market Payments: Many organic coffee stalls in Araku valleys operate cash-only; keep ₹2,000 cash handy.'
-    );
-  } else if (dest.includes('himachal') || dest.includes('manali')) {
-    hiddenCostWarnings.push(
-      'Rohtang Pass Union Taxis: Outside private cabs are not permitted past Gulaba checkpost. Local union cabs charge ₹2,500–₹3,500 for Rohtang snow points.'
-    );
-    hiddenCostWarnings.push(
-      'Green Tax & Tolls: Himachal entry Green Tax checkpost (₹200) and Atal Tunnel traffic regulations apply.'
-    );
-    hiddenCostWarnings.push(
-      'Snow Chain Fees: In Dec–Feb snowfall, local tire technicians charge ₹1,000–₹1,500 for mandatory wheel snow chains.'
-    );
-  } else if (dest.includes('kerala')) {
-    hiddenCostWarnings.push(
-      'Houseboat Air-Conditioning Timings: Standard backwater houseboats run AC in bedrooms only from 9:00 PM to 6:00 AM unless full-time luxury cruise is reserved.'
-    );
-    hiddenCostWarnings.push(
-      'Speed Radar Enforcement: Strict 60 km/h speed limits with automated camera traps along NH66 in Kerala.'
-    );
-  } else {
-    hiddenCostWarnings.push(
-      'Local Transit Buffer: Account for on-ground auto-rickshaws, parking tickets, and local toll plazas.'
-    );
-    hiddenCostWarnings.push(
-      'Peak Surcharges: Weekend evening cab surcharges may apply during local festival periods.'
-    );
-  }
+  const destContent = getDestinationContent(destination);
 
   return {
     percentage: bufferPercentage,
@@ -366,7 +280,7 @@ export function buildRealisticBudgetBuffer(
       localTransitAndAutosINR: autoShare,
       shoppingAndIncidentalsINR: shoppingShare
     },
-    hiddenCostWarnings
+    hiddenCostWarnings: destContent.hiddenCostWarnings
   };
 }
 
@@ -382,64 +296,16 @@ export function buildTrustVerificationDetails(
   hotel: HotelItem,
   transfer?: TransferItem
 ): TrustVerificationDetails {
-  const dest = (destination || '').toLowerCase();
   const mapsQuery = encodeURIComponent(`${hotel.name} ${hotel.area} ${destination}`);
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-
-  const verifiedReviews = hotel.verifiedReviews && hotel.verifiedReviews.length > 0
-    ? hotel.verifiedReviews
-    : [
-        {
-          id: 'rev-1',
-          author: 'Priya & Aarav K.',
-          persona: 'Family with 8yo child',
-          rating: 4.8,
-          date: 'October 2026',
-          verifiedStay: true,
-          comment:
-            'Room photos are 100% accurate! The connecting family suite had genuine separate beds, elevator was reliable for luggage, and the beach was truly a 4-minute flat walk without steep stairs.',
-          highlightBadge: 'Accurate Photos & Space'
-        },
-        {
-          id: 'rev-2',
-          author: 'Dr. Ramesh N.',
-          persona: 'Traveler with senior parents',
-          rating: 4.7,
-          date: 'September 2026',
-          verifiedStay: true,
-          comment:
-            'Very thoughtful layout. Ground floor access, walk-in showers with grab rails, and quiet evening surroundings without thumping party music. Driver was courteous and punctual.',
-          highlightBadge: 'Senior Friendly & Quiet'
-        },
-        {
-          id: 'rev-3',
-          author: 'Siddharth M.',
-          persona: 'Couple holiday',
-          rating: 4.9,
-          date: 'November 2026',
-          verifiedStay: true,
-          comment:
-            'Google Maps pin matched the exact doorstep. Buffet breakfast included hot local dishes and private cab driver arrived 15 mins before scheduled airport pickup.',
-          highlightBadge: 'Punctual & Verified Pin'
-        }
-      ];
-
-  const seatTypeVerified = transfer?.seatTypeVerified ||
-    (transfer?.vehicleType?.toLowerCase().includes('innova')
-      ? 'Verified 7-Seater AC MUV with Captain Seats & Dedicated Boot Space'
-      : 'Verified AC Sedan with Individual Reclining Seats & Commercial Yellow Board Registration');
-
-  const driverBehaviorRating = transfer?.driverBehaviorRating || 4.85;
-  const driverVettingNote = transfer?.driverVettingNote ||
-    'Police background checked · 8+ years hill/coastal highway driving experience · Mandatory zero-tolerance alcohol breathalyzer verified prior to trip start.';
 
   return {
     googleMapsVerified: true,
     googleMapsUrl,
-    streetViewBadge: 'Google Maps Street View & Photo Verified',
-    seatTypeVerified,
-    driverBehaviorRating,
-    driverVettingNote,
-    verifiedReviews
+    streetViewBadge: 'Check on Google Maps',
+    seatTypeVerified: transfer?.vehicleType || 'Standard Vehicle',
+    driverBehaviorRating: 4.5,
+    driverVettingNote: 'Chauffeured transfer. Review vehicle details with operator before boarding.',
+    verifiedReviews: []
   };
 }

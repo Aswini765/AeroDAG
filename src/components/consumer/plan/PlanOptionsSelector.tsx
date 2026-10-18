@@ -55,7 +55,7 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-[#0E6B59]" />
             <h3 className="text-sm sm:text-base font-bold text-[#15201D] font-heading">
-              Compare 3 Plan Versions
+              {options.length === 2 ? 'Compare 2 Plan Versions' : 'Compare 3 Plan Versions'}
             </h3>
           </div>
           <p className="text-xs text-[#55625E] mt-0.5">
@@ -63,12 +63,14 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
           </p>
         </div>
         <div className="text-[11px] font-semibold text-[#0E6B59] bg-[#E3F1EC] px-2.5 py-1 rounded-full self-start sm:self-auto">
-          3 Real Options
+          {options.length === 2 ? 'Only 2 options fit your budget' : '3 Real Options'}
         </div>
       </div>
 
-      {/* Swipeable cards on mobile, 3-column grid on desktop */}
-      <div className="flex sm:grid sm:grid-cols-3 gap-3 overflow-x-auto pb-2 pt-1 -mx-2 px-2 sm:mx-0 sm:px-0 snap-x snap-mandatory scrollbar-thin">
+      {/* Swipeable cards on mobile, grid on desktop */}
+      <div className={`flex sm:grid gap-3 overflow-x-auto pb-2 pt-1 -mx-2 px-2 sm:mx-0 sm:px-0 snap-x snap-mandatory scrollbar-thin ${
+        options.length === 2 ? 'sm:grid-cols-2 max-w-3xl mx-auto' : 'sm:grid-cols-3'
+      }`}>
         {options.map((opt) => {
           const isSelected = selectedTier === opt.id;
           return (
@@ -82,7 +84,7 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
               }`}
             >
               {/* Header */}
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-[#55625E]">
                     {opt.tier}
@@ -103,6 +105,13 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
                 <div className="text-[11px] text-[#55625E]">
                   Per person: <span className="font-semibold text-[#15201D]">₹{opt.perPersonCostINR.toLocaleString('en-IN')}</span> (all-in)
                 </div>
+                {opt.diffFromBalanced && (
+                  <div className="pt-0.5">
+                    <span className="text-[11px] font-semibold text-[#0E6B59] bg-[#E3F1EC]/70 px-2 py-0.5 rounded-md inline-block">
+                      {opt.diffFromBalanced}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Tagline */}

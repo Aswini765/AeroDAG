@@ -1,6 +1,7 @@
 // src/server/parseTripHandler.ts
 import { Request, Response } from 'express';
 import { GoogleGenAI } from '@google/genai';
+import { generateJsonWithFallback } from './geminiModels';
 import { getModelRouter } from '../services/optimization';
 import { getTelemetryTracer, getTelemetryMetricsCollector, TraceContext } from '../services/telemetry';
 import { z } from 'zod';
@@ -83,12 +84,10 @@ export async function handleParseTrip(req: Request, res: Response) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return res.status(200).json({basicMode:true,reason:'no_gemini_key'});
     // Lightweight model: reading a trip description doesn't need a big model, and it has its own free-tier quota.
-    const model = process.env.MODEL_PARSE_TRIP || 'gemini-2.5-flash-lite';
     const ai = new GoogleGenAI({apiKey: apiKey.trim()});
     const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
     const prompt = `Today is ${today} (India). Extract the fields from the user message and return JSON matching the schema. Include "<field>Source" (stated|assumed|missing) and, if stated, "<field>Quote" with the exact phrase from the message.\nFor "dates", convert relative phrases ("20th to 27th this month", "next weekend") to an exact range written like "20-27 Oct 2026" or "28 Oct - 2 Nov 2026"; the quote must still be the user's own words. Ages: "children" are under 18, "seniors" are 60 or older.\nUser: \"${userMessage}\"\nSchema: ${JSON.stringify(tripSchema.shape)}\n`;
-    const response = await ai.models.generateContent({model,contents:prompt,config:{responseMimeType:'application/json'}});
-    const raw = response.text?.trim() ?? '';
+    const { text: raw } = await generateJsonWithFallback(ai, prompt, [process.env.MODEL_PARSE_TRIP]);
     let parsed;
     try { parsed = JSON.parse(raw); } catch { return res.status(502).json({error:'Invalid JSON from Gemini',code:'BAD_GEMINI_RESPONSE'}); }
     const result = tripSchema.safeParse(parsed);
@@ -116,11 +115,8 @@ export async function handleParseTrip(req: Request, res: Response) {
     if (!data.destination || data.destination.trim() === '') {
       return res.status(422).json({code:'UNPARSEABLE'});
     }
-    // Unsupported destinations (checked before traveller details)
-    const canonicalDestination = matchSupportedDestination(data.destination);
-    if (!canonicalDestination) {
-      return res.status(200).json({unsupported: data.destination});
-    }
+    // Use canonical catalog destination if matched, or fallback to parsed destination
+    const canonicalDestination = matchSupportedDestination(data.destination) || data.destination.trim();
     // No traveller count given: report as missing (the UI assumes a default and labels it "assumed").
     if (totalTravellers === 0) {
       data.adultsSource = 'missing';

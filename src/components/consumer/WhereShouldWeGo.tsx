@@ -8,11 +8,12 @@ interface WhereShouldWeGoProps {
 type VibeType = 'All' | 'Beach' | 'Hills' | 'Heritage' | 'Nature';
 
 interface DestinationCardData {
-  name: 'Goa' | 'Coorg' | 'Kerala' | 'Mysuru';
+  name: string;
   vibe: 'Beach' | 'Hills' | 'Heritage' | 'Nature';
   icon: string;
   reason: string;
   baseCostPerDayINR: number;
+  isAiEstimate?: boolean;
 }
 
 const DESTINATIONS: DestinationCardData[] = [
@@ -43,6 +44,30 @@ const DESTINATIONS: DestinationCardData[] = [
     icon: '🌿',
     reason: 'backwaters, wildlife and green, slow-paced nature',
     baseCostPerDayINR: 4500
+  },
+  {
+    name: 'Ooty',
+    vibe: 'Hills',
+    icon: '🌲',
+    reason: 'colonial charm, tea gardens and Nilgiri mountain railway',
+    baseCostPerDayINR: 3200,
+    isAiEstimate: true
+  },
+  {
+    name: 'Pondicherry',
+    vibe: 'Beach',
+    icon: '🌊',
+    reason: 'French colonial quarters, promenade and coastal cafes',
+    baseCostPerDayINR: 3600,
+    isAiEstimate: true
+  },
+  {
+    name: 'Udaipur',
+    vibe: 'Heritage',
+    icon: '🏰',
+    reason: 'city of lakes, royal palaces and sunset boat rides',
+    baseCostPerDayINR: 4200,
+    isAiEstimate: true
   }
 ];
 
@@ -76,7 +101,7 @@ export const WhereShouldWeGo: React.FC<WhereShouldWeGoProps> = ({ onSelectSugges
             </h2>
           </div>
           <p className="text-xs text-[#55625E] mt-0.5">
-            Not sure where to head? Pick a vibe, duration and budget to explore our 4 destinations.
+            Not sure where to head? Pick a vibe, duration and budget to explore destinations across India.
           </p>
         </div>
         <span className="text-[11px] font-semibold text-[#0E6B59] bg-[#E3F1EC] px-2.5 py-1 rounded-full self-start sm:self-auto">
@@ -184,9 +209,16 @@ export const WhereShouldWeGo: React.FC<WhereShouldWeGoProps> = ({ onSelectSugges
                     <span className="text-xl">{dest.icon}</span>
                     <span className="text-base font-bold text-[#15201D] font-heading">{dest.name}</span>
                   </div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#0E6B59] bg-[#E3F1EC] px-2 py-0.5 rounded-full">
-                    {dest.vibe}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {dest.isAiEstimate && (
+                      <span className="text-[10px] font-bold text-[#0E6B59] bg-[#EFF8F5] border border-[#0E6B59]/30 px-1.5 py-0.5 rounded-full">
+                        AI estimate
+                      </span>
+                    )}
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#0E6B59] bg-[#E3F1EC] px-2 py-0.5 rounded-full">
+                      {dest.vibe}
+                    </span>
+                  </div>
                 </div>
                 <p className="text-xs text-[#55625E] leading-relaxed">
                   {dest.reason}

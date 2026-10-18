@@ -30,24 +30,26 @@ const EXAMPLE_TRIPS = [
   }
 ];
 
-export const SUPPORTED_DESTINATIONS = [
+export const DETAILED_DESTINATIONS = [
   'Goa',
   'Coorg',
   'Kerala',
-  'Mysuru',
-  'Araku Valley',
-  'Himachal',
-  'Rajasthan',
-  'Vietnam',
-  'Singapore',
-  'Thailand'
+  'Mysuru'
 ];
+
+export const SUPPORTED_DESTINATIONS = DETAILED_DESTINATIONS;
 
 const NOT_PLACES = new Set([
   'the', 'a', 'an', 'my', 'our', 'weekend', 'week', 'days', 'day', 'budget', 'summer', 'winter', 'monsoon',
   'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
   'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec', 'india', 'total', 'peace', 'style'
 ]);
+
+const INTERNATIONAL_DESTINATIONS = [
+  'paris', 'london', 'dubai', 'tokyo', 'bali', 'rome', 'new york',
+  'switzerland', 'maldives', 'amsterdam', 'barcelona', 'bangkok',
+  'phuket', 'krabi', 'singapore', 'vietnam', 'hanoi', 'danang', 'da nang'
+];
 
 /** Heuristic for keyboard-mash input such as "asdfgh qwerty". */
 export function looksLikeGibberish(text: string): boolean {
@@ -68,46 +70,31 @@ export function detectSupportedDestination(text: string): {
   if (/\b(coorg|kodagu|madikeri)\b/.test(lower)) return { isSupported: true, destinationName: 'Coorg' };
   if (/\b(kerala|munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad|varkala|kovalam|cochin fort|fort kochi)\b/.test(lower)) return { isSupported: true, destinationName: 'Kerala' };
   if (/\b(mysuru|mysore)\b/.test(lower)) return { isSupported: true, destinationName: 'Mysuru' };
-  if (/\b(araku|araku valley|borra caves)\b/.test(lower)) return { isSupported: true, destinationName: 'Araku Valley' };
-  if (/\b(himachal|manali|kullu|spiti)\b/.test(lower)) return { isSupported: true, destinationName: 'Himachal' };
-  if (/\b(rajasthan|jaipur|udaipur|jodhpur|jaisalmer)\b/.test(lower)) return { isSupported: true, destinationName: 'Rajasthan' };
-  if (/\b(vietnam|hanoi|da nang|danang|ha long|hoi an)\b/.test(lower)) return { isSupported: true, destinationName: 'Vietnam' };
-  if (/\b(singapore|sentosa)\b/.test(lower)) return { isSupported: true, destinationName: 'Singapore' };
-  if (/\b(thailand|bangkok|phuket|krabi|chiang mai|koh samui)\b/.test(lower)) return { isSupported: true, destinationName: 'Thailand' };
 
   if (looksLikeGibberish(text)) return { isSupported: false, unsupportedTarget: text.trim(), unparseable: true };
 
-  // Well-known places we don't cover yet (destinations only; origins like Delhi are fine)
-  const knownElsewhere = [
-    'paris', 'london', 'dubai', 'tokyo', 'bali', 'rome', 'new york',
-    'switzerland', 'maldives', 'amsterdam', 'barcelona', 'shimla', 'ladakh', 'ooty', 'rishikesh'
-  ];
-  for (const place of knownElsewhere) {
+  // International places are unsupported
+  for (const place of INTERNATIONAL_DESTINATIONS) {
     if (new RegExp(`\\b${place}\\b`).test(lower)) {
       const cap = place.replace(/\b\w/g, (c) => c.toUpperCase());
       return { isSupported: false, unsupportedTarget: cap };
     }
   }
 
-  // Well-known places we don't plan yet (Ooty, Jaipur, Pondicherry…)
-  const known = findKnownUnsupportedPlace(text);
-  if (known) return { isSupported: false, unsupportedTarget: known };
-
-  // "trip to X", "holiday in X", "visit X"
+  // Any other Indian place mentioned is supported for dynamic AI profile planning
   const match = text.match(/(?:trip\s+to|going\s+to|holiday\s+in|vacation\s+in|visit(?:ing)?|travel\s+to|explore|fly\s+to)\s+([A-Za-z]+)/i);
   if (match && match[1] && !NOT_PLACES.has(match[1].toLowerCase())) {
     const cap = match[1].charAt(0).toUpperCase() + match[1].slice(1);
-    return { isSupported: false, unsupportedTarget: cap };
+    return { isSupported: true, destinationName: cap };
   }
 
-  // A single plain word is most likely a place name
   const words = text.trim().split(/\s+/);
   if (words.length === 1 && /^[A-Za-z]+$/.test(words[0]) && !NOT_PLACES.has(words[0].toLowerCase())) {
     const cap = words[0].charAt(0).toUpperCase() + words[0].slice(1);
-    return { isSupported: false, unsupportedTarget: cap };
+    return { isSupported: true, destinationName: cap };
   }
 
-  return { isSupported: false, unsupportedTarget: text.trim(), unparseable: true };
+  return { isSupported: true };
 }
 
 export const DescribeScreen: React.FC<DescribeScreenProps> = ({
@@ -352,7 +339,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
 
         <div className="mt-4 pt-4 border-t border-[#E2E6E1] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-[#55625E]">
-            <span id="covered-destinations-note">Now planning <strong className="font-semibold text-[#15201D]">Goa · Coorg · Kerala · Mysuru</strong> · prices in INR</span>
+            <span id="covered-destinations-note">Plan any trip in India · detailed guides for <strong className="font-semibold text-[#15201D]">Goa, Coorg, Kerala, Mysuru</strong> · prices in INR</span>
             {!isAiAvailable && (
               <span id="ai-basic-mode-note" className="inline-flex items-center gap-1.5 text-[#8A4307] bg-[#FCEFD9] px-2 py-0.5 rounded-full font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#8A4307]" />

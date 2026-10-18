@@ -1004,7 +1004,7 @@ export function generateVerificationChecks(
         ? `Transfer duration of ${driveMinutes} minutes exceeds the 90-minute comfortable threshold for young children or seniors.`
         : `Direct airport transfer (${driveMinutes} mins) is comfortable for all party members.`,
       warningFix: transferStatus === 'warn'
-        ? 'Fly into Dabolim Airport (GOI) instead (45 min drive) or select accommodation in North Goa closer to Mopa.'
+        ? `Consider breaking up the ${Math.round(driveMinutes / 60)}h journey with rest stops or selecting accommodation closer to your arrival point.`
         : undefined,
       whatWasChecked: 'Drive time from arrival airport to accommodation against party age demographics'
     },

@@ -8,6 +8,7 @@ interface BookedItemsProps {
   hotel: HotelItem;
   transfer: TransferItem;
   nightsCount: number;
+  isAiEstimated?: boolean;
   onOpenFlightsModal?: () => void;
   onOpenStaysModal?: () => void;
 }
@@ -17,6 +18,7 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
   hotel,
   transfer,
   nightsCount,
+  isAiEstimated = false,
   onOpenFlightsModal,
   onOpenStaysModal
 }) => {
@@ -34,7 +36,7 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
                 <span className="text-xs font-semibold uppercase tracking-wider text-[#55625E]">
                   Flight
                 </span>
-                <SourceTag kind="sample" label="sample" />
+                <SourceTag kind={isAiEstimated ? 'estimate' : 'sample'} label={isAiEstimated ? 'AI estimate' : 'sample'} />
               </div>
               <div className="text-sm font-bold text-[#15201D]">
                 {flight.airline} ({flight.flightNumber}) · {flight.originCode} → {flight.destinationCode}
@@ -83,7 +85,7 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
                 <span className="text-xs font-semibold uppercase tracking-wider text-[#55625E]">
                   Road Travel
                 </span>
-                <SourceTag kind="sample" label="sample" />
+                <SourceTag kind={isAiEstimated ? 'estimate' : 'sample'} label={isAiEstimated ? 'AI estimate' : 'sample'} />
               </div>
               <div className="text-sm font-bold text-[#15201D]">
                 {transfer.title || 'Private AC Outstation Cab (round-trip)'}
@@ -113,13 +115,13 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
               <span className="text-xs font-semibold uppercase tracking-wider text-[#55625E]">
                 Stay
               </span>
-              <SourceTag kind="sample" label="sample" />
+              <SourceTag kind={isAiEstimated ? 'estimate' : 'sample'} label={isAiEstimated ? 'AI estimate' : 'sample'} />
             </div>
             <div className="text-sm font-bold text-[#15201D]">
               {hotel.name}
             </div>
             <div className="text-xs text-[#55625E]">
-              {hotel.area} · {hotel.starRating}★ · {nightsCount} nights (₹{hotel.pricePerNightINR.toLocaleString('en-IN')}/night)
+              {hotel.area}{!isAiEstimated ? ` · ${hotel.starRating}★` : ''} · {nightsCount} nights (₹{hotel.pricePerNightINR.toLocaleString('en-IN')}/night)
             </div>
           </div>
         </div>
@@ -164,7 +166,7 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
                 <span className="text-xs font-semibold uppercase tracking-wider text-[#55625E]">
                   Transfers
                 </span>
-                <SourceTag kind="sample" label="sample" />
+                <SourceTag kind={isAiEstimated ? 'estimate' : 'sample'} label={isAiEstimated ? 'AI estimate' : 'sample'} />
               </div>
               <div className="text-sm font-bold text-[#15201D]">
                 {transfer.title || 'Toyota Innova Crysta 7-Seater AC'}

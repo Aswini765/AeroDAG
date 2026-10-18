@@ -1,5 +1,6 @@
 import React from 'react';
 import { MapPin, Utensils, ShoppingBag, PlusCircle, Compass, ExternalLink } from 'lucide-react';
+import { getDestinationContent } from '../../../config/destinationContent';
 
 interface NearbyAmenitiesCardProps {
   stayArea: string;
@@ -20,10 +21,41 @@ export const NearbyAmenitiesCard: React.FC<NearbyAmenitiesCardProps> = ({
   const hasKids = tripNeeds.includes('Travelling with kids');
   const hasElderly = tripNeeds.includes('Elderly / less walking');
 
+  const content = getDestinationContent(destination);
   const cleanDestination = (destination || 'Goa').replace(/,.*$/, '').trim();
   const cleanArea = (stayArea || cleanDestination).replace(/,.*$/, '').trim();
   const mapsSearchQuery = encodeURIComponent(`${cleanArea} ${cleanDestination}`);
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsSearchQuery}`;
+
+  const vegOptions = content.key === 'goa'
+    ? [{ name: 'Kamat Pure Veg & South Indian', dist: '300m · 4 min walk' }, { name: 'Navtara Pure Veg & Thali', dist: '650m · 8 min walk' }]
+    : content.key === 'coorg'
+    ? [{ name: 'Coorg Cuisine Pure Veg & Meals', dist: '300m · 4 min walk' }, { name: 'Raintree Pure Veg & Thali', dist: '650m · 8 min walk' }]
+    : content.key === 'kerala'
+    ? [{ name: 'Saravana Bhavan Pure Veg & Dosa', dist: '300m · 4 min walk' }, { name: 'Aryaas Pure Veg & Meals', dist: '650m · 8 min walk' }]
+    : content.key === 'mysuru'
+    ? [{ name: 'Mylari Heritage Pure Veg Dosa', dist: '300m · 4 min walk' }, { name: 'Hotel Dasaprakash Pure Veg', dist: '650m · 8 min walk' }]
+    : [{ name: 'Local Pure Veg & South Indian', dist: '300m · 4 min walk' }, { name: 'Shree Krishna Sagar Thali', dist: '650m · 8 min walk' }];
+
+  const secondDiningName = content.key === 'goa'
+    ? 'Navtara Pure Veg & Indian'
+    : content.key === 'coorg'
+    ? 'Coorg Cuisine & Estate Filter Coffee'
+    : content.key === 'kerala'
+    ? 'Munnar Tea Valley Cafe'
+    : content.key === 'mysuru'
+    ? 'Mylari Heritage Cafe'
+    : 'Local Family Diner';
+
+  const secondSightName = content.key === 'goa'
+    ? 'Historic Portuguese Fort / Viewpoint'
+    : content.key === 'coorg'
+    ? 'Scenic Abbey Falls & Valley Point'
+    : content.key === 'kerala'
+    ? 'Panoramic Pothamedu Viewpoint'
+    : content.key === 'mysuru'
+    ? 'Mysore Palace & Chamundi View'
+    : 'Historic Landmark Viewpoint';
 
   return (
     <div className="card-consumer p-4 sm:p-5 space-y-4 text-left border border-[#E2E6E1] bg-white rounded-2xl shadow-xs">
@@ -60,22 +92,22 @@ export const NearbyAmenitiesCard: React.FC<NearbyAmenitiesCardProps> = ({
             {wantsVeg ? (
               <>
                 <div className="flex items-start justify-between gap-2">
-                  <span className="font-semibold text-[#15201D]">Anand Pure Veg & South Indian</span>
-                  <span className="text-[#0E6B59] font-medium shrink-0">300m · 4 min walk</span>
+                  <span className="font-semibold text-[#15201D]">{vegOptions[0].name}</span>
+                  <span className="text-[#0E6B59] font-medium shrink-0">{vegOptions[0].dist}</span>
                 </div>
                 <div className="flex items-start justify-between gap-2">
-                  <span className="font-semibold text-[#15201D]">Shree Krishna Sagar Thali</span>
-                  <span className="text-[#0E6B59] font-medium shrink-0">650m · 8 min walk</span>
+                  <span className="font-semibold text-[#15201D]">{vegOptions[1].name}</span>
+                  <span className="text-[#0E6B59] font-medium shrink-0">{vegOptions[1].dist}</span>
                 </div>
               </>
             ) : (
               <>
                 <div className="flex items-start justify-between gap-2">
-                  <span className="font-semibold text-[#15201D]">Local Coastal & Family Bistro</span>
+                  <span className="font-semibold text-[#15201D]">{content.nearbyDining}</span>
                   <span className="text-[#0E6B59] font-medium shrink-0">350m · 5 min walk</span>
                 </div>
                 <div className="flex items-start justify-between gap-2">
-                  <span className="font-semibold text-[#15201D]">Navtara Pure Veg & Indian</span>
+                  <span className="font-semibold text-[#15201D]">{secondDiningName}</span>
                   <span className="text-[#0E6B59] font-medium shrink-0">700m · 9 min walk</span>
                 </div>
               </>
@@ -133,15 +165,15 @@ export const NearbyAmenitiesCard: React.FC<NearbyAmenitiesCardProps> = ({
         <div className="p-3 rounded-xl border border-[#E2E6E1] bg-[#F9FAF9] space-y-2">
           <div className="flex items-center gap-1.5 font-bold text-[#15201D]">
             <Compass className="h-3.5 w-3.5 text-[#0E6B59]" />
-            <span>Main Sights & Promenade</span>
+            <span>{content.key === 'goa' ? 'Beach & Coastline' : content.key === 'coorg' ? 'Plantations & Viewpoints' : content.key === 'kerala' ? 'Tea Hills & Nature' : content.key === 'mysuru' ? 'Heritage & Promenade' : 'Main Sights & Promenade'}</span>
           </div>
           <div className="space-y-1.5 text-[11px] text-[#55625E]">
             <div className="flex items-start justify-between gap-2">
-              <span className="font-semibold text-[#15201D]">Beach / Promenade / Main Square</span>
+              <span className="font-semibold text-[#15201D]">{content.nearbySight}</span>
               <span className="text-[#0E6B59] font-medium shrink-0">800m · 10 min walk</span>
             </div>
             <div className="flex items-start justify-between gap-2">
-              <span className="font-semibold text-[#15201D]">Historic Fort / Estate Viewpoint</span>
+              <span className="font-semibold text-[#15201D]">{secondSightName}</span>
               <span className="text-[#0E6B59] font-medium shrink-0">2.5 km · 8 min auto</span>
             </div>
           </div>

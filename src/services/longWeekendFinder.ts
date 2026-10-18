@@ -70,6 +70,12 @@ export function findLongWeekends(
       }
 
       const dow = holDate.getDay(); // 0 Sun, 1 Mon, 2 Tue, 3 Wed, 4 Thu, 5 Fri, 6 Sat
+      
+      // Drop holidays that fall on a Saturday or Sunday (not a long weekend)
+      if (dow === 0 || dow === 6) {
+        continue;
+      }
+
       let startDate: Date;
       let endDate: Date;
       let leaveDays = 0;
@@ -106,15 +112,14 @@ export function findLongWeekends(
         leaveDays = 2;
         leaveDaysNote = '2 leave days (Thu, Fri)';
       } else {
-        // Saturday (6) or Sunday (0) -> Weekend holiday
-        // Treat as normal weekend
-        startDate = dow === 6 ? holDate : addDays(holDate, -1);
-        endDate = dow === 6 ? addDays(holDate, 1) : holDate;
-        leaveDays = 0;
-        leaveDaysNote = 'Weekend';
+        continue;
       }
 
       const daysCount = Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
+      if (daysCount < 3) {
+        continue;
+      }
+
       const label = `${formatDate(startDate)} – ${formatDate(endDate)} ${endDate.getFullYear()} · ${leaveDaysNote}`;
 
       results.push({
@@ -134,6 +139,6 @@ export function findLongWeekends(
     }
   }
 
-  // Sort chronologically
+  // Sort chronologically by start date
   return results.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 }

@@ -14,9 +14,12 @@ import {
 import { TripPreferences, TripPlan } from '../../types/travelBooking';
 import { TripContext } from '../../services/requirementEngine';
 import { TripPlanningEngine } from '../../services/tripPlanningEngine';
-import { getSeasonOptionsForDestination } from '../../services/destinationsData';
+import { getSeasonOptionsForDestination, isDetailedDestination } from '../../services/destinationsData';
 import { resolveTravelDates, formatDateRange } from '../../services/dateResolver';
 import { findLongWeekends } from '../../services/longWeekendFinder';
+import { getDestinationContent } from '../../config/destinationContent';
+import { fetchDestinationProfile } from '../../services/destinationProfileClient';
+import { buildPlanFromDestinationProfile } from '../../services/aiDestinationPlanBuilder';
 import { SourceTag } from './SourceTag';
 
 interface ClarifyScreenProps {
@@ -119,6 +122,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
 
   // B3: Needs Question State
   const [selectedNeeds, setSelectedNeeds] = useState<string[]>(initialContext.tripNeeds || []);
+  const [isNeedsOpen, setIsNeedsOpen] = useState(false);
 
   const handleToggleNeed = (need: string) => {
     const next = selectedNeeds.includes(need)
@@ -314,7 +318,17 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
   const triggerPlanGeneration = async (ctx: TripContext) => {
     setIsLoading(true);
     try {
-      const generatedPlan = await TripPlanningEngine.buildDeterministicPlan(ctx);
+      let generatedPlan: TripPlan;
+      if (isDetailedDestination(ctx.destination || '')) {
+        generatedPlan = await TripPlanningEngine.buildDeterministicPlan(ctx);
+      } else {
+        const profile = await fetchDestinationProfile(ctx.destination || '', ctx.origin || 'Bengaluru');
+        if (profile && !('unsupported' in profile)) {
+          generatedPlan = buildPlanFromDestinationProfile(ctx, profile);
+        } else {
+          generatedPlan = await TripPlanningEngine.buildDeterministicPlan(ctx);
+        }
+      }
       const preferences: TripPreferences = {
         destination: generatedPlan.destination,
         origin: generatedPlan.origin,
@@ -425,6 +439,39 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     );
   }
 
+  const destContent = getDestinationContent(tripContext.destination || undefined);
+
+  // Ask only what's missing or assumed: hide sections whose answer the user already stated
+  const datesStated = tripContext.fieldSources?.dates === 'stated' && Boolean(holidayFrom && holidayTo);
+  const travellersStated = tripContext.fieldSources?.travellers === 'stated';
+  const budgetStated = tripContext.fieldSources?.budget === 'stated';
+  const paceStated = tripContext.fieldSources?.pace === 'stated';
+
+  let qCount = 1;
+  const datesQNum = !datesStated ? qCount++ : 0;
+  const travellersQNum = !travellersStated ? qCount++ : 0;
+  const budgetQNum = !budgetStated ? qCount++ : 0;
+  const paceQNum = !paceStated ? qCount++ : 0;
+  const totalQuestionsShown = qCount - 1;
+
+  const headerBadge = totalQuestionsShown === 0
+    ? 'Ready to plan'
+    : totalQuestionsShown === 1
+    ? '1 quick check'
+    : `${totalQuestionsShown} quick checks`;
+
+  const headerPill = totalQuestionsShown === 0
+    ? '· Trip details confirmed'
+    : totalQuestionsShown === 1
+    ? '· 1 Quick Clarification'
+    : `· ${totalQuestionsShown} Quick Clarifications`;
+
+  const headerDescription = totalQuestionsShown === 0
+    ? 'All key details are confirmed from your message. Review the summary or add specific needs below.'
+    : totalQuestionsShown === 1
+    ? 'Just 1 quick check to tailor your trip.'
+    : "Let's fine-tune a couple details to make sure your plan fits your group.";
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 animate-fade-in-slide">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -443,22 +490,23 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#E3F1EC] text-[#0E6B59] uppercase tracking-wider flex items-center gap-1">
                   <Sparkles className="h-3 w-3" />
-                  Tailored AI Planning
+                  {headerBadge}
                 </span>
-                <span className="text-xs text-[#55625E]">· 4 Quick Clarifications</span>
+                <span className="text-xs text-[#55625E]">{headerPill}</span>
               </div>
               <h2 className="text-lg sm:text-xl font-bold text-[#15201D] font-heading">
                 Let's tailor your {tripContext.destination?.replace(/,.*$/, '') || 'trip'}
               </h2>
               <p className="text-xs sm:text-sm text-[#55625E]">
-                Instead of a generic pre-set itinerary, let's fine-tune your exact dates, group style, and budget preferences.
+                {headerDescription}
               </p>
             </div>
 
             {/* 1. CLARIFYING QUESTION 1: EXACT DATES & DATE FLEXIBILITY */}
+            {!datesStated && (
             <div className="space-y-3.5 pb-5 border-b border-[#E2E6E1]">
               <div className="flex items-center gap-2">
-                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold">1</span>
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold">{datesQNum}</span>
                 <h3 className="text-sm sm:text-base font-bold text-[#15201D]">
                   Exact Dates & Flexibility
                 </h3>
@@ -621,11 +669,13 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                 </div>
               )}
             </div>
+            )}
 
             {/* 2. CLARIFYING QUESTION 2: GROUP PERSONA */}
+            {!travellersStated && (
             <div className="space-y-3 pb-5 border-b border-[#E2E6E1]">
               <div className="flex items-center gap-2">
-                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold">2</span>
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold">{travellersQNum}</span>
                 <h3 className="text-sm sm:text-base font-bold text-[#15201D]">
                   Who is Travelling? (Group Persona)
                 </h3>
@@ -704,11 +754,13 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                 </button>
               </div>
             </div>
+            )}
 
             {/* 3. CLARIFYING QUESTION 3: BUDGET CONSTRAINTS & FLEXIBILITY */}
+            {!budgetStated && (
             <div className="space-y-3 pb-5 border-b border-[#E2E6E1]">
               <div className="flex items-center gap-2">
-                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold">3</span>
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold">{budgetQNum}</span>
                 <h3 className="text-sm sm:text-base font-bold text-[#15201D]">
                   Budget Constraints & Flexibility
                 </h3>
@@ -761,16 +813,18 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                     }`}
                   >
                     <div className="font-semibold text-[#15201D]">Flexible (+10%–15%)</div>
-                    <div className="text-[11px] text-[#55625E]">Willing to stretch slightly for prime beachfront / express trains</div>
+                    <div className="text-[11px] text-[#55625E]">Willing to stretch slightly for {destContent.clarifyStretchNote}</div>
                   </button>
                 </div>
               </div>
             </div>
+            )}
 
             {/* 4. CLARIFYING QUESTION 4: TRAVEL STYLE & PACING */}
-            <div className="space-y-3 pb-5">
+            {!paceStated && (
+            <div className="space-y-3 pb-5 border-b border-[#E2E6E1]">
               <div className="flex items-center gap-2">
-                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold">4</span>
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold">{paceQNum}</span>
                 <h3 className="text-sm sm:text-base font-bold text-[#15201D]">
                   Travel Style & Pacing
                 </h3>
@@ -817,66 +871,92 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                 </button>
               </div>
             </div>
+            )}
 
-            {/* 5. CLARIFYING QUESTION 5: TRIP NEEDS (B3) */}
-            <div className="space-y-3 pb-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold">5</span>
-                  <h3 className="text-sm sm:text-base font-bold text-[#15201D]">
-                    Anything important for this trip?
-                  </h3>
+            {/* 5. COLLAPSED NEEDS QUESTION: CHIP TOGGLE */}
+            <div className="pt-2 pb-2">
+              {!isNeedsOpen ? (
+                <div>
+                  <button
+                    type="button"
+                    id="add-needs-toggle-btn"
+                    onClick={() => setIsNeedsOpen(true)}
+                    className="pill-chip text-xs bg-white text-[#0E6B59] border border-[#0E6B59]/40 hover:bg-[#E3F1EC] transition flex items-center gap-1.5 font-bold py-2.5 px-4 shadow-2xs"
+                  >
+                    <span>+ Add needs (veg, kids, elderly…)</span>
+                    {selectedNeeds.length > 0 && (
+                      <span className="ml-1 bg-[#0E6B59] text-white text-[10px] px-1.5 py-0.2 rounded-full font-normal">
+                        {selectedNeeds.length} active
+                      </span>
+                    )}
+                  </button>
                 </div>
-                <span className="text-[11px] text-[#55625E] font-medium bg-[#F0F4F2] px-2 py-0.5 rounded-full">Optional</span>
-              </div>
-              <p className="text-xs text-[#55625E]">
-                Select any that apply. We use these to rank stays, highlight walking distances, and adapt itinerary pacing.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {[
-                  { id: 'Vegetarian food nearby', icon: '🥗', title: 'Vegetarian food nearby', desc: 'Top pure-veg / Jain options within walking distance' },
-                  { id: 'Kitchen in the stay', icon: '🍳', title: 'Kitchen in the stay', desc: 'Private kitchenette for baby food or home cooking' },
-                  { id: 'Travelling with kids', icon: '👶', title: 'Travelling with kids', desc: 'Child-safe balcony, early dining & relaxed pacing' },
-                  { id: 'Elderly / less walking', icon: '🧓', title: 'Elderly / less walking', desc: 'Lift/ground floor, low walking, step-free access' },
-                  { id: 'Supermarket or pharmacy nearby', icon: '🏪', title: 'Supermarket or pharmacy nearby', desc: 'Medical shop and essentials within 5–10 mins walk' },
-                ].map((item) => {
-                  const isChecked = selectedNeeds.includes(item.id);
-                  return (
+              ) : (
+                <div className="space-y-3 p-4 rounded-2xl bg-[#F9FAF9] border border-[#E2E6E1]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-[#15201D]">
+                        Anything important for this trip?
+                      </h3>
+                    </div>
                     <button
-                      key={item.id}
                       type="button"
-                      onClick={() => handleToggleNeed(item.id)}
-                      className={`p-3 rounded-xl text-left border transition text-xs space-y-1 flex items-start gap-2.5 min-h-[44px] ${
-                        isChecked
-                          ? 'border-[#0E6B59] bg-[#E3F1EC]/60 text-[#15201D] font-bold'
-                          : 'border-[#E2E6E1] bg-white text-[#55625E] hover:border-[#0E6B59]/40'
-                      }`}
+                      onClick={() => setIsNeedsOpen(false)}
+                      className="text-xs text-[#0E6B59] hover:underline font-semibold"
                     >
-                      <span className="text-base leading-none pt-0.5">{item.icon}</span>
-                      <div className="space-y-0.5 flex-1">
-                        <div className="font-bold text-[#15201D] flex items-center justify-between">
-                          <span>{item.title}</span>
-                          <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${
-                            isChecked ? 'bg-[#0E6B59] border-[#0E6B59] text-white' : 'border-[#CBD5E1] bg-white'
-                          }`}>
-                            {isChecked ? '✓' : ''}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-[#55625E] font-normal">
-                          {item.desc}
-                        </div>
-                      </div>
+                      Done
                     </button>
-                  );
-                })}
-              </div>
+                  </div>
+                  <p className="text-xs text-[#55625E]">
+                    Select any that apply. We use these to rank stays, highlight walking distances, and adapt itinerary pacing.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {[
+                      { id: 'Vegetarian food nearby', icon: '🥗', title: 'Vegetarian food nearby', desc: 'Top pure-veg / Jain options within walking distance' },
+                      { id: 'Kitchen in the stay', icon: '🍳', title: 'Kitchen in the stay', desc: 'Private kitchenette for baby food or home cooking' },
+                      { id: 'Travelling with kids', icon: '👶', title: 'Travelling with kids', desc: 'Child-safe balcony, early dining & relaxed pacing' },
+                      { id: 'Elderly / less walking', icon: '🧓', title: 'Elderly / less walking', desc: 'Lift/ground floor, low walking, step-free access' },
+                      { id: 'Supermarket or pharmacy nearby', icon: '🏪', title: 'Supermarket or pharmacy nearby', desc: 'Medical shop and essentials within 5–10 mins walk' },
+                    ].map((item) => {
+                      const isChecked = selectedNeeds.includes(item.id);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleToggleNeed(item.id)}
+                          className={`p-3 rounded-xl text-left border transition text-xs space-y-1 flex items-start gap-2.5 min-h-[44px] ${
+                            isChecked
+                              ? 'border-[#0E6B59] bg-[#E3F1EC]/60 text-[#15201D] font-bold'
+                              : 'border-[#E2E6E1] bg-white text-[#55625E] hover:border-[#0E6B59]/40'
+                          }`}
+                        >
+                          <span className="text-base leading-none pt-0.5">{item.icon}</span>
+                          <div className="space-y-0.5 flex-1">
+                            <div className="font-bold text-[#15201D] flex items-center justify-between">
+                              <span>{item.title}</span>
+                              <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${
+                                isChecked ? 'bg-[#0E6B59] border-[#0E6B59] text-white' : 'border-[#CBD5E1] bg-white'
+                              }`}>
+                                {isChecked ? '✓' : ''}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-[#55625E] font-normal">
+                              {item.desc}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* PRIMARY CTA: BUILD TAILORED PLAN */}
             <div className="pt-4 border-t border-[#E2E6E1] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="text-xs text-[#55625E]">
-                All options checked with realistic budget buffer & anti-fraud protections
+                All options include realistic budget buffers and route comparisons
               </div>
               <button
                 type="button"

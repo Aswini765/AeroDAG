@@ -15,6 +15,7 @@ const __dirname = path.dirname(__filename);
 
 import { handleGeminiChat } from './src/server/geminiHandler.ts';
 import { handleParseTrip } from './src/server/parseTripHandler.ts';
+import { handleDestinationProfile } from './src/server/destinationProfileHandler.ts';
 import {
   getTelemetryTracer,
   getTelemetryMetricsCollector,
@@ -158,6 +159,9 @@ app.post('/api/chat', async (req, res) => {
 
 // POST /api/parse-trip – server‑side Gemini parsing
 app.post('/api/parse-trip', handleParseTrip);
+
+// POST /api/destination-profile – AI destination profile for any location in India
+app.post('/api/destination-profile', handleDestinationProfile);
 
 // 5. User Resource Ownership Verification Endpoints
 const mockUserTrips: Record<string, { id: string; ownerId: string; destination: string }> = {
