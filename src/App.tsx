@@ -15,6 +15,8 @@ import { CheckoutBookingFlow } from './components/consumer/CheckoutBookingFlow';
 import { BookingConfirmationView } from './components/consumer/BookingConfirmationView';
 import { MyTripsView } from './components/consumer/MyTripsView';
 import { HowItWorksModal } from './components/consumer/HowItWorksModal';
+import { PrototypeUsabilitySurveyModal } from './components/consumer/PrototypeUsabilitySurveyModal';
+import { parseBudgetINR } from './services/budgetParser';
 
 import {
   TripPreferences,
@@ -42,6 +44,7 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState<FlowStep>('describe');
   const [currency, setCurrency] = useState<Currency>('INR');
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [isSurveyOpen, setIsSurveyOpen] = useState(false);
 
   // Phase 6: Supabase Auth & Session State
   const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
@@ -364,7 +367,7 @@ export default function App() {
   // Handle starting a plan from Screen 1 (Describe).
   // Returns an error message for the Describe screen, or null when we moved on.
   const handleStartPlan = async (promptText: string): Promise<string | null> => {
-    const SUPPORTED_MSG = 'AeroDAG currently covers: Goa, Coorg, Kerala, Mysuru.';
+    const SUPPORTED_MSG = 'AeroDAG currently covers: Goa, Coorg, Kerala, Mysuru, Araku, Himachal, Rajasthan, Vietnam, Singapore, Thailand.';
     const lower = promptText.toLowerCase();
 
     // 1. Try the AI parser first (server-side Gemini), when it is configured.
@@ -389,6 +392,22 @@ export default function App() {
       ctx.destination = 'Kerala, India';
     } else if (lower.includes('mysuru') || lower.includes('mysore')) {
       ctx.destination = 'Mysuru, Karnataka';
+    } else if (lower.includes('araku')) {
+      ctx.destination = 'Araku Valley, Andhra Pradesh';
+      ctx.transportMode = 'Train'; // Famous Vistadome scenic route
+    } else if (lower.includes('himachal') || lower.includes('manali') || lower.includes('shimla') || lower.includes('kullu')) {
+      ctx.destination = 'Himachal, India';
+    } else if (lower.includes('rajasthan') || lower.includes('jaipur') || lower.includes('udaipur')) {
+      ctx.destination = 'Rajasthan, India';
+    } else if (lower.includes('vietnam') || lower.includes('hanoi') || lower.includes('da nang') || lower.includes('danang')) {
+      ctx.destination = 'Vietnam';
+      ctx.scope = 'international';
+    } else if (lower.includes('singapore')) {
+      ctx.destination = 'Singapore';
+      ctx.scope = 'international';
+    } else if (lower.includes('thailand') || lower.includes('bangkok') || lower.includes('phuket')) {
+      ctx.destination = 'Thailand';
+      ctx.scope = 'international';
     } else if (ai.kind !== 'ok') {
       return `We couldn't find a destination we cover in that. ${SUPPORTED_MSG}`;
     }
@@ -437,12 +456,10 @@ export default function App() {
       fieldSources.duration = 'assumed';
     }
 
-    // Budget
-    const budgetMatch = promptText.match(/(?:₹|rs\.?|inr|budget)\s*(\d{1,3}(?:,\d{2,3})+|\d{4,7})|(\d{1,3}(?:,\d{2,3})+|\d{4,7})\s*(?:₹|rs|inr|rupees)/i)
-      || promptText.match(/(\d{1,3}(?:,\d{3})+|\d{5,7})/);
-    const rawBudget = budgetMatch ? parseInt((budgetMatch[1] || budgetMatch[2] || '').replace(/,/g, ''), 10) : NaN;
-    if (!isNaN(rawBudget) && rawBudget >= 5000) {
-      ctx.budgetTotalINR = rawBudget;
+    // Dynamic Budget Parsing (supports 45k, 1.5 lakh, under 35000, ₹50,000, etc.)
+    const parsedBudget = parseBudgetINR(promptText);
+    if (parsedBudget !== null && parsedBudget >= 5000) {
+      ctx.budgetTotalINR = parsedBudget;
       fieldSources.budget = 'stated';
     } else {
       ctx.budgetTotalINR = 60000;
@@ -742,6 +759,7 @@ export default function App() {
         currency={currency}
         setCurrency={setCurrency}
         onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
+        onOpenSurvey={() => setIsSurveyOpen(true)}
         hasConfirmedTrips={confirmedTrips.length > 0}
         authUser={authUser}
         isAuthAnonymous={isAuthAnonymous}
@@ -871,7 +889,14 @@ export default function App() {
             <span>Plan a trip you can actually take</span>
           </div>
 
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex flex-wrap items-center gap-4 text-xs">
+            <button
+              onClick={() => setIsSurveyOpen(true)}
+              className="text-[#0E6B59] hover:underline cursor-pointer font-semibold inline-flex items-center gap-1"
+            >
+              <span>Feedback Survey (Shwetha & Nani Feedback)</span>
+            </button>
+            <span>·</span>
             <button
               onClick={() => setIsHowItWorksOpen(true)}
               className="text-[#0E6B59] hover:underline cursor-pointer font-medium"
@@ -888,6 +913,12 @@ export default function App() {
       <HowItWorksModal
         isOpen={isHowItWorksOpen}
         onClose={() => setIsHowItWorksOpen(false)}
+      />
+
+      {/* 5. Usability Survey & Research Modal */}
+      <PrototypeUsabilitySurveyModal
+        isOpen={isSurveyOpen}
+        onClose={() => setIsSurveyOpen(false)}
       />
     </div>
   );

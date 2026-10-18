@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowRight, DollarSign, Clock, Tag, Mic, Square } from 'lucide-react';
 import { useSpeechInput } from '../../hooks/useSpeechInput';
 import { suggestAlternative, swapPlaceInText, findKnownUnsupportedPlace, suggestFromTripType, DestinationSuggestion } from '../../services/destinationSuggestions';
+import { WhereShouldWeGo } from './WhereShouldWeGo';
 
 interface DescribeScreenProps {
   /** Resolves to an error message to show, or null/void when planning moved on. */
@@ -29,7 +30,18 @@ const EXAMPLE_TRIPS = [
   }
 ];
 
-export const SUPPORTED_DESTINATIONS = ['Goa', 'Coorg', 'Kerala', 'Mysuru'];
+export const SUPPORTED_DESTINATIONS = [
+  'Goa',
+  'Coorg',
+  'Kerala',
+  'Mysuru',
+  'Araku Valley',
+  'Himachal',
+  'Rajasthan',
+  'Vietnam',
+  'Singapore',
+  'Thailand'
+];
 
 const NOT_PLACES = new Set([
   'the', 'a', 'an', 'my', 'our', 'weekend', 'week', 'days', 'day', 'budget', 'summer', 'winter', 'monsoon',
@@ -56,30 +68,36 @@ export function detectSupportedDestination(text: string): {
   if (/\b(coorg|kodagu|madikeri)\b/.test(lower)) return { isSupported: true, destinationName: 'Coorg' };
   if (/\b(kerala|munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad|varkala|kovalam|cochin fort|fort kochi)\b/.test(lower)) return { isSupported: true, destinationName: 'Kerala' };
   if (/\b(mysuru|mysore)\b/.test(lower)) return { isSupported: true, destinationName: 'Mysuru' };
+  if (/\b(araku|araku valley|borra caves)\b/.test(lower)) return { isSupported: true, destinationName: 'Araku Valley' };
+  if (/\b(himachal|manali|kullu|spiti)\b/.test(lower)) return { isSupported: true, destinationName: 'Himachal' };
+  if (/\b(rajasthan|jaipur|udaipur|jodhpur|jaisalmer)\b/.test(lower)) return { isSupported: true, destinationName: 'Rajasthan' };
+  if (/\b(vietnam|hanoi|da nang|danang|ha long|hoi an)\b/.test(lower)) return { isSupported: true, destinationName: 'Vietnam' };
+  if (/\b(singapore|sentosa)\b/.test(lower)) return { isSupported: true, destinationName: 'Singapore' };
+  if (/\b(thailand|bangkok|phuket|krabi|chiang mai|koh samui)\b/.test(lower)) return { isSupported: true, destinationName: 'Thailand' };
 
-  if (looksLikeGibberish(text)) return { isSupported: false, unparseable: true };
-
-  // Well-known places we don't plan yet (Ooty, Jaipur, Pondicherry…)
-  const known = findKnownUnsupportedPlace(text);
-  if (known) return { isSupported: false, unsupportedTarget: known };
-
-  // "trip to X", "holiday in X", "visit X"
-  const match = text.match(/(?:trip\s+to|going\s+to|holiday\s+in|vacation\s+in|visit(?:ing)?|travel\s+to|explore|fly\s+to)\s+([A-Za-z]+(?:\s+[A-Z][a-z]+)?)/i);
-  if (match && match[1] && !NOT_PLACES.has(match[1].split(/\s+/)[0].toLowerCase())) {
-    const cap = match[1].charAt(0).toUpperCase() + match[1].slice(1);
-    return { isSupported: false, unsupportedTarget: cap };
-  }
+  if (looksLikeGibberish(text)) return { isSupported: false, unsupportedTarget: text.trim(), unparseable: true };
 
   // Well-known places we don't cover yet (destinations only; origins like Delhi are fine)
   const knownElsewhere = [
-    'paris', 'london', 'dubai', 'tokyo', 'singapore', 'bali', 'bangkok', 'phuket', 'rome', 'new york',
-    'switzerland', 'maldives', 'amsterdam', 'barcelona', 'manali', 'jaipur', 'shimla', 'ladakh', 'ooty', 'rishikesh'
+    'paris', 'london', 'dubai', 'tokyo', 'bali', 'rome', 'new york',
+    'switzerland', 'maldives', 'amsterdam', 'barcelona', 'shimla', 'ladakh', 'ooty', 'rishikesh'
   ];
   for (const place of knownElsewhere) {
     if (new RegExp(`\\b${place}\\b`).test(lower)) {
       const cap = place.replace(/\b\w/g, (c) => c.toUpperCase());
       return { isSupported: false, unsupportedTarget: cap };
     }
+  }
+
+  // Well-known places we don't plan yet (Ooty, Jaipur, Pondicherry…)
+  const known = findKnownUnsupportedPlace(text);
+  if (known) return { isSupported: false, unsupportedTarget: known };
+
+  // "trip to X", "holiday in X", "visit X"
+  const match = text.match(/(?:trip\s+to|going\s+to|holiday\s+in|vacation\s+in|visit(?:ing)?|travel\s+to|explore|fly\s+to)\s+([A-Za-z]+)/i);
+  if (match && match[1] && !NOT_PLACES.has(match[1].toLowerCase())) {
+    const cap = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+    return { isSupported: false, unsupportedTarget: cap };
   }
 
   // A single plain word is most likely a place name
@@ -89,7 +107,7 @@ export function detectSupportedDestination(text: string): {
     return { isSupported: false, unsupportedTarget: cap };
   }
 
-  return { isSupported: false, unparseable: true };
+  return { isSupported: false, unsupportedTarget: text.trim(), unparseable: true };
 }
 
 export const DescribeScreen: React.FC<DescribeScreenProps> = ({
@@ -187,6 +205,12 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
   const handleSelectExample = (prompt: string) => {
     setInputText(prompt);
     setErrorMessage(null);
+  };
+
+  const handleSelectWhereToGo = (prompt: string) => {
+    setInputText(prompt);
+    setErrorMessage(null);
+    void handleSubmit(undefined, prompt);
   };
 
   const handleSelectChip = (dest: string) => {
@@ -337,7 +361,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           {speech.isSupported && (
             <button
               type="button"
@@ -347,7 +371,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
               aria-pressed={isListening}
               aria-label={isListening ? 'Stop voice input' : 'Speak your trip instead of typing'}
               title={isListening ? 'Stop listening' : 'Speak your trip'}
-              className={`shrink-0 inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-full border text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[#0E6B59] focus-visible:outline-none ${
+              className={`shrink-0 inline-flex items-center justify-center gap-1.5 min-h-[44px] h-11 px-4 rounded-full border text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[#0E6B59] focus-visible:outline-none ${
                 isListening
                   ? 'bg-[#C2410C] border-[#C2410C] text-white hover:bg-[#9A3412]'
                   : 'bg-white border-[#0E6B59]/40 text-[#0E6B59] hover:bg-[#E3F1EC]'
@@ -359,7 +383,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
           )}
           <button
             type="submit"
-            className="btn-primary flex-1 sm:flex-none disabled:opacity-70 disabled:cursor-wait"
+            className="btn-primary w-full sm:w-auto min-h-[44px] disabled:opacity-70 disabled:cursor-wait"
             aria-label="Plan my trip"
             aria-busy={isSubmitting}
             disabled={isSubmitting}
@@ -370,6 +394,9 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
           </div>
         </div>
       </form>
+
+      {/* B2: Where should we go? — Secondary Start */}
+      <WhereShouldWeGo onSelectSuggestion={handleSelectWhereToGo} />
 
       {/* Example Chips */}
       <div className="text-center space-y-3 mb-12 md:mb-16">

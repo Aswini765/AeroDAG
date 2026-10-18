@@ -1473,7 +1473,35 @@ export function selectArrivalAirportByDriveTime(
     };
   }
 
-  // Currently configured for Goa
+  // Kerala: fly into Kochi (COK); hill stations and backwaters are reached by road
+  if (destLower.includes('kerala') || /munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad|varkala|kovalam/.test(areaLower)) {
+    const zone =
+      areaLower.includes('munnar') ? 'Munnar, Kerala'
+      : /alleppey|alappuzha|kumarakom/.test(areaLower) ? 'Alleppey, Kerala'
+      : areaLower.includes('thekkady') ? 'Thekkady, Kerala'
+      : areaLower.includes('wayanad') ? 'Wayanad, Kerala'
+      : /varkala|kovalam/.test(areaLower) ? 'South Kerala coast'
+      : 'Kerala';
+    // Approximate road times from each airport (estimates)
+    const fromKochi = areaLower.includes('munnar') ? 210 : /alleppey|alappuzha|kumarakom/.test(areaLower) ? 90 : areaLower.includes('thekkady') ? 240 : areaLower.includes('wayanad') ? 300 : 150;
+    const fromTrivandrum = areaLower.includes('munnar') ? 330 : /alleppey|alappuzha|kumarakom/.test(areaLower) ? 180 : areaLower.includes('thekkady') ? 270 : /varkala|kovalam/.test(areaLower) ? 60 : 300;
+    const useTrivandrum = fromTrivandrum < fromKochi;
+    const sel = useTrivandrum ? { code: 'TRV', name: 'Thiruvananthapuram', minutes: fromTrivandrum } : { code: 'COK', name: 'Kochi', minutes: fromKochi };
+    const alt = useTrivandrum ? { code: 'COK', name: 'Kochi', minutes: fromKochi } : { code: 'TRV', name: 'Thiruvananthapuram', minutes: fromTrivandrum };
+    const hrs = (m: number) => (m >= 120 ? `about ${(m / 60).toFixed(1).replace('.0', '')} hours` : `${m} minutes`);
+    return {
+      selectedAirportCode: sel.code,
+      selectedAirportName: sel.name,
+      driveMinutes: sel.minutes,
+      alternativeAirportCode: alt.code,
+      alternativeAirportName: alt.name,
+      alternativeDriveMinutes: alt.minutes,
+      hotelZone: zone,
+      reasonNote: `Why ${sel.name}, not ${alt.name}: your stay is in ${zone}. Flying into ${sel.name} means ${hrs(sel.minutes)} by road instead of ${hrs(alt.minutes)}.`
+    };
+  }
+
+  // Goa
   const mapping = HOTEL_ZONE_AIRPORT_DRIVE_TIMES.find((z) =>
     z.aliases.some((alias) => areaLower.includes(alias))
   ) || (areaLower.includes('north') ? HOTEL_ZONE_AIRPORT_DRIVE_TIMES[1] : HOTEL_ZONE_AIRPORT_DRIVE_TIMES[0]);

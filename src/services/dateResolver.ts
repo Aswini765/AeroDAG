@@ -10,7 +10,7 @@
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_RE = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
-const DAY_RE = '(\\d{1,2})(?:st|nd|rd|th)?';
+const DAY_RE = '(?<![\\d,.])(\\d{1,2})(?:st|nd|rd|th)?(?![\\d,])';
 const SEP_RE = '\\s*(?:-|–|—|to|till|until|and|through)\\s*(?:the\\s+)?';
 const WORD_NUMS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
 
@@ -166,11 +166,63 @@ export function resolveTravelDates(text: string, today: Date = new Date()): Date
     return build(fri, sun, m[0], today);
   }
 
-  // 7. "tomorrow for 3 days"
-  if (/\btomorrow\b/.test(s) && durationDays) {
-    const a = addDays(startOfDay(today), 1);
-    return build(a, addDays(a, durationDays - 1), 'tomorrow', today);
+  // 7. A start date anywhere + a trip length anywhere:
+  //    "7 days in Goa ... starting tomorrow evening", "7-day Goa trip from October 19th"
+  const start = findStartDate(s, today);
+  const length = durationDays ?? findTripLength(s);
+  if (start && 'error' in start) return { ok: false, error: start.error, matchedText: start.matchedText };
+  if (start && length) {
+    return build(start.date, addDays(start.date, length - 1), start.matchedText, today);
+  }
+  // A start date but no length ("Goa on 25 December"): assume a 5-day trip.
+  if (start && start.matchedText !== 'today') {
+    return build(start.date, addDays(start.date, 4), start.matchedText, today);
   }
 
+  return null;
+}
+
+/** Trip length anywhere in the text: "7 days", "7-day", "5 nights", "a week", "2 weeks", "weekend". */
+export function findTripLength(text: string): number | null {
+  const s = text.toLowerCase();
+  let m = s.match(/\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s*[- ]?(day|days|night|nights)\b/);
+  if (m) {
+    const n = WORD_NUMS[m[1]] ?? parseInt(m[1], 10);
+    return /night/.test(m[2]) ? n + 1 : n;
+  }
+  m = s.match(/\b(a|one|two|three|\d)\s*[- ]?weeks?\b/);
+  if (m) return (m[1] === 'a' ? 1 : (WORD_NUMS[m[1]] ?? parseInt(m[1], 10))) * 7;
+  return null;
+}
+
+/** A start date anywhere in the text: "tomorrow", "day after tomorrow", "19 Oct", "October 19th", "starting the 19th". */
+export function findStartDate(
+  text: string,
+  today: Date = new Date()
+): { date: Date; matchedText: string } | { error: string; matchedText: string } | null {
+  const s = text.toLowerCase().replace(/\s+/g, ' ');
+  if (/\bday after tomorrow\b/.test(s)) return { date: addDays(startOfDay(today), 2), matchedText: 'day after tomorrow' };
+  if (/\btomorrow\b/.test(s)) return { date: addDays(startOfDay(today), 1), matchedText: 'tomorrow' };
+  if (/\btoday\b|\btonight\b/.test(s)) return { date: startOfDay(today), matchedText: 'today' };
+  let m = s.match(new RegExp(`${DAY_RE}\\s*(?:of\\s+)?${MONTH_RE}(?:,?\\s*(\\d{4}))?`));
+  if (m) {
+    const mi = monthIndex(m[2]);
+    const d = makeDate(pickYear(mi, +m[1], today, m[3]), mi, +m[1]);
+    return d ? { date: d, matchedText: m[0] } : { error: "That date doesn't exist in the calendar. Please check the day and month.", matchedText: m[0] };
+  }
+  m = s.match(new RegExp(`${MONTH_RE}\\s+${DAY_RE}(?:,?\\s*(\\d{4}))?`));
+  if (m) {
+    const mi = monthIndex(m[1]);
+    const d = makeDate(pickYear(mi, +m[2], today, m[3]), mi, +m[2]);
+    return d ? { date: d, matchedText: m[0] } : { error: "That date doesn't exist in the calendar. Please check the day and month.", matchedText: m[0] };
+  }
+  // "starting the 19th", "from 19th" (this month, or next month if that day has passed)
+  m = s.match(/(?:from|starting|leaving|on)\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b/);
+  if (m) {
+    let y = today.getFullYear(), mi = today.getMonth();
+    if (+m[1] < today.getDate()) { mi += 1; if (mi > 11) { mi = 0; y += 1; } }
+    const d = makeDate(y, mi, +m[1]);
+    return d ? { date: d, matchedText: m[0] } : null;
+  }
   return null;
 }

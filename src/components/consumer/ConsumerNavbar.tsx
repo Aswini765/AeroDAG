@@ -32,6 +32,7 @@ interface ConsumerNavbarProps {
   onOpenSavedPlans?: () => void;
   savedPlansCount?: number;
   myTripsTab?: 'booked' | 'saved';
+  onOpenSurvey?: () => void;
 }
 
 export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
@@ -48,7 +49,8 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
   onSignOut,
   onOpenSavedPlans,
   savedPlansCount = 0,
-  myTripsTab
+  myTripsTab,
+  onOpenSurvey
 }) => {
   const onSavedPlansView = currentStep === 'mytrips' && myTripsTab === 'saved';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -215,6 +217,19 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
             >
               How it works
             </button>
+
+            {onOpenSurvey && (
+              <button
+                type="button"
+                id="nav-survey-btn"
+                onClick={onOpenSurvey}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#0E6B59]/30 bg-[#E3F1EC]/60 text-xs font-semibold text-[#0E6B59] hover:bg-[#E3F1EC] transition cursor-pointer"
+                aria-label="User Research Survey"
+              >
+                <span>Research Survey</span>
+                <span className="w-2 h-2 rounded-full bg-[#0E6B59] animate-pulse" />
+              </button>
+            )}
 
             {/* Currency Pill */}
             <div className="relative">
@@ -391,14 +406,14 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
           <div className="flex md:hidden items-center gap-2">
             <button
               onClick={() => onNavigate('mytrips')}
-              className="px-2.5 py-1 text-xs font-medium text-[#55625E] border border-[#E2E6E1] rounded-full"
+              className="px-3 py-2 min-h-[44px] inline-flex items-center text-xs font-medium text-[#55625E] border border-[#E2E6E1] rounded-full"
             >
               My Trips
             </button>
             {isUserGuest && !isOfflineMode && (
               <button
                 onClick={() => setMobileMenuOpen(true)}
-                className="px-2.5 py-1 text-xs font-semibold text-[#0E6B59] border border-[#0E6B59]/40 rounded-full"
+                className="px-3 py-2 min-h-[44px] inline-flex items-center text-xs font-semibold text-[#0E6B59] border border-[#0E6B59]/40 rounded-full"
                 data-testid="mobile-sign-in-button"
               >
                 Sign in
@@ -406,7 +421,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
             )}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 text-[#55625E] hover:text-[#15201D]"
+              className="p-2 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-[#55625E] hover:text-[#15201D]"
               aria-label="Toggle Mobile Menu"
             >
               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -417,7 +432,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
 
       {/* Mobile Menu Dropdown */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-[#E2E6E1] bg-[#FFFFFF] px-4 py-3 space-y-3 text-left">
+        <div className="md:hidden border-t border-[#E2E6E1] bg-[#FFFFFF] px-4 py-3 space-y-2 text-left">
           <div className="flex items-center justify-between pb-2 border-b border-[#E2E6E1]">
             <div className="flex items-center gap-2">
               <div className="h-7 w-7 rounded-full bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center font-bold text-xs">
@@ -439,7 +454,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
               onNavigate('describe');
               setMobileMenuOpen(false);
             }}
-            className="block w-full text-left py-1.5 text-sm font-medium text-[#15201D]"
+            className="flex items-center w-full text-left py-2.5 min-h-[44px] text-sm font-medium text-[#15201D]"
           >
             Plan a trip
           </button>
@@ -448,7 +463,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
               onNavigate('mytrips');
               setMobileMenuOpen(false);
             }}
-            className="block w-full text-left py-1.5 text-sm font-medium text-[#15201D]"
+            className="flex items-center w-full text-left py-2.5 min-h-[44px] text-sm font-medium text-[#15201D]"
           >
             My Trips
           </button>
@@ -458,7 +473,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
                 onOpenSavedPlans();
                 setMobileMenuOpen(false);
               }}
-              className="block w-full text-left py-1.5 text-sm font-medium text-[#15201D]"
+              className="flex items-center w-full text-left py-2.5 min-h-[44px] text-sm font-medium text-[#15201D]"
             >
               Saved plans{savedPlansCount > 0 ? ` (${savedPlansCount})` : ''}
             </button>
@@ -468,10 +483,21 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
               onOpenHowItWorks();
               setMobileMenuOpen(false);
             }}
-            className="block w-full text-left py-1.5 text-sm font-medium text-[#15201D]"
+            className="flex items-center w-full text-left py-2.5 min-h-[44px] text-sm font-medium text-[#15201D]"
           >
             How it works
           </button>
+          {onOpenSurvey && (
+            <button
+              onClick={() => {
+                onOpenSurvey();
+                setMobileMenuOpen(false);
+              }}
+              className="flex items-center w-full text-left py-2.5 min-h-[44px] text-sm font-semibold text-[#0E6B59]"
+            >
+              Research Survey (Feedback)
+            </button>
+          )}
 
           {/* Mobile Save Email & Sign out */}
           {isUserGuest && (
@@ -487,19 +513,19 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
                 </div>
               ) : (
                 <form onSubmit={handleSendMagicLink} className="space-y-2">
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="email"
                       value={emailInput}
                       onChange={(e) => setEmailInput(e.target.value)}
                       placeholder="name@example.com"
-                      className="flex-1 bg-white border border-[#E2E6E1] rounded-lg px-2.5 py-1 text-xs text-[#15201D]"
+                      className="flex-1 bg-white border border-[#E2E6E1] rounded-lg px-2.5 py-2 min-h-[44px] text-xs text-[#15201D]"
                       required
                     />
                     <button
                       type="submit"
                       disabled={isLinking || !emailInput}
-                      className="btn-primary py-1 px-3 text-xs"
+                      className="btn-primary w-full sm:w-auto py-2 px-3 text-xs min-h-[44px]"
                     >
                       {isLinking ? 'Sending…' : 'Email me a link'}
                     </button>

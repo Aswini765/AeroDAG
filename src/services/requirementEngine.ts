@@ -11,6 +11,7 @@ import { Currency, TripScope } from '../types/travelBooking';
 import { inferTripScope } from './travelCatalog';
 import { RequirementDependencyGraph } from './requirement/dependencyGraph';
 import { getSeasonOptionsForDestination } from './destinationsData';
+import { parseBudgetINR } from './budgetParser';
 
 export type RequirementStatus =
   | 'KNOWN'
@@ -51,6 +52,7 @@ export interface TripContext {
   priority: string | null;
   scope: TripScope | null;
   notes: string[];
+  tripNeeds?: string[];
   travelerNationality?: string | null;
   passportType?: 'ORDINARY' | 'DIPLOMATIC' | 'OFFICIAL' | 'SERVICE' | string | null;
   residenceCountry?: string | null;
@@ -330,45 +332,12 @@ export class RequirementEngine {
       context.totalTravellers = context.adultsCount + k + s;
     }
 
-    // 5. Budget Extraction
-    const cleanLowerBudget = lower.replace(/,/g, '');
-    const budgetMatch = cleanLowerBudget.match(/(?:budget\s*(?:to|is|of|under|around)?\s*)?(?:₹\s*)?(\d+(?:\.\d+)?)\s*(lakh|lac|k|000)?/i);
-    if (lower.includes('1.5 lakh') || cleanLowerBudget.includes('150000') || lower.includes('1.5l')) {
-      context.budgetTotalINR = 150000;
-      context.budgetTier = 'Comfortable';
-      newlyExtracted.push('Budget: ₹1,50,000');
-    } else if (lower.includes('1 lakh') || cleanLowerBudget.includes('100000') || lower.includes('100k')) {
-      context.budgetTotalINR = 100000;
-      context.budgetTier = 'Frugal';
-      newlyExtracted.push('Budget: ₹1,00,000');
-    } else if (cleanLowerBudget.includes('80000') || lower.includes('80k')) {
-      context.budgetTotalINR = 80000;
-      context.budgetTier = 'Comfortable';
-      newlyExtracted.push('Budget: ₹80,000');
-    } else if (cleanLowerBudget.includes('70000') || lower.includes('70k')) {
-      context.budgetTotalINR = 70000;
-      context.budgetTier = 'Comfortable';
-      newlyExtracted.push('Budget: ₹70,000');
-    } else if (cleanLowerBudget.includes('60000') || lower.includes('60k')) {
-      context.budgetTotalINR = 60000;
-      context.budgetTier = 'Frugal';
-      newlyExtracted.push('Budget: ₹60,000');
-    } else if (lower.includes('2 lakh') || cleanLowerBudget.includes('200000') || lower.includes('200k')) {
-      context.budgetTotalINR = 200000;
-      context.budgetTier = 'Comfortable';
-      newlyExtracted.push('Budget: ₹2,00,000');
-    } else if (cleanLowerBudget.includes('20000') || lower.includes('20k')) {
-      context.budgetTotalINR = 20000;
-      context.budgetTier = 'Frugal';
-      newlyExtracted.push('Budget: ₹20,000');
-    } else if (budgetMatch && (lower.includes('budget') || lower.includes('₹') || lower.includes('inr') || lower.includes('lakh'))) {
-      const num = parseFloat(budgetMatch[1]);
-      const unit = (budgetMatch[2] || '').toLowerCase();
-      const calculated = unit.includes('lakh') || unit.includes('lac') ? num * 100000 : (unit.includes('k') ? num * 1000 : num);
-      if (calculated >= 5000) {
-        context.budgetTotalINR = calculated;
-        newlyExtracted.push(`Budget: ₹${calculated.toLocaleString()}`);
-      }
+    // 5. Budget Extraction (Dynamic & Semantic - supports 45k, 1.5 lakh, under 35000, ₹50,000, etc.)
+    const parsedBudget = parseBudgetINR(lower);
+    if (parsedBudget !== null && parsedBudget >= 5000) {
+      context.budgetTotalINR = parsedBudget;
+      context.budgetTier = parsedBudget <= 35000 ? 'Frugal' : parsedBudget <= 90000 ? 'Comfortable' : 'Premium';
+      newlyExtracted.push(`Budget: ₹${parsedBudget.toLocaleString('en-IN')}`);
     }
 
     // 6. Hotel & Walking & Travel Style

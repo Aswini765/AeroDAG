@@ -117,6 +117,11 @@ export interface HotelItem {
   sourceLabel?: string;
   retrievedAt?: string;
   cancellationPolicy?: string;
+  googleMapsVerified?: boolean;
+  googleMapsUrl?: string;
+  subZoneType?: 'peaceful_family' | 'vibrant_nightlife' | 'nature_retreat' | 'heritage_cultural';
+  verifiedReviews?: VerifiedReviewItem[];
+  matchingNeedsTags?: string[];
 }
 
 export interface TransferItem {
@@ -134,6 +139,20 @@ export interface TransferItem {
   source?: ProvenanceSource;
   sourceLabel?: string;
   retrievedAt?: string;
+  driverBehaviorRating?: number;
+  driverVettingNote?: string;
+  seatTypeVerified?: string;
+}
+
+export interface VerifiedReviewItem {
+  id: string;
+  author: string;
+  persona: string;
+  rating: number;
+  date: string;
+  verifiedStay: boolean;
+  comment: string;
+  highlightBadge?: string;
 }
 
 export interface ActivityDayItem {
@@ -241,6 +260,7 @@ export interface TripPreferences {
   transportMode?: 'Flight' | 'Train' | 'Combo' | 'Cab';
   dietaryPreference?: 'Vegetarian' | 'Jain' | 'Non-Veg' | 'Any';
   selectedTrain?: TrainItem;
+  tripNeeds?: string[];
 }
 
 export interface ConfirmedBookingRecord {
@@ -407,5 +427,57 @@ export interface TripPlan {
   recommendations: string[];
   verificationChecks: VerificationCheck[];
   createdAt: string;
+  seasonalRecommendation?: SeasonalRecommendation;
+  routeComparison?: RouteDiscoveryComparison;
+  budgetBuffer?: RealisticBudgetBuffer;
+  trustVerification?: TrustVerificationDetails;
+}
+
+export interface RouteOption {
+  mode: 'Flight' | 'Train' | 'Bus' | 'Road' | 'Combo';
+  title: string;
+  duration: string;
+  costINR: number;
+  timeSavedText?: string;
+  scenicScore: number; // 1 to 10
+  scenicHighlight: string;
+  sensoryHighlights?: string[];
+  tradeOffNote: string;
+  isRecommended?: boolean;
+}
+
+export interface RouteDiscoveryComparison {
+  options: RouteOption[];
+  recommendedMode: string;
+  sensoryHighlights: string[];
+}
+
+export interface SeasonalRecommendation {
+  bestTiming: string;
+  peakExperience: string;
+  crowdLevel: string;
+  personaSubzoneNote: string;
+  weatherNote: string;
+}
+
+export interface RealisticBudgetBuffer {
+  percentage: number; // e.g. 15 or 20
+  amountINR: number;
+  breakdown: {
+    onGroundFoodAndSnacksINR: number;
+    localTransitAndAutosINR: number;
+    shoppingAndIncidentalsINR: number;
+  };
+  hiddenCostWarnings: string[];
+}
+
+export interface TrustVerificationDetails {
+  googleMapsVerified: boolean;
+  googleMapsUrl?: string;
+  streetViewBadge?: string;
+  seatTypeVerified?: string;
+  driverBehaviorRating?: number;
+  driverVettingNote?: string;
+  verifiedReviews: VerifiedReviewItem[];
 }
 

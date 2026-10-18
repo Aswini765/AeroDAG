@@ -3,7 +3,10 @@ import {
   Users,
   Info,
   ArrowLeft,
-  Check
+  Check,
+  Loader2,
+  ShieldCheck,
+  CheckCircle2
 } from 'lucide-react';
 import {
   FlightItem,
@@ -165,11 +168,22 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
   const finalTotalINR = summary?.totalINR ?? totalCostINR ?? 0;
   const isSubmittingRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentStep, setPaymentStep] = useState<number>(0);
 
   const handleSimulatePayment = () => {
     if (isSubmittingRef.current || !isFormValid) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
+    setPaymentStep(1);
+
+    // Timed step feedback: Nani Srinivas usability fix
+    setTimeout(() => {
+      setPaymentStep(2);
+    }, 400);
+
+    setTimeout(() => {
+      setPaymentStep(3);
+    }, 800);
 
     setTimeout(() => {
       const destCode = summary?.destinationCode || deriveDestinationCode(preferences.destination);
@@ -210,7 +224,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
 
       onBookingSuccess(confirmedRecord, (passengers[0]?.email || '').trim() || undefined);
       setIsSubmitting(false);
-    }, 1000);
+    }, 1300);
   };
 
   return (
@@ -450,10 +464,13 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
               data-testid="run-simulated-booking-btn"
               onClick={handleSimulatePayment}
               disabled={isSubmitting || !isFormValid}
-              className="btn-primary w-full text-sm font-bold py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary w-full text-sm font-bold py-3 min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
             >
               {isSubmitting ? (
-                <span>Booking (demo)…</span>
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-white" />
+                  <span>Booking (demo)…</span>
+                </>
               ) : (
                 <span>Book now (demo — no payment)</span>
               )}
@@ -461,6 +478,70 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Staged Payment Loading & Confirmation Modal (Nani Srinivas feedback) */}
+      {isSubmitting && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#15201D]/70 backdrop-blur-sm animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Processing your booking"
+        >
+          <div className="bg-[#FFFFFF] rounded-2xl border border-[#E2E6E1] shadow-2xl max-w-md w-full p-6 text-center space-y-6">
+            <div className="h-14 w-14 mx-auto rounded-full bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center shadow-inner">
+              {paymentStep >= 3 ? (
+                <CheckCircle2 className="h-8 w-8 text-[#0E6B59] animate-bounce" />
+              ) : (
+                <Loader2 className="h-8 w-8 text-[#0E6B59] animate-spin" />
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold text-[#15201D] font-heading">
+                {paymentStep >= 3 ? 'Payment Confirmed!' : 'Processing Your Booking'}
+              </h3>
+              <p className="text-xs text-[#55625E]">
+                Simulating instant transaction & inventory verification
+              </p>
+            </div>
+
+            <div className="space-y-3 text-left pt-2 border-t border-[#E2E6E1] text-xs">
+              <div className="flex items-center gap-3">
+                <span className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 ${
+                  paymentStep >= 1 ? 'bg-[#E3F1EC] text-[#0E6B59]' : 'bg-[#F0F2EE] text-[#55625E]'
+                }`}>
+                  {paymentStep >= 2 ? <Check className="h-3.5 w-3.5 stroke-[3]" /> : <Loader2 className="h-3 w-3 animate-spin" />}
+                </span>
+                <span className={paymentStep >= 1 ? 'font-semibold text-[#15201D]' : 'text-[#55625E]'}>
+                  Locking hotel room & flight inventory
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 ${
+                  paymentStep >= 2 ? 'bg-[#E3F1EC] text-[#0E6B59]' : 'bg-[#F0F2EE] text-[#55625E]'
+                }`}>
+                  {paymentStep >= 3 ? <Check className="h-3.5 w-3.5 stroke-[3]" /> : paymentStep >= 2 ? <Loader2 className="h-3 w-3 animate-spin" /> : <span className="h-2 w-2 rounded-full bg-[#CBD5E1]" />}
+                </span>
+                <span className={paymentStep >= 2 ? 'font-semibold text-[#15201D]' : 'text-[#55625E]'}>
+                  Authorizing demo payment (Zero charge)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 ${
+                  paymentStep >= 3 ? 'bg-[#E3F1EC] text-[#0E6B59]' : 'bg-[#F0F2EE] text-[#55625E]'
+                }`}>
+                  {paymentStep >= 3 ? <Check className="h-3.5 w-3.5 stroke-[3]" /> : <span className="h-2 w-2 rounded-full bg-[#CBD5E1]" />}
+                </span>
+                <span className={paymentStep >= 3 ? 'font-semibold text-[#0E6B59]' : 'text-[#55625E]'}>
+                  Generating confirmed PNR & trip record
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

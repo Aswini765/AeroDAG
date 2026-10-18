@@ -241,7 +241,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
           <button
             type="button"
             onClick={onExploreMore}
-            className="btn-primary"
+            className="btn-primary w-full sm:w-auto min-h-[44px]"
           >
             <span>Plan a trip</span>
             <ArrowRight className="h-4 w-4" />
@@ -275,14 +275,14 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
         <button
           type="button"
           onClick={onExploreMore}
-          className="btn-primary py-2 px-3.5 text-xs sm:text-sm"
+          className="btn-primary w-full sm:w-auto min-h-[44px] py-2 px-3.5 text-xs sm:text-sm"
         >
           <span>Plan another trip</span>
         </button>
       </div>
 
       {/* Tabs: Booked trips vs Saved plans */}
-      <div role="tablist" aria-label="Trip type" className="flex gap-2">
+      <div role="tablist" aria-label="Trip type" className="flex flex-wrap gap-2">
         {([
           ['booked', `Booked trips (${bookedTrips.length})`],
           ['saved', `Saved plans (${savedPlans.length})`]
@@ -294,7 +294,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
             id={`mytrips-tab-${key}`}
             aria-selected={tab === key}
             onClick={() => switchTab(key)}
-            className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-semibold border transition-colors ${
+            className={`px-4 py-2 min-h-[44px] inline-flex items-center justify-center rounded-full text-xs sm:text-sm font-semibold border transition-colors ${
               tab === key
                 ? 'bg-[#0E6B59] text-white border-[#0E6B59]'
                 : 'bg-white text-[#15201D] border-[#E2E6E1] hover:border-[#0E6B59]/40'
@@ -405,7 +405,11 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                   <Plane className="h-4 w-4 text-[#0E6B59]" />
                   <div>
                     <div className="font-bold text-[#15201D]">
-                      {activeTrip.selectedFlight?.airline || 'Air India Express'} ({activeTrip.selectedFlight?.flightNumber || 'IX 924'})
+                      {activeTrip.selectedFlight
+                        ? `${activeTrip.selectedFlight.airline} (${activeTrip.selectedFlight.flightNumber})`
+                        : activeTrip.selectedTrain
+                        ? `${activeTrip.selectedTrain.trainName}${activeTrip.selectedTrain.trainNumber ? ` (${activeTrip.selectedTrain.trainNumber})` : ''}`
+                        : 'By road'}
                     </div>
                     <div className="text-[#55625E]">
                       {activeTrip.origin} → {activeTrip.destination}
@@ -413,7 +417,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                   </div>
                 </div>
                 <span className="font-bold text-[#15201D]">
-                  {activeTrip.pnr}
+                  {activeIsSavedPlan ? '' : activeTrip.pnr}
                 </span>
               </div>
 
@@ -423,10 +427,10 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                   <Building className="h-4 w-4 text-[#0E6B59]" />
                   <div>
                     <div className="font-bold text-[#15201D]">
-                      {activeTrip.selectedHotel?.name || 'Heritage Village Resort & Spa, South Goa'}
+                      {activeTrip.selectedHotel?.name || 'Your stay'}
                     </div>
                     <div className="text-[#55625E]">
-                      {activeTrip.selectedHotel?.area || 'South Goa'} · {activeIsSavedPlan ? 'Not booked yet' : 'Demo voucher'}
+                      {activeTrip.selectedHotel?.area || activeTrip.destination} · {activeIsSavedPlan ? 'Not booked yet' : 'Demo voucher'}
                     </div>
                   </div>
                 </div>
@@ -441,10 +445,10 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                   <Car className="h-4 w-4 text-[#0E6B59]" />
                   <div>
                     <div className="font-bold text-[#15201D]">
-                      {activeTrip.selectedTransfer?.title || 'Toyota Innova Crysta 7-Seater AC'}
+                      {activeTrip.selectedTransfer?.title || 'Local transfers'}
                     </div>
                     <div className="text-[#55625E]">
-                      Private Airport Transfer
+                      {activeTrip.selectedFlight ? 'Airport transfer' : 'Local travel'}
                     </div>
                   </div>
                 </div>

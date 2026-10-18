@@ -88,12 +88,12 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 pt-2 w-full">
           <button
             type="button"
             id="view-in-my-trips-btn"
             onClick={onGoToMyTrips}
-            className="btn-primary"
+            className="btn-primary w-full sm:w-auto min-h-[44px]"
           >
             <span>View in My Trips</span>
           </button>
@@ -101,7 +101,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
           <button
             type="button"
             onClick={handleDownloadItinerary}
-            className="btn-ghost"
+            className="btn-ghost w-full sm:w-auto min-h-[44px]"
           >
             <Download className="h-4 w-4" />
             <span>Download itinerary</span>
@@ -110,7 +110,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
           <button
             type="button"
             onClick={onPlanAnotherTrip || onGoToMyTrips}
-            className="btn-ghost"
+            className="btn-ghost w-full sm:w-auto min-h-[44px]"
           >
             <span>Plan another trip</span>
           </button>

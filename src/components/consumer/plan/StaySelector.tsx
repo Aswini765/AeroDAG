@@ -67,6 +67,16 @@ export const StaySelector: React.FC<StaySelectorProps> = ({
         <div className="text-xs text-[#55625E]">
           {currentHotel.area} · {currentHotel.starRating}★ · ₹{currentHotel.pricePerNightINR.toLocaleString('en-IN')}/night
         </div>
+        {currentHotel.matchingNeedsTags && currentHotel.matchingNeedsTags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1.5">
+            {currentHotel.matchingNeedsTags.map((tag) => (
+              <span key={tag} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#E3F1EC] text-[#0E6B59] inline-flex items-center gap-1">
+                <Check className="h-2.5 w-2.5" />
+                <span>{tag}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Luxury Upgrade Options */}

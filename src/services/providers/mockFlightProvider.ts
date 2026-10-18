@@ -77,17 +77,20 @@ export class MockFlightProvider implements FlightProvider {
     } else if (dest.includes('vietnam') || dest.includes('hanoi') || dest.includes('danang')) {
       baseOptions = MOCK_FLIGHTS_VIETNAM;
     } else {
-      // Dynamic fallback for any other destination
+      // Dynamic fallback for any other destination (e.g. Kerala via Kochi airport)
+      const fallbackOriginCode = (params.origin || '').match(/\(([A-Z]{3})\)/)?.[1] || 'BLR';
+      const fallbackDestCode = dest.includes('kerala') ? 'COK' : 'DST';
+      const fallbackDestCity = dest.includes('kerala') ? 'Kochi' : params.destination;
       baseOptions = [
         {
           id: `fl-dyn-1`,
           airline: 'IndiGo',
           airlineCode: '6E',
           flightNumber: '6E 521',
-          originCode: params.origin.includes('BLR') ? 'BLR' : 'DEL',
+          originCode: fallbackOriginCode,
           originCity: params.origin.replace(/\s*\(.*\)/, '').trim() || 'Bengaluru',
-          destinationCode: 'DST',
-          destinationCity: params.destination,
+          destinationCode: fallbackDestCode,
+          destinationCity: fallbackDestCity,
           departureTime: '06:30 AM',
           arrivalTime: '08:45 AM',
           duration: '2h 15m',
@@ -113,10 +116,10 @@ export class MockFlightProvider implements FlightProvider {
           airline: 'Air India',
           airlineCode: 'AI',
           flightNumber: 'AI 804',
-          originCode: params.origin.includes('BLR') ? 'BLR' : 'DEL',
+          originCode: fallbackOriginCode,
           originCity: params.origin.replace(/\s*\(.*\)/, '').trim() || 'Bengaluru',
-          destinationCode: 'DST',
-          destinationCity: params.destination,
+          destinationCode: fallbackDestCode,
+          destinationCity: fallbackDestCity,
           departureTime: '01:15 PM',
           arrivalTime: '04:00 PM',
           duration: '2h 45m',
@@ -142,10 +145,10 @@ export class MockFlightProvider implements FlightProvider {
           airline: 'Akasa Air',
           airlineCode: 'QP',
           flightNumber: 'QP 1342',
-          originCode: params.origin.includes('BLR') ? 'BLR' : 'DEL',
+          originCode: fallbackOriginCode,
           originCity: params.origin.replace(/\s*\(.*\)/, '').trim() || 'Bengaluru',
-          destinationCode: 'DST',
-          destinationCity: params.destination,
+          destinationCode: fallbackDestCode,
+          destinationCity: fallbackDestCity,
           departureTime: '08:45 PM',
           arrivalTime: '11:15 PM',
           duration: '2h 30m',

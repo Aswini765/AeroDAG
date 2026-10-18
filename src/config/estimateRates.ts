@@ -125,3 +125,39 @@ export function calculateLocalTransportEstimateINR(params: {
 export function calculateContingencyBufferINR(subtotalINR: number): number {
   return Math.max(2000, Math.round(subtotalINR * 0.03));
 }
+
+// Configurable daily activities / sightseeing rate per person per day in INR (demo assumptions)
+export const ACTIVITIES_PER_PERSON_PER_DAY_INR = 500;
+
+// Configurable daily shopping and miscellaneous incidentals rate per person per day in INR (demo assumptions)
+export const SHOPPING_MISC_PER_PERSON_PER_DAY_INR = 300;
+
+// Configurable percentage for surprise buffer
+export const SURPRISE_BUFFER_PERCENT = 15;
+
+/**
+ * Calculates estimated activities & sightseeing cost across travellers and duration.
+ */
+export function calculateActivitiesEstimateINR(params: {
+  totalTravellers: number;
+  durationDays: number;
+}): number {
+  return Math.round(ACTIVITIES_PER_PERSON_PER_DAY_INR * Math.max(1, params.totalTravellers) * Math.max(1, params.durationDays));
+}
+
+/**
+ * Calculates estimated shopping & miscellaneous incidentals cost across travellers and duration.
+ */
+export function calculateShoppingMiscEstimateINR(params: {
+  totalTravellers: number;
+  durationDays: number;
+}): number {
+  return Math.round(SHOPPING_MISC_PER_PERSON_PER_DAY_INR * Math.max(1, params.totalTravellers) * Math.max(1, params.durationDays));
+}
+
+/**
+ * Calculates the 15% "buffer for surprises" on a given subtotal.
+ */
+export function calculateSurpriseBufferINR(subtotalINR: number): number {
+  return Math.round(subtotalINR * (SURPRISE_BUFFER_PERCENT / 100));
+}

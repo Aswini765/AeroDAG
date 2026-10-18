@@ -85,13 +85,13 @@ export const KeepTripsCard: React.FC<KeepTripsCardProps> = ({
             onChange={(e) => { setEmail(e.target.value); setError(null); }}
             placeholder="you@gmail.com"
             disabled={busy}
-            className="flex-1 bg-white border border-[#E2E6E1] rounded-xl px-3.5 py-2 text-sm text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none"
+            className="flex-1 bg-white border border-[#E2E6E1] rounded-xl px-3.5 py-2.5 text-sm text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none min-h-[44px]"
           />
-          <div className="flex gap-2">
-            <button type="submit" disabled={busy || !email.trim()} className="btn-primary py-2 px-4 text-sm justify-center flex-1 sm:flex-none">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <button type="submit" disabled={busy || !email.trim()} className="btn-primary w-full sm:w-auto min-h-[44px] py-2 px-4 text-sm justify-center">
               {busy ? 'Sending…' : 'Email me a link'}
             </button>
-            <button type="button" onClick={onDismiss} className="btn-ghost py-2 px-3 text-sm">
+            <button type="button" onClick={onDismiss} className="btn-ghost w-full sm:w-auto min-h-[44px] py-2 px-3 text-sm">
               Not now
             </button>
           </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plane, Building, Car, ChevronRight } from 'lucide-react';
+import { Plane, Building, Car, ChevronRight, ExternalLink } from 'lucide-react';
 import { FlightItem, HotelItem, TransferItem } from '../../../types/travelBooking';
 import { SourceTag } from '../SourceTag';
 
@@ -49,16 +49,27 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
             <div className="text-sm font-bold text-[#15201D]">
               ₹{(flight.totalPriceINR || 19200).toLocaleString('en-IN')}
             </div>
-            {onOpenFlightsModal && (
-              <button
-                type="button"
-                onClick={onOpenFlightsModal}
-                className="text-xs text-[#0E6B59] font-semibold hover:underline flex items-center gap-0.5 cursor-pointer"
+            <div className="flex flex-col sm:items-end gap-1">
+              <a
+                href="https://www.makemytrip.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-[#0E6B59] font-semibold hover:underline inline-flex items-center gap-1 min-h-[32px] sm:min-h-0"
               >
-                <span>See other flights</span>
-                <ChevronRight className="h-3 w-3" />
-              </button>
-            )}
+                <span>Book flight on MakeMyTrip</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>
+              {onOpenFlightsModal && (
+                <button
+                  type="button"
+                  onClick={onOpenFlightsModal}
+                  className="text-xs text-[#55625E] hover:text-[#15201D] font-medium hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  <span>See other flights</span>
+                  <ChevronRight className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       ) : (
@@ -117,16 +128,27 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
           <div className="text-sm font-bold text-[#15201D]">
             ₹{(hotel.totalPriceINR || hotel.pricePerNightINR * nightsCount).toLocaleString('en-IN')}
           </div>
-          {onOpenStaysModal && (
-            <button
-              type="button"
-              onClick={onOpenStaysModal}
-              className="text-xs text-[#0E6B59] font-semibold hover:underline flex items-center gap-0.5 cursor-pointer"
+          <div className="flex flex-col sm:items-end gap-1">
+            <a
+              href="https://www.makemytrip.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-[#0E6B59] font-semibold hover:underline inline-flex items-center gap-1 min-h-[32px] sm:min-h-0"
             >
-              <span>See other stays</span>
-              <ChevronRight className="h-3 w-3" />
-            </button>
-          )}
+              <span>Book stay on MakeMyTrip</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            {onOpenStaysModal && (
+              <button
+                type="button"
+                onClick={onOpenStaysModal}
+                className="text-xs text-[#55625E] hover:text-[#15201D] font-medium hover:underline flex items-center gap-0.5 cursor-pointer"
+              >
+                <span>See other stays</span>
+                <ChevronRight className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -22,6 +22,13 @@ import { BudgetCard } from './plan/BudgetCard';
 import { StaySelector } from './plan/StaySelector';
 import { InfeasiblePlanCard } from './plan/InfeasiblePlanCard';
 import { MoreOptionsModal } from './plan/MoreOptionsModal';
+import { RouteTradeOffComparison } from './plan/RouteTradeOffComparison';
+import { SeasonalAndPersonaCard } from './plan/SeasonalAndPersonaCard';
+import { BudgetBufferAndQuirksCard } from './plan/BudgetBufferAndQuirksCard';
+import { TrustAndVerificationCard } from './plan/TrustAndVerificationCard';
+import { FullTripCostCard } from './plan/FullTripCostCard';
+import { PlanOptionsSelector } from './plan/PlanOptionsSelector';
+import { NearbyAmenitiesCard } from './plan/NearbyAmenitiesCard';
 
 interface PlanScreenProps {
   plan: TripPlan;
@@ -167,6 +174,22 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
       };
       const newPlan = await TripPlanningEngine.buildDeterministicPlan(updatedContext as any);
       onPlanChange(newPlan);
+    } else if (lower.includes('flight') || lower.includes('fly')) {
+      const updatedContext = {
+        ...preferences,
+        transportMode: 'Flight',
+        budgetTotalINR: targetBudget
+      };
+      const newPlan = await TripPlanningEngine.buildDeterministicPlan(updatedContext as any);
+      onPlanChange(newPlan);
+    } else if (lower.includes('road') || lower.includes('bus') || lower.includes('drive')) {
+      const updatedContext = {
+        ...preferences,
+        transportMode: 'Cab',
+        budgetTotalINR: targetBudget
+      };
+      const newPlan = await TripPlanningEngine.buildDeterministicPlan(updatedContext as any);
+      onPlanChange(newPlan);
     } else if (lower.includes('cheaper') || lower.includes('budget hotel') || lower.includes('save money')) {
       const updatedContext = {
         ...preferences,
@@ -225,10 +248,42 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
           onModifyPrompt={onDescribeAgain}
         />
       ) : (
-        /* 3. TWO-COLUMN PLAN LAYOUT (≥1024px; stacked on mobile) */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <>
+          {/* A3. FULL TRIP COST CARD near the top of PlanScreen */}
+          <FullTripCostCard plan={plan} preferences={preferences} />
+
+          {/* B1. 2–3 OPTIONS: Budget / Balanced / Comfort versions */}
+          <PlanOptionsSelector
+            currentPlan={plan}
+            preferences={preferences}
+            onSelectOptionPlan={onPlanChange}
+          />
+
+          {/* 3. TWO-COLUMN PLAN LAYOUT (≥1024px; stacked on mobile) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT COLUMN: 7 Columns on Desktop */}
           <div className="lg:col-span-7 space-y-6">
+            {/* Contextual & Seasonal Recommendations (Peak experiences & Persona sub-zones) */}
+            <SeasonalAndPersonaCard
+              recommendation={plan.seasonalRecommendation}
+              destination={plan.destination}
+            />
+
+            {/* Route Discovery & Trade-off Comparisons (Flight vs Train vs Bus on time, cost & scenic highlights) */}
+            <RouteTradeOffComparison
+              comparison={plan.routeComparison}
+              selectedMode={preferences.transportMode || (plan.flight ? 'Flight' : 'Train')}
+              onSelectMode={(mode) => {
+                if (mode === 'Train') {
+                  handleRefinePlan('switch to train');
+                } else if (mode === 'Flight') {
+                  handleRefinePlan('switch to flight');
+                } else if (mode === 'Bus' || mode === 'Road') {
+                  handleRefinePlan('switch to road trip');
+                }
+              }}
+            />
+
             {/* 3 Summary Cards: Flights / Stay / Transfers */}
             <BookedItems
               flight={plan.flight}
@@ -237,6 +292,22 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
               nightsCount={nightsCount}
               onOpenFlightsModal={() => setMoreOptionsView('flights')}
               onOpenStaysModal={() => setMoreOptionsView('hotels')}
+            />
+
+            {/* B4. NEARBY AMENITIES CARD for stay area */}
+            <NearbyAmenitiesCard
+              stayArea={plan.hotel.area || plan.hotelZone || plan.destination}
+              destination={plan.destination}
+              hotelName={plan.hotel.name}
+              isVegetarian={preferences.dietaryPreference === 'Vegetarian'}
+              tripNeeds={preferences.tripNeeds}
+            />
+
+            {/* Trust & Quality Safety (Vetted user reviews, sleeper fraud prevention, driver vetting, Google Maps photos) */}
+            <TrustAndVerificationCard
+              trust={plan.trustVerification}
+              hotel={plan.hotel}
+              transfer={plan.transfer}
             />
 
             {/* Feasibility Notes & Green Airport Reason Note */}
@@ -266,6 +337,12 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
               targetBudgetINR={targetBudget}
             />
 
+            {/* Realistic Budget Buffers (15%-20% contingency) & Hidden Cost Warnings */}
+            <BudgetBufferAndQuirksCard
+              buffer={plan.budgetBuffer}
+              targetBudgetINR={targetBudget}
+            />
+
             {/* "Your stay" Selector (budget option vs upgrades) */}
             <StaySelector
               currentHotel={plan.hotel}
@@ -278,7 +355,8 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
             />
           </div>
         </div>
-      )}
+      </>
+    )}
 
       {/* Secondary Options Modal (Alternative flights, stays, dining, route map) */}
       <MoreOptionsModal

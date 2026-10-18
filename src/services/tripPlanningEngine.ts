@@ -51,6 +51,12 @@ import {
   calculateContingencyBufferINR,
   countCabExcursionDays
 } from '../config/estimateRates';
+import {
+  buildSeasonalRecommendation,
+  buildRouteDiscoveryComparison,
+  buildRealisticBudgetBuffer,
+  buildTrustVerificationDetails
+} from './productFeaturesHelper';
 
 export class TripPlanningEngine {
   static async buildDeterministicPlan(context: TripContext): Promise<TripPlan> {
@@ -88,6 +94,16 @@ export class TripPlanningEngine {
     const targetBudgetINR = context.budgetTotalINR || (context.scope === 'domestic' ? 60000 : 100000);
     const scope: TripScope = context.scope || inferTripScope(origin, destination);
     const isDomestic = scope === 'domestic';
+
+    // B3: Needs handling: Relaxed pace for kids/elderly
+    const needs = context.tripNeeds || [];
+    if (needs.includes('Travelling with kids') || needs.includes('Elderly / less walking')) {
+      context.travelStyle = 'Relaxed';
+      context.walkingIntensity = 'Low';
+    }
+    if (needs.includes('Vegetarian food nearby') && !context.dietaryPreference) {
+      context.dietaryPreference = 'Vegetarian';
+    }
 
     // 2. Query Travel Providers concurrently
     const [flights, hotels, transfers, trains, allActivities] = await Promise.all([
@@ -205,6 +221,31 @@ export class TripPlanningEngine {
 
     for (const h of hotels) {
       if (h.maxCapacity < totalTravellers) continue;
+
+      // B3: Needs matching tags
+      const matchingTags: string[] = [];
+      if (needs.includes('Vegetarian food nearby')) {
+        matchingTags.push('Vegetarian food nearby');
+      }
+      if (needs.includes('Kitchen in the stay')) {
+        if (h.amenities?.some((a) => /kitchen/i.test(a)) || /suite|villa|apartment/i.test(h.roomType)) {
+          matchingTags.push('Kitchen in the stay');
+        }
+      }
+      if (needs.includes('Travelling with kids')) {
+        if (h.tag === 'Family-Friendly' || h.capacityVerifiedForFamily || h.maxCapacity >= 3) {
+          matchingTags.push('Travelling with kids');
+        }
+      }
+      if (needs.includes('Elderly / less walking')) {
+        if (h.starRating >= 3 || h.tag === 'Family-Friendly') {
+          matchingTags.push('Elderly / less walking');
+        }
+      }
+      if (needs.includes('Supermarket or pharmacy nearby')) {
+        matchingTags.push('Supermarket or pharmacy nearby');
+      }
+      h.matchingNeedsTags = matchingTags;
 
       // Determine shortest airport by drive time to this hotel's zone
       const airportRoute = selectArrivalAirportByDriveTime(h.area, destination);
@@ -569,7 +610,11 @@ export class TripPlanningEngine {
       mapWaypoints,
       recommendations,
       verificationChecks,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      seasonalRecommendation: buildSeasonalRecommendation(destination, context.partyType),
+      routeComparison: buildRouteDiscoveryComparison(origin, destination, targetBudgetINR, totalTravellers),
+      budgetBuffer: buildRealisticBudgetBuffer(destination, targetBudgetINR, durationDays, totalTravellers),
+      trustVerification: buildTrustVerificationDetails(destination, selectedHotel, selectedTransfer)
     };
 
     return this.validateAndRepairTripPlan(initialPlan);
@@ -963,23 +1008,29 @@ export class TripPlanningEngine {
    * Directly applies a stay upgrade option to a trip plan
    */
   /**
-   * Swap the flight or the stay chosen by the user and recompute the budget,
+   * Swap the flight, train or the stay chosen by the user and recompute the budget,
    * so the total, buffer and over/under-budget state always match what is selected.
    */
-  static swapComponent(plan: TripPlan, change: { flight?: FlightItem; hotel?: HotelItem }): TripPlan {
+  static swapComponent(plan: TripPlan, change: { flight?: FlightItem | null; hotel?: HotelItem; train?: TrainItem | null }): TripPlan {
     const nights = Math.max(1, plan.durationDays - 1);
     const b = plan.budget;
     let flightsCostINR = b.flightsCostINR;
     let hotelCostINR = b.hotelCostINR;
     const next: TripPlan = { ...plan };
 
-    if (change.flight) {
-      flightsCostINR = change.flight.totalPriceINR;
+    if (change.flight !== undefined) {
+      flightsCostINR = change.flight ? change.flight.totalPriceINR : 0;
       next.flight = change.flight;
     }
-    if (change.hotel) {
+    if (change.hotel !== undefined) {
       hotelCostINR = nights * change.hotel.pricePerNightINR;
       next.hotel = change.hotel;
+    }
+    if (change.train !== undefined) {
+      next.selectedTrain = change.train || undefined;
+      if (change.train) {
+        flightsCostINR = change.train.totalPriceINR;
+      }
     }
 
     const oldBuffer = b.bufferCostINR || 0;
@@ -1003,6 +1054,20 @@ export class TripPlanningEngine {
         ? `Your plan is currently ₹${overBudgetAmountINR.toLocaleString('en-IN')} above your target budget.`
         : `Within budget with ₹${(b.targetINR - grandTotalINR).toLocaleString('en-IN')} remaining buffer.`
     } as TripPlan['budget'];
+
+    if (next.budgetBuffer) {
+      const bufferAmountINR = Math.round(newSubtotal * 0.15);
+      next.budgetBuffer = {
+        ...next.budgetBuffer,
+        amountINR: bufferAmountINR,
+        breakdown: {
+          onGroundFoodAndSnacksINR: Math.round(bufferAmountINR * 0.45),
+          localTransitAndAutosINR: Math.round(bufferAmountINR * 0.35),
+          shoppingAndIncidentalsINR: Math.round(bufferAmountINR * 0.20)
+        }
+      };
+    }
+
     return next;
   }
 
