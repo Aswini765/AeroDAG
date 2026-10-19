@@ -198,11 +198,25 @@ export function generatePlanOptions(
       : `₹${budgetDiffINR.toLocaleString('en-IN')} cheaper · value stay`;
   }
 
+  const prefsBudget = (preferences as any)?.budgetTotalINR || (preferences as any)?.budgetLimitINR || (preferences as any)?.budget || 0;
+  const planBudget = basePlan.budget?.targetINR || (basePlan as any)?.tripContext?.budgetTotalINR || (basePlan as any)?.tripContext?.budget || 0;
+  const targetBudget = prefsBudget > 0 ? prefsBudget : planBudget;
+
+  let budgetBadge = 'Best Value';
+  if (targetBudget > 0) {
+    if (budgetCost.totalWithBufferINR <= targetBudget) {
+      budgetBadge = 'Fits your budget';
+    } else {
+      const overBudgetDiff = budgetCost.totalWithBufferINR - targetBudget;
+      budgetBadge = `Cheapest option · ₹${overBudgetDiff.toLocaleString('en-IN')} over budget`;
+    }
+  }
+
   const budgetOption: PlanTierOption = {
     id: 'budget',
     tier: 'Budget',
     title: 'Budget Friendly',
-    badge: 'Best Value',
+    badge: budgetBadge,
     tagline: 'Clean, value-rated stay & smart economical transport',
     totalCostINR: budgetCost.totalWithBufferINR,
     perPersonCostINR: budgetCost.perPersonINR,

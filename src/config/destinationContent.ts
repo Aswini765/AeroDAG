@@ -245,7 +245,7 @@ export function getDestinationContent(destination?: string): DestinationContent 
     airportOrRouteAdvisory: `Direct arrival into ${destination || 'destination'} with pre-arranged local transport.`,
     diningHighlight: 'Authentic regional dishes, local tea stalls, and neighborhood family cafes.',
     nearbySight: 'Central Promenade & Historic Town Center',
-    nearbyDining: 'Local Family Restaurant',
+    nearbyDining: 'Regional thali & multicuisine dining · ~350 m (sample)',
     clarifyStretchNote: 'upgraded central boutique stay',
     hiddenCostWarnings: [
       'Local Transit Buffer: Account for on-ground auto-rickshaws, parking tickets, and local toll plazas.',

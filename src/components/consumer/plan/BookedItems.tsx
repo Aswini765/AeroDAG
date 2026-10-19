@@ -172,7 +172,7 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
                 {transfer.title || 'Toyota Innova Crysta 7-Seater AC'}
               </div>
               <div className="text-xs text-[#55625E]">
-                Private airport pickup & dropoff · {transfer.duration || '45 mins'} direct drive
+                {flight ? `Private airport pickup & dropoff · ${transfer.duration || '45 mins'} direct drive` : `Round-trip cab from ${origin.replace(/\s*\(.*\)/, '').trim()}`}
               </div>
             </div>
           </div>

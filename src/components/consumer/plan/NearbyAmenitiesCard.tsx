@@ -35,7 +35,7 @@ export const NearbyAmenitiesCard: React.FC<NearbyAmenitiesCardProps> = ({
     ? [{ name: 'Saravana Bhavan Pure Veg & Dosa', dist: '300m · 4 min walk' }, { name: 'Aryaas Pure Veg & Meals', dist: '650m · 8 min walk' }]
     : content.key === 'mysuru'
     ? [{ name: 'Mylari Heritage Pure Veg Dosa', dist: '300m · 4 min walk' }, { name: 'Hotel Dasaprakash Pure Veg', dist: '650m · 8 min walk' }]
-    : [{ name: 'Local Pure Veg & South Indian', dist: '300m · 4 min walk' }, { name: 'Shree Krishna Sagar Thali', dist: '650m · 8 min walk' }];
+    : [{ name: 'Regional vegetarian thali · ~300 m (sample)', dist: '300m · 4 min walk' }, { name: 'Traditional pure veg dining hall · ~650 m (sample)', dist: '650m · 8 min walk' }];
 
   const secondDiningName = content.key === 'goa'
     ? 'Navtara Pure Veg & Indian'
@@ -45,7 +45,7 @@ export const NearbyAmenitiesCard: React.FC<NearbyAmenitiesCardProps> = ({
     ? 'Munnar Tea Valley Cafe'
     : content.key === 'mysuru'
     ? 'Mylari Heritage Cafe'
-    : 'Local Family Diner';
+    : 'Regional thali & multicuisine dining · ~350 m (sample)';
 
   const secondSightName = content.key === 'goa'
     ? 'Historic Portuguese Fort / Viewpoint'

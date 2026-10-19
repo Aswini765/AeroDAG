@@ -50,7 +50,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
   onBookSavedPlan,
   onDeleteSavedPlan
 }) => {
-  const isSavedPlan = (t: ConfirmedBookingRecord) => !!t.bookingId?.startsWith('draft_');
+  const isSavedPlan = (t: ConfirmedBookingRecord) => !!t.bookingId?.startsWith('draft_') || t.pnr === 'Saved plan';
   const bookedTrips = confirmedTrips.filter((t) => !isSavedPlan(t));
   const savedPlans = confirmedTrips.filter(isSavedPlan);
   // Open on Booked trips; if there are none yet but there are saved plans, open those instead

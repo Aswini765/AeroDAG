@@ -45,7 +45,7 @@ async function runStage1Tests() {
 
   const gibberishCheck = detectSupportedDestination('asdfgh qwerty');
   assert(!gibberishCheck.isSupported, '"asdfgh qwerty" is detected as unsupported/unparseable');
-  assert(gibberishCheck.unsupportedTarget === 'asdfgh qwerty', `Target extracted as "asdfgh qwerty", got "${gibberishCheck.unsupportedTarget}"`);
+  assert(gibberishCheck.unparseable === true, 'Gibberish correctly marked as unparseable instead of an unsupported place');
 
   const goaCheck = detectSupportedDestination('7 days in Goa from Bengaluru');
   assert(goaCheck.isSupported && goaCheck.destinationName === 'Goa', 'Goa is supported');

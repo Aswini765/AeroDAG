@@ -45,11 +45,13 @@ const NOT_PLACES = new Set([
   'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec', 'india', 'total', 'peace', 'style'
 ]);
 
-const INTERNATIONAL_DESTINATIONS = [
+export const INTERNATIONAL_DESTINATIONS = [
   'paris', 'london', 'dubai', 'tokyo', 'bali', 'rome', 'new york',
   'switzerland', 'maldives', 'amsterdam', 'barcelona', 'bangkok',
   'phuket', 'krabi', 'singapore', 'vietnam', 'hanoi', 'danang', 'da nang'
 ];
+
+export const UNPARSEABLE_MSG = "I couldn't understand that. Try something like: 3 days in Coorg for 2, budget ₹20,000.";
 
 /** Heuristic for keyboard-mash input such as "asdfgh qwerty". */
 export function looksLikeGibberish(text: string): boolean {
@@ -71,7 +73,7 @@ export function detectSupportedDestination(text: string): {
   if (/\b(kerala|munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad|varkala|kovalam|cochin fort|fort kochi)\b/.test(lower)) return { isSupported: true, destinationName: 'Kerala' };
   if (/\b(mysuru|mysore)\b/.test(lower)) return { isSupported: true, destinationName: 'Mysuru' };
 
-  if (looksLikeGibberish(text)) return { isSupported: false, unsupportedTarget: text.trim(), unparseable: true };
+  if (looksLikeGibberish(text)) return { isSupported: false, unsupportedTarget: undefined, unparseable: true };
 
   // International places are unsupported
   for (const place of INTERNATIONAL_DESTINATIONS) {
@@ -118,8 +120,6 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
   });
   const isListening = speech.status === 'listening';
 
-  const UNPARSEABLE_MSG = 'We couldn\'t understand that. Try something like "5 days in Goa for 2, ₹40,000".';
-
   const unsupportedError = (place: string) => {
     const suggestion = suggestAlternative(place);
     let text = '';
@@ -155,6 +155,10 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
     }
 
     const check = detectSupportedDestination(trimmed);
+    if (check.unparseable || looksLikeGibberish(trimmed)) {
+      setErrorMessage({ text: UNPARSEABLE_MSG, showChips: true });
+      return;
+    }
     if (!check.isSupported && check.unsupportedTarget) {
       setErrorMessage(unsupportedError(check.unsupportedTarget));
       return;

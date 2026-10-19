@@ -5,10 +5,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { ConsumerNavbar, FlowStep } from './components/consumer/ConsumerNavbar';
-import { DescribeScreen } from './components/consumer/DescribeScreen';
+import { DescribeScreen, INTERNATIONAL_DESTINATIONS, looksLikeGibberish } from './components/consumer/DescribeScreen';
 import { ClarifyScreen, validateTravelDate } from './components/consumer/ClarifyScreen';
 import { callParseTrip, applyAiParse, ParseTripResult } from './services/aiTripParser';
-import { resolveTravelDates } from './services/dateResolver';
+import { resolveTravelDates, formatDateRange } from './services/dateResolver';
 import { LoadingPlanScreen } from './components/consumer/LoadingPlanScreen';
 import { PlanScreen } from './components/consumer/PlanScreen';
 import { CheckoutBookingFlow } from './components/consumer/CheckoutBookingFlow';
@@ -381,6 +381,7 @@ export default function App() {
   // Returns an error message for the Describe screen, or null when we moved on.
   const handleStartPlan = async (promptText: string): Promise<string | null> => {
     const SUPPORTED_MSG = 'AeroDAG currently covers: Goa, Coorg, Kerala, Mysuru, Araku, Himachal, Rajasthan, Vietnam, Singapore, Thailand.';
+    const UNPARSEABLE_MSG = "I couldn't understand that. Try something like: 3 days in Coorg for 2, budget ₹20,000.";
     const lower = promptText.toLowerCase();
 
     // 1. Try the AI parser first (server-side Gemini), when it is configured.
@@ -388,8 +389,8 @@ export default function App() {
     if (ai.kind === 'unsupported') {
       return `We can't plan ${ai.place} yet. ${SUPPORTED_MSG}`;
     }
-    if (ai.kind === 'unparseable') {
-      return `We couldn't understand that. Try something like "5 days in Goa for 2, ₹40,000".`;
+    if (ai.kind === 'unparseable' || looksLikeGibberish(promptText)) {
+      return UNPARSEABLE_MSG;
     }
 
     // 2. Rule-based parse (always runs: it is the Basic-mode fallback and fills gaps)
@@ -413,12 +414,16 @@ export default function App() {
         ctx.destination = destMatch[1].trim();
       } else {
         const words = promptText.trim().split(/\s+/);
-        if (words.length <= 4 && !APP_NOT_PLACES.has(words[0].toLowerCase())) {
+        if (words.length <= 4 && !APP_NOT_PLACES.has(words[0].toLowerCase()) && !looksLikeGibberish(words[0])) {
           ctx.destination = promptText.trim();
         } else {
-          return `We couldn't understand that. Try something like "5 days in Ooty for 2, ₹40,000".`;
+          return UNPARSEABLE_MSG;
         }
       }
+    }
+
+    if (!ctx.destination || looksLikeGibberish(ctx.destination)) {
+      return UNPARSEABLE_MSG;
     }
     fieldSources.destination = 'stated';
 
@@ -434,8 +439,8 @@ export default function App() {
       }
 
       if ('unsupported' in profileResult && profileResult.unsupported) {
-        const suggestion = suggestAlternative(ctx.destination || '');
         const place = ctx.destination || '';
+        const suggestion = suggestAlternative(place);
         if (suggestion) {
           if (suggestion.destination === 'Goa') {
             return `AeroDAG plans trips within India. For beaches like ${place}, try Goa, Gokarna or the Andamans.`;
@@ -447,7 +452,10 @@ export default function App() {
             return `AeroDAG plans trips within India. For nature like ${place}, try Kerala, Wayanad or Kabini.`;
           }
         }
-        return `AeroDAG plans trips within India. Try popular destinations like Goa, Coorg, Kerala, or Mysuru.`;
+        if (INTERNATIONAL_DESTINATIONS.some((d) => d.toLowerCase() === place.toLowerCase())) {
+          return `AeroDAG plans trips within India. Try popular destinations like Goa, Coorg, Kerala, or Mysuru.`;
+        }
+        return UNPARSEABLE_MSG;
       }
 
       profileData = profileResult as DestinationProfile;
@@ -479,6 +487,7 @@ export default function App() {
     }
 
     // Duration ("weekend"/"week" are interpretations, so they are assumed)
+    const isWeekend = /\bweekend\b/i.test(lower) && !/\blong\s+weekend\b/i.test(lower);
     const daysMatch = promptText.match(/(\d+)\s*[- ]?(?:day|days)/i);
     if (daysMatch) {
       ctx.durationDays = parseInt(daysMatch[1], 10);
@@ -486,7 +495,10 @@ export default function App() {
     } else if (lower.includes('day trip')) {
       ctx.durationDays = 1;
       fieldSources.duration = 'stated';
-    } else if (lower.includes('weekend')) {
+    } else if (isWeekend) {
+      ctx.durationDays = 2;
+      fieldSources.duration = 'assumed';
+    } else if (lower.includes('long weekend')) {
       ctx.durationDays = 3;
       fieldSources.duration = 'assumed';
     } else if (lower.includes('week')) {
@@ -642,14 +654,33 @@ export default function App() {
       ctx.durationDays = resolvedDates.days;
       fieldSources.duration = 'stated';
     }
+
+    // A "weekend" = Sat–Sun (2 days); the plan title must match the dates' day count.
+    if (isWeekend) {
+      ctx.durationDays = 2;
+      fieldSources.duration = 'assumed';
+      const now = new Date();
+      const dow = now.getDay(); // 0 Sun, 1 Mon ... 6 Sat
+      const toSat = (6 - dow + 7) % 7;
+      const sat = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toSat);
+      const sun = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toSat + 1);
+      ctx.dates = formatDateRange(sat, sun);
+      fieldSources.dates = 'assumed';
+    }
     ctx.fieldSources = fieldSources;
     setCurrentPrompt(promptText);
 
     setActiveDraftBookingId(null);
     const hasDates = !!ctx.dates;
+    const hasStatedAll =
+      fieldSources.budget === 'stated' &&
+      fieldSources.travellers === 'stated' &&
+      fieldSources.origin === 'stated' &&
+      fieldSources.dates === 'stated';
+
     setTripContext(ctx);
-    if (hasDates) {
-      // Dates are present -> generate plan directly
+    if (hasDates && hasStatedAll) {
+      // All key details stated -> generate plan directly
       setIsLoadingPlan(true);
       try {
         let plan: TripPlan;
@@ -699,7 +730,7 @@ export default function App() {
         setCurrentStep('clarify');
       }
     } else {
-      // Dates strictly required -> Transition to Screen 2 (Clarify)
+      // Clarification required (missing budget, travellers, origin, or dates) -> Transition to Screen 2 (Clarify)
       setCurrentStep('clarify');
     }
     return null;
@@ -718,7 +749,8 @@ export default function App() {
     const fullCost = computeFullTripCost(plan, tripPreferences);
     const total = fullCost.totalWithBufferINR;
     const cleanDest = plan.destination.replace(/,\s*India$/i, '').trim();
-    const draftBookingId = activeDraftBookingId || (plan.id && !plan.id.startsWith('plan_') ? plan.id : `draft_${Date.now()}`);
+    // Saved plans always get a draft_ id (My Trips uses it to tell saved plans from bookings).
+    const draftBookingId = activeDraftBookingId || `draft_${Date.now()}`;
     setActiveDraftBookingId(draftBookingId);
     const draft: ConfirmedBookingRecord = {
       bookingId: draftBookingId,
@@ -913,7 +945,8 @@ export default function App() {
 
   // Handle booking success from Review Screen
   const handleBookingSuccess = async (confirmedRecord: ConfirmedBookingRecord, contactEmail?: string) => {
-    setBookingContactEmail(contactEmail);
+    const cleanEmail = (contactEmail && contactEmail !== 'alex.taylor@example.com') ? contactEmail : undefined;
+    setBookingContactEmail(cleanEmail);
     setBookingEmailCardDismissed(false);
     if (isAuthAnonymous && !isOfflineMode) rememberGuestTrip('booking', confirmedRecord, authUser?.id ?? null);
     try {

@@ -56,7 +56,7 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
       <div className="card-consumer p-3 sm:px-4 bg-[#F5F6F3] border-[#E2E6E1] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[#55625E]">
         <div className="flex items-center gap-2">
           <span className="font-semibold px-2 py-0.5 rounded-full bg-[#E2E6E1] text-[#15201D] text-[11px]">
-            RESEARCH & DECIDE
+            Your plan
           </span>
           <span>Sample prices · Real total cost preview · Book directly on trusted sites</span>
         </div>

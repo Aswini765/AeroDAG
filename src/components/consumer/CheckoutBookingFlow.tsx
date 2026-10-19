@@ -260,7 +260,10 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
         scope: 'domestic'
       };
 
-      onBookingSuccess(confirmedRecord, (passengers[0]?.email || '').trim() || undefined);
+      const contactEmail = (isUsingTestData || passengers[0]?.email === 'alex.taylor@example.com')
+        ? undefined
+        : (passengers[0]?.email || '').trim() || undefined;
+      onBookingSuccess(confirmedRecord, contactEmail);
       setIsSubmitting(false);
     }, 1300);
   };

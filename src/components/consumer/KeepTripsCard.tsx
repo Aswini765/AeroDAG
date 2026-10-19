@@ -24,7 +24,8 @@ export const KeepTripsCard: React.FC<KeepTripsCardProps> = ({
   onDismiss,
   id = 'keep-trips-card'
 }) => {
-  const [email, setEmail] = useState(defaultEmail);
+  const cleanDefault = defaultEmail === 'alex.taylor@example.com' ? '' : defaultEmail;
+  const [email, setEmail] = useState(cleanDefault);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

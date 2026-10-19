@@ -18,6 +18,7 @@ import {
 } from '../types/travelBooking.ts';
 import { TripContext } from './requirementEngine.ts';
 import { DestinationProfile, TopSight } from '../types/destinationProfile.ts';
+import { resolveTravelDates } from './dateResolver.ts';
 
 export function buildPlanFromDestinationProfile(
   context: Partial<TripContext>,
@@ -25,8 +26,9 @@ export function buildPlanFromDestinationProfile(
 ): TripPlan {
   const destination = `${profile.name}${profile.state ? `, ${profile.state}` : ''}`;
   const origin = (context.origin || 'Bengaluru (BLR)').trim();
-  const dates = (context.dates || 'Upcoming trip').trim();
-  const durationDays = Math.max(2, context.durationDays || 4);
+  const dates = (context.dates || '').trim();
+  const resolvedDateRange = resolveTravelDates(dates);
+  const durationDays = Math.max(1, context.durationDays || (resolvedDateRange && resolvedDateRange.ok ? resolvedDateRange.days : 4));
   const nights = Math.max(1, durationDays - 1);
 
   const adults = Math.max(1, context.adultsCount || 2);
@@ -80,17 +82,22 @@ export function buildPlanFromDestinationProfile(
   const transferDriveHours = primaryAirport.driveHoursToCenter;
   const transferPriceINR = Math.max(1200, Math.round(transferDriveHours * 850 + 1000));
 
+  const isRoadTrip = (context.transportMode as any) === 'Cab' || (context.transportMode as any) === 'Road';
+  const originClean = origin.replace(/\s*\(.*\)/, '').trim();
+
   const transfer: TransferItem = {
     id: `tr-${profile.name.toLowerCase()}-1`,
-    title: `Private AC Transfer (${destAirportCode} ↔ ${profile.name})`,
+    title: isRoadTrip ? `Round-trip cab from ${originClean}` : `Private AC Transfer (${destAirportCode} ↔ ${profile.name})`,
     vehicleType: totalTravellers > 3 ? 'AC Minivan / MPV' : 'AC Sedan',
     capacityPassengers: Math.max(4, totalTravellers),
     luggageCapacity: Math.max(3, totalTravellers),
     priceINR: transferPriceINR,
     priceUSD: Math.round(transferPriceINR / 84),
-    description: `Private cab pickup from ${primaryAirport.name} to hotel in ${profile.name}. Road journey is approx. ${transferDriveHours} hours.`,
+    description: isRoadTrip
+      ? `Round-trip private AC cab from ${originClean} to ${profile.name} and return.`
+      : `Private cab pickup from ${primaryAirport.name} to hotel in ${profile.name}. Road journey is approx. ${transferDriveHours} hours.`,
     duration: `approx. ${transferDriveHours} hours`,
-    pickupLocation: `${destAirportCode} Airport`,
+    pickupLocation: isRoadTrip ? `${originClean} Pickup` : `${destAirportCode} Airport`,
     dropLocation: `${profile.name} Hotel`,
     source: 'estimate',
     sourceLabel: 'AI estimate'
@@ -209,9 +216,21 @@ export function buildPlanFromDestinationProfile(
       ? `Visit ${sight1.name} in ${sight1.area} (approx. ${sight1.hoursNeeded}h).`
       : 'Morning local sightseeing and scenic viewpoints.';
 
+    let fallbackAfternoon = `Afternoon leisure walk through local artisan craft bazaars, historic lanes, and scenic viewpoints in ${profile.name}.`;
+    const profileText = `${profile.name} ${profile.state || ''} ${profile.topSights.map((s) => s.name).join(' ')}`.toLowerCase();
+    if (/\b(rajasthan|udaipur|jaipur|jodhpur|jaisalmer|agra|delhi|varanasi|heritage|palace)\b/.test(profileText)) {
+      fallbackAfternoon = `Afternoon leisure walk through vibrant local artisan craft bazaars, heritage lanes, and scenic lake promenades.`;
+    } else if (/\b(goa|beach|coastal|kovalam|varkala|puri|andaman)\b/.test(profileText)) {
+      fallbackAfternoon = `Afternoon coastal stroll along scenic beaches, local artisan craft stalls, and seaside cafes.`;
+    } else if (/\b(munnar|coorg|darjeeling|assam|ooty|wayanad)\b/.test(profileText)) {
+      fallbackAfternoon = `Afternoon gentle nature walk through aromatic tea and coffee trails, viewpoint promenades, and spice markets.`;
+    } else if (/\b(himachal|manali|shimla|kashmir|ladakh|uttarakhand|rishikesh)\b/.test(profileText)) {
+      fallbackAfternoon = `Afternoon scenic mountain walk along pine forest paths, local craft markets, and valley viewpoints.`;
+    }
+
     const afternoonDesc = sight2 && sight2.name !== sight1?.name
       ? `Explore ${sight2.name} in ${sight2.area} (approx. ${sight2.hoursNeeded}h).`
-      : 'Afternoon leisure walk through local tea/spice plantations and souvenir markets.';
+      : fallbackAfternoon;
 
     const eveningDesc = 'Relaxed evening dinner at a popular local restaurant enjoying regional cuisine.';
 

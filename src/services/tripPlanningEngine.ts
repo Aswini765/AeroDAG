@@ -48,6 +48,7 @@ import {
   selectArrivalAirportByDriveTime
 } from './destinationsData';
 import { MOCK_VISA_VIETNAM } from './travelCatalog';
+import { resolveTravelDates } from './dateResolver';
 import {
   calculateFoodEstimateINR,
   calculateLocalTransportEstimateINR,
@@ -61,7 +62,99 @@ import {
   buildTrustVerificationDetails
 } from './productFeaturesHelper';
 
+export function getRealisticDriveTime(
+  hotelArea: string,
+  hotelName: string,
+  activityName: string,
+  activityLocation: string = '',
+  destination: string = ''
+): { driveMinutes: number; note: string } {
+  const act = `${activityName} ${activityLocation}`.toLowerCase();
+  const area = `${hotelArea} ${hotelName}`.toLowerCase();
+  const dest = destination.toLowerCase();
+
+  // Kerala
+  if (act.includes('alleppey') && (area.includes('munnar') || dest.includes('munnar'))) {
+    return { driveMinutes: 240, note: 'approx. 4h drive each way · full day excursion' };
+  }
+  if (act.includes('marayoor')) {
+    return { driveMinutes: 80, note: 'approx. 1h 20m scenic ghat drive' };
+  }
+  if (act.includes('top station')) {
+    return { driveMinutes: 75, note: 'approx. 1h 15m scenic ghat drive' };
+  }
+  if (act.includes('eravikulam')) {
+    return { driveMinutes: 40, note: 'approx. 40-min drive' };
+  }
+  if (act.includes('mattupetty') || act.includes('kundala') || act.includes('echo point')) {
+    return { driveMinutes: 35, note: 'approx. 35-min drive' };
+  }
+  if (act.includes('tea museum') || act.includes('punarjani') || act.includes('pallivasal')) {
+    return { driveMinutes: 20, note: 'approx. 20-min drive' };
+  }
+
+  // Goa
+  if (act.includes('dudhsagar')) {
+    return { driveMinutes: 105, note: 'approx. 1h 45m highway & forest drive' };
+  }
+  if (act.includes('ponda') || act.includes('spice plantation')) {
+    return { driveMinutes: 55, note: 'approx. 55-min drive' };
+  }
+  if (act.includes('old goa') || act.includes('bom jesus')) {
+    const mins = area.includes('panaji') ? 20 : 45;
+    return { driveMinutes: mins, note: `approx. ${mins}-min drive` };
+  }
+  if (act.includes('mandovi') || act.includes('panaji')) {
+    const mins = area.includes('panaji') ? 10 : 30;
+    return { driveMinutes: mins, note: `approx. ${mins}-min drive` };
+  }
+  if (act.includes('aguada') || act.includes('chapora') || act.includes('calangute') || act.includes('baga') || act.includes('anjuna')) {
+    return { driveMinutes: 20, note: 'approx. 20-min drive' };
+  }
+
+  // Coorg
+  if (act.includes('talacauvery') || act.includes('brahmagiri') || act.includes('bhagamandala')) {
+    return { driveMinutes: 80, note: 'approx. 1h 20m scenic ghat drive' };
+  }
+  if (act.includes('nagarhole')) {
+    return { driveMinutes: 90, note: 'approx. 1h 30m forest drive' };
+  }
+  if (act.includes('namdroling') || act.includes('golden temple') || act.includes('bylakuppe')) {
+    return { driveMinutes: 50, note: 'approx. 50-min drive' };
+  }
+  if (act.includes('dubare')) {
+    return { driveMinutes: 45, note: 'approx. 45-min drive' };
+  }
+  if (act.includes('abbey falls')) {
+    return { driveMinutes: 25, note: 'approx. 25-min drive' };
+  }
+  if (act.includes('raja') || act.includes('madikeri fort') || act.includes('omkareshwara')) {
+    return { driveMinutes: 15, note: 'approx. 15-min drive' };
+  }
+
+  // Mysuru
+  if (act.includes('somnathpur')) {
+    return { driveMinutes: 60, note: 'approx. 1h drive' };
+  }
+  if (act.includes('brindavan') || act.includes('krs')) {
+    return { driveMinutes: 45, note: 'approx. 45-min drive' };
+  }
+  if (act.includes('ranganathittu') || act.includes('srirangapatna')) {
+    return { driveMinutes: 35, note: 'approx. 35-min drive' };
+  }
+  if (act.includes('chamundi')) {
+    return { driveMinutes: 25, note: 'approx. 25-min uphill drive' };
+  }
+  if (act.includes('palace') || act.includes('philomena') || act.includes('jaganmohan') || act.includes('devaraja')) {
+    return { driveMinutes: 15, note: 'approx. 15-min drive' };
+  }
+
+  return { driveMinutes: 25, note: 'approx. 25-min drive' };
+}
+
 export class TripPlanningEngine {
+  static getRealisticDriveTime = getRealisticDriveTime;
+
   static async buildDeterministicPlan(context: TripContext): Promise<TripPlan> {
     return this.generateTripPlan(context);
   }
@@ -83,9 +176,10 @@ export class TripPlanningEngine {
     const providers = getTravelProviders();
 
     // 1. Normalize core parameters
+    const destination = (context.destination || 'Goa').trim();
     const origin = (context.origin || 'Bengaluru (BLR)').trim();
-    const destination = (context.destination || 'Goa, India').trim();
-    const durationDays = Math.max(3, context.durationDays || 7);
+    const resolvedDateRange = resolveTravelDates(dates);
+    const durationDays = Math.max(1, context.durationDays || (resolvedDateRange && resolvedDateRange.ok ? resolvedDateRange.days : 7));
     const nights = Math.max(1, durationDays - 1);
 
     const adults = Math.max(1, context.adultsCount || 2);
@@ -109,7 +203,7 @@ export class TripPlanningEngine {
     }
 
     // 2. Query Travel Providers concurrently
-    const [flights, hotels, transfers, trains, allActivities] = await Promise.all([
+    const [flights, hotels, transfers, trains, allActivitiesRaw] = await Promise.all([
       providers.flightProvider.searchFlights({
         origin,
         destination,
@@ -157,6 +251,17 @@ export class TripPlanningEngine {
       })
     ]);
 
+    // For Munnar stay (or Kerala trip without Alleppey explicitly requested in destination), drop Alleppey activities
+    const isMunnarDestination = destination.toLowerCase().includes('munnar') ||
+      (destination.toLowerCase().includes('kerala') && !destination.toLowerCase().includes('alleppey'));
+    const allActivities = isMunnarDestination
+      ? allActivitiesRaw.filter((act) => {
+          const isAlleppey = (act.location && act.location.toLowerCase().includes('alleppey')) ||
+            act.name.toLowerCase().includes('alleppey');
+          return !isAlleppey;
+        })
+      : allActivitiesRaw;
+
     // 3. Compute Fixed & Near-Fixed Costs (Step a)
     // Food estimate
     const foodTier: 'budget' | 'mid' | 'comfort' = (context.budgetTier === 'Frugal' || context.budgetTier === 'Budget')
@@ -178,31 +283,40 @@ export class TripPlanningEngine {
       durationDays
     });
 
-    // Airport transfer
-    const selectedTransfer: TransferItem = transfers[0] || {
-      id: 'tr-default',
-      title: 'Private AC Airport Transfer',
-      vehicleType: totalTravellers > 3 ? 'AC Minivan / MPV' : 'AC Sedan',
-      capacityPassengers: Math.max(4, totalTravellers),
-      luggageCapacity: Math.max(4, totalTravellers),
-      priceINR: isDomestic ? 3200 : 3200,
-      priceUSD: isDomestic ? 38 : 38,
-      description: 'Chauffeured pickup and drop between airport and resort.',
-      duration: '45 mins',
-      pickupLocation: `${destination} Airport`,
-      dropLocation: `${destination} Stay / Resort`
-    };
-    const transferCostINR = selectedTransfer.priceINR;
-
-    // Visa details & costs
-    const visaDetails: VisaDetails = this.resolveVisaDetails(destination, scope, totalTravellers);
-    const visaCostINR = isDomestic ? 0 : (visaDetails.totalFeeINR || 0);
-
     // Train selection if applicable (only if exact route exists in catalog)
     const selectedTrain: TrainItem | undefined = trains && trains.length > 0 ? trains[0] : undefined;
 
     // 4. Deterministic Allocator: Evaluate Candidate Hotels & Transport
     const isRoadOrTrainDestination = destination.toLowerCase().includes('coorg') || destination.toLowerCase().includes('mysuru') || destination.toLowerCase().includes('mysore');
+
+    // Transfer (Road trip outstation cab or airport transfer)
+    const isRoadTrip = isRoadOrTrainDestination || (!selectedTrain && flights.length === 0);
+    const originClean = origin.replace(/\s*\(.*\)/, '').trim();
+    const destinationClean = destination.replace(/,\s*India$/i, '').trim();
+    const selectedTransfer: TransferItem = transfers[0] || {
+      id: 'tr-default',
+      title: isRoadTrip ? `Round-trip cab from ${originClean}` : 'Private AC Airport Transfer',
+      vehicleType: totalTravellers > 3 ? 'AC Minivan / MPV' : 'AC Sedan',
+      capacityPassengers: Math.max(4, totalTravellers),
+      luggageCapacity: Math.max(4, totalTravellers),
+      priceINR: isDomestic ? 3200 : 3200,
+      priceUSD: isDomestic ? 38 : 38,
+      description: isRoadTrip
+        ? `Round-trip private AC cab from ${originClean} to ${destinationClean} and return.`
+        : 'Chauffeured pickup and drop between airport and resort.',
+      duration: isRoadTrip ? 'Scenic road journey' : '45 mins',
+      pickupLocation: isRoadTrip ? `${originClean} Pickup` : `${destination} Airport`,
+      dropLocation: `${destination} Stay / Resort`
+    };
+    if (isRoadTrip && !selectedTransfer.title.toLowerCase().includes('round-trip cab')) {
+      selectedTransfer.title = `Round-trip cab from ${originClean}`;
+      selectedTransfer.description = `Round-trip private AC cab from ${originClean} to ${destinationClean} and return.`;
+    }
+    const transferCostINR = selectedTransfer.priceINR;
+
+    // Visa details & costs
+    const visaDetails: VisaDetails = this.resolveVisaDetails(destination, scope, totalTravellers);
+    const visaCostINR = isDomestic ? 0 : (visaDetails.totalFeeINR || 0);
 
     interface CandidateEvaluation {
       hotel: HotelItem;
@@ -718,8 +832,20 @@ export class TripPlanningEngine {
         });
       } else {
         // INTERMEDIATE DAYS: Each activity used at most once. If sights < days, use free/rest day.
+        const isMunnarStay = (selectedHotel.area || '').toLowerCase().includes('munnar') ||
+                             (selectedHotel.name || '').toLowerCase().includes('munnar') ||
+                             destLower.includes('munnar') ||
+                             (destLower.includes('kerala') && !destLower.includes('alleppey'));
+
+        const eligibleActivities = (allActivities || []).filter((act) => {
+          const isAlleppey = (act.location && act.location.toLowerCase().includes('alleppey')) ||
+                             act.name.toLowerCase().includes('alleppey');
+          if (isMunnarStay && isAlleppey) return false;
+          return true;
+        });
+
         const actIndex = dayNum - 2;
-        const mainAct = (allActivities && actIndex < allActivities.length) ? allActivities[actIndex] : null;
+        const mainAct = (eligibleActivities && actIndex < eligibleActivities.length) ? eligibleActivities[actIndex] : null;
 
         const dining1 = diningSuggestions[(dayNum - 1) % diningSuggestions.length]?.name || 'Local Signature Bistro';
         const dining2 = diningSuggestions[dayNum % diningSuggestions.length]?.name || 'Scenic Regional Cafe';
@@ -727,50 +853,61 @@ export class TripPlanningEngine {
         let dayTitle = mainAct ? mainAct.name : 'Free day · explore at your own pace';
         let theme = mainAct ? `${mainAct.category} & Excursions` : 'Rest & Self-Paced Exploration';
 
+        const realisticDrive = mainAct
+          ? getRealisticDriveTime(selectedHotel.area, selectedHotel.name, mainAct.name, mainAct.location, destination)
+          : { driveMinutes: 20, note: 'approx. 20-min drive' };
+
         let morningSchedule: string;
         let afternoonSchedule: string;
         let eveningSchedule: string;
 
         if (mainAct) {
-          morningSchedule = mainAct.timeSlot === 'Evening'
-            ? `Leisure morning at ${selectedHotel.name}. Gentle local stroll and relaxed breakfast.`
-            : `${mainAct.name}: ${mainAct.description} (Duration: ${mainAct.duration}).`;
-
-          if (isGentlePacing) {
-            afternoonSchedule = `Gentle afternoon downtime: Shaded poolside rest at ${selectedHotel.name} or relaxing air-conditioned cafe break to recharge.`;
+          if (realisticDrive.driveMinutes >= 180) {
+            theme = `Full-Day Excursion · ${mainAct.name}`;
+            morningSchedule = `Early departure from ${selectedHotel.name} for full-day excursion to ${mainAct.name} (${realisticDrive.note}).`;
+            afternoonSchedule = `${mainAct.description} (Duration: ${mainAct.duration}). Refreshment break and scenic journey.`;
+            eveningSchedule = `Scenic evening drive back to ${selectedHotel.name}, followed by dinner at ${dining1}.`;
           } else {
-            afternoonSchedule = isHill
-              ? `Afternoon local exploration: Wander through nearby tea and spice plantations, craft stalls, and scenic viewpoints.`
-              : isHeritage
-              ? `Afternoon heritage discovery: Explore artisan craft stalls, traditional silk markets, and royal garden pathways.`
-              : isBeach
-              ? `Afternoon local highlights: Explore beachside shacks, artisan craft stalls, and scenic seaside paths.`
-              : `Afternoon local highlights: Explore artisan craft stalls, botanical gardens, and scenic viewpoint promenade.`;
-          }
+            morningSchedule = mainAct.timeSlot === 'Evening'
+              ? `Leisure morning at ${selectedHotel.name}. Gentle local stroll and relaxed breakfast.`
+              : `${mainAct.name}: ${mainAct.description} (Duration: ${mainAct.duration}).`;
 
-          if (hasKids && dayNum === 2) {
-            if (isBeach) {
-              afternoonSchedule = `Family Fun: Sandcastle building and splash in gentle shallows, followed by delicious fresh tropical fruit ice creams.`;
-            } else if (isHill) {
-              afternoonSchedule = `Family Fun: Gentle nature walk, butterfly spotting amidst tea gardens, and fresh local fruit ice creams.`;
-            } else if (isHeritage) {
-              afternoonSchedule = `Family Fun: Interactive palace gallery exploration, royal garden stroll, and traditional melt-in-mouth sweet tasting.`;
+            if (isGentlePacing) {
+              afternoonSchedule = `Gentle afternoon downtime: Shaded poolside rest at ${selectedHotel.name} or relaxing air-conditioned cafe break to recharge.`;
             } else {
-              afternoonSchedule = `Family Fun: Exploring scenic landscaped gardens, relaxed open-air playtime, and local sweet treats.`;
+              afternoonSchedule = isHill
+                ? `Afternoon local exploration: Wander through nearby tea and spice plantations, craft stalls, and scenic viewpoints.`
+                : isHeritage
+                ? `Afternoon heritage discovery: Explore artisan craft stalls, traditional silk markets, and royal garden pathways.`
+                : isBeach
+                ? `Afternoon local highlights: Explore beachside shacks, artisan craft stalls, and scenic seaside paths.`
+                : `Afternoon local highlights: Explore artisan craft stalls, botanical gardens, and scenic viewpoint promenade.`;
             }
-          }
 
-          if (mainAct.timeSlot === 'Evening') {
-            eveningSchedule = `${mainAct.name}: ${mainAct.description}. Dinner at ${dining1}.`;
-          } else {
-            if (isBeach) {
-              eveningSchedule = `Sunset promenade along the beach, followed by a delicious family dinner at ${dining1}.`;
-            } else if (isHill) {
-              eveningSchedule = `Scenic sunset valley viewpoint walk, followed by a delicious family dinner at ${dining1}.`;
-            } else if (isHeritage) {
-              eveningSchedule = `Illuminated heritage walk and palace gardens stroll, followed by a delicious family dinner at ${dining1}.`;
+            if (hasKids && dayNum === 2) {
+              if (isBeach) {
+                afternoonSchedule = `Family Fun: Sandcastle building and splash in gentle shallows, followed by delicious fresh tropical fruit ice creams.`;
+              } else if (isHill) {
+                afternoonSchedule = `Family Fun: Gentle nature walk, butterfly spotting amidst tea gardens, and fresh local fruit ice creams.`;
+              } else if (isHeritage) {
+                afternoonSchedule = `Family Fun: Interactive palace gallery exploration, royal garden stroll, and traditional melt-in-mouth sweet tasting.`;
+              } else {
+                afternoonSchedule = `Family Fun: Exploring scenic landscaped gardens, relaxed open-air playtime, and local sweet treats.`;
+              }
+            }
+
+            if (mainAct.timeSlot === 'Evening') {
+              eveningSchedule = `${mainAct.name}: ${mainAct.description}. Dinner at ${dining1}.`;
             } else {
-              eveningSchedule = `Relaxed evening stroll around ${destination}, followed by a delicious family dinner at ${dining1}.`;
+              if (isBeach) {
+                eveningSchedule = `Sunset promenade along the beach, followed by a delicious family dinner at ${dining1}.`;
+              } else if (isHill) {
+                eveningSchedule = `Scenic sunset valley viewpoint walk, followed by a delicious family dinner at ${dining1}.`;
+              } else if (isHeritage) {
+                eveningSchedule = `Illuminated heritage walk and palace gardens stroll, followed by a delicious family dinner at ${dining1}.`;
+              } else {
+                eveningSchedule = `Relaxed evening stroll around ${destination}, followed by a delicious family dinner at ${dining1}.`;
+              }
             }
           }
         } else {
@@ -791,6 +928,12 @@ export class TripPlanningEngine {
           ? '[Gentle Pacing: Shaded private transport provided to ensure low walking]'
           : undefined;
 
+        const transitTip = realisticDrive.driveMinutes > 60
+          ? `Private AC cab provided for ${realisticDrive.note}. Dedicated vehicle and chauffeur on standby.`
+          : (isGentlePacing
+            ? 'Comfortable private AC cab transfers provided. Low walking required.'
+            : 'Short local taxi transfers and pedestrian promenade walk.');
+
         days.push({
           day: dayNum,
           dateStr: `Day ${dayNum}`,
@@ -802,13 +945,16 @@ export class TripPlanningEngine {
           estimatedCostINR: (mainAct?.estimatedPriceINR || 500) + 500,
           estimatedCostUSD: Math.round(((mainAct?.estimatedPriceINR || 500) + 500) / 84),
           localDining: [dining1, dining2],
-          transitTip: isGentlePacing
-            ? 'Comfortable private AC cab transfers provided. Low walking required.'
-            : 'Short local taxi transfers and pedestrian promenade walk.',
+          transitTip,
           walkingLevel,
           walkingFlag,
           stopDriveTimes: [
-            { from: selectedHotel.name, to: mainAct ? mainAct.name : 'Excursion Point', driveMinutes: 30, note: '30-min drive' }
+            {
+              from: selectedHotel.name,
+              to: mainAct ? mainAct.name : 'Excursion Point',
+              driveMinutes: realisticDrive.driveMinutes,
+              note: realisticDrive.note
+            }
           ]
         });
       }
@@ -949,7 +1095,7 @@ export class TripPlanningEngine {
       list = [
         {
           id: 'din-gen-1',
-          name: `${cleanName} Heritage Kitchen`,
+          name: `${cleanName} regional dining & thali hall (sample)`,
           cuisine: 'Local Regional & North Indian',
           area: `${cleanName} Central`,
           priceForTwoINR: 800,
@@ -962,7 +1108,7 @@ export class TripPlanningEngine {
         },
         {
           id: 'din-gen-2',
-          name: `${cleanName} Pure Veg Swagath`,
+          name: `${cleanName} pure veg thali restaurant (sample)`,
           cuisine: 'Pure Vegetarian Regional & Indian Thalis',
           area: `${cleanName} Main Bazaar`,
           priceForTwoINR: 550,
@@ -975,7 +1121,7 @@ export class TripPlanningEngine {
         },
         {
           id: 'din-gen-3',
-          name: `${cleanName} Panorama Viewpoint Bistro`,
+          name: `${cleanName} scenic rooftop cafe (sample)`,
           cuisine: 'Multi-cuisine & Regional Specialties',
           area: `${cleanName} Hill / Promenade View`,
           priceForTwoINR: 1100,

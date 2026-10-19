@@ -197,7 +197,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
                   {transfer ? transfer.title : 'Local transfers'}
                 </div>
                 <div className="text-xs text-[#55625E]">
-                  Direct round-trip airport chauffeur transfer
+                  {flight ? 'Direct round-trip airport chauffeur transfer' : `Round-trip cab from ${confirmedBooking.origin.replace(/\s*\(.*\)/, '').trim()}`}
                 </div>
               </div>
             </div>

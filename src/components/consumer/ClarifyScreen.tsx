@@ -469,16 +469,17 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
 
   const destContent = getDestinationContent(tripContext.destination || undefined);
 
-  // Ask only what's missing or assumed: hide sections whose answer the user already stated
   const datesStated = tripContext.fieldSources?.dates === 'stated' && Boolean(holidayFrom && holidayTo);
   const travellersStated = tripContext.fieldSources?.travellers === 'stated';
   const budgetStated = tripContext.fieldSources?.budget === 'stated';
+  const originStated = tripContext.fieldSources?.origin === 'stated';
   const paceStated = tripContext.fieldSources?.pace === 'stated';
 
   let qCount = 1;
   const datesQNum = !datesStated ? qCount++ : 0;
   const travellersQNum = !travellersStated ? qCount++ : 0;
   const budgetQNum = !budgetStated ? qCount++ : 0;
+  const originQNum = !originStated ? qCount++ : 0;
   const paceQNum = !paceStated ? qCount++ : 0;
   const totalQuestionsShown = qCount - 1;
 
@@ -863,6 +864,70 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                     <div className="text-[11px] text-[#55625E]">Willing to stretch slightly for {destContent.clarifyStretchNote}</div>
                   </button>
                 </div>
+              </div>
+            </div>
+            )}
+
+            {/* CLARIFYING QUESTION: ORIGIN / DEPARTING FROM */}
+            {!originStated && (
+            <div className="space-y-3 pb-5 border-b border-[#E2E6E1]">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold">{originQNum}</span>
+                <h3 className="text-sm sm:text-base font-bold text-[#15201D]">
+                  Where are you travelling from? (Departing City)
+                </h3>
+              </div>
+              <p className="text-xs text-[#55625E]">
+                We use this to choose the best transit options (flight, train, or round-trip outstation cab) and realistic travel times.
+              </p>
+
+              {/* Quick origin chips */}
+              <div className="flex flex-wrap gap-2">
+                {[
+                  'Bengaluru (BLR)',
+                  'Mumbai (BOM)',
+                  'Delhi (DEL)',
+                  'Chennai (MAA)',
+                  'Hyderabad (HYD)',
+                  'Kochi (COK)'
+                ].map((city) => (
+                  <button
+                    key={city}
+                    type="button"
+                    onClick={() => {
+                      setTripContext((prev) => ({
+                        ...prev,
+                        origin: city,
+                        fieldSources: { ...prev.fieldSources, origin: 'stated' }
+                      }));
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                      tripContext.origin === city
+                        ? 'border-[#0E6B59] bg-[#0E6B59] text-white'
+                        : 'border-[#E2E6E1] bg-white text-[#15201D] hover:border-[#0E6B59]/40'
+                    }`}
+                  >
+                    {city}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom origin input */}
+              <div className="pt-1">
+                <input
+                  type="text"
+                  value={tripContext.origin || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTripContext((prev) => ({
+                      ...prev,
+                      origin: val,
+                      fieldSources: { ...prev.fieldSources, origin: 'stated' }
+                    }));
+                  }}
+                  placeholder="Or enter city name, e.g. Pune, Ahmedabad, Kolkata"
+                  className="w-full sm:max-w-xs bg-white border border-[#E2E6E1] rounded-xl px-3.5 py-2 text-xs text-[#15201D] focus:ring-2 focus:ring-[#7CC4B3] focus:outline-none"
+                />
               </div>
             </div>
             )}

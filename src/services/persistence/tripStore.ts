@@ -136,7 +136,7 @@ export class SupabaseTripStore implements ITripStore {
             origin: trip.origin || null,
             adults: trip.passengers?.filter(p => p.type !== 'CHILD').length || 1,
             children_ages: trip.passengers?.filter(p => p.type === 'CHILD').map(p => p.age || 0) || [],
-            budget_inr: totalINR,
+            budget_inr: trip.budgetTotalINR || totalINR,
             total_inr: totalINR,
             plan: sanitized,
             schema_version: 1
@@ -160,7 +160,7 @@ export class SupabaseTripStore implements ITripStore {
         origin: trip.origin || null,
         adults: trip.passengers?.filter(p => p.type !== 'CHILD').length || 1,
         children_ages: trip.passengers?.filter(p => p.type === 'CHILD').map(p => p.age || 0) || [],
-        budget_inr: totalINR,
+        budget_inr: trip.budgetTotalINR || totalINR,
         total_inr: totalINR,
         plan: sanitized,
         schema_version: 1
@@ -218,7 +218,7 @@ export class SupabaseTripStore implements ITripStore {
         end_date: endDate,
         adults: adultsCount,
         children_ages: childrenAges,
-        budget_inr: totalINR,
+        budget_inr: bookingData.budgetTotalINR || totalINR,
         total_inr: totalINR,
         plan: sanitizedPlan,
         schema_version: 1

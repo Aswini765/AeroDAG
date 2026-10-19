@@ -154,6 +154,7 @@ export function getTripSummary(input: GetTripSummaryInput): TripSummary | null {
 
   // Components (prefer explicitly passed selection, then plan, then null)
   const flight = input.flight ?? tripPlan?.flight ?? null;
+  const train = (input as any).train ?? (input as any).selectedTrain ?? tripPlan?.selectedTrain ?? null;
   const hotel = input.hotel ?? tripPlan?.hotel ?? null;
   const transfer = input.transfer ?? tripPlan?.transfer ?? null;
   const effectiveVisa = input.visa ?? input.visaDetails ?? tripPlan?.visa ?? null;
@@ -206,11 +207,13 @@ export function getTripSummary(input: GetTripSummaryInput): TripSummary | null {
 
   if (transfer) {
     const transferAmt = transfer.priceINR || 0;
+    const isRoadTrip = !flight && !train;
+    const originCity = origin.replace(/\s*\(.*\)/, '').trim();
     lineItems.push({
       id: `li-transfer-${transfer.id}`,
       category: 'transfer',
-      title: transfer.vehicleType || transfer.title || 'Airport Transfer',
-      subtitle: transfer.description || 'Airport ↔ Hotel transfer',
+      title: transfer.vehicleType || transfer.title || (isRoadTrip ? `Round-trip cab from ${originCity}` : 'Airport Transfer'),
+      subtitle: isRoadTrip ? `Round-trip cab from ${originCity}` : (transfer.description || 'Airport ↔ Hotel transfer'),
       amountINR: Math.round(transferAmt),
       source: transfer.source || 'sample',
       sourceLabel: transfer.sourceLabel || 'Sample data',

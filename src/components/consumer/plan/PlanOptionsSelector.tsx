@@ -35,14 +35,20 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
   const fullCost = useMemo(() => computeFullTripCost(basePlan, preferences), [basePlan, preferences]);
   const isOverBudget = fullCost.budgetStatus === 'over';
 
+  const fittingOptions = useMemo(
+    () => options.filter((o) => o.totalCostINR <= targetBudget),
+    [options, targetBudget]
+  );
+  const noneFits = isOverBudget && fittingOptions.length === 0;
+
   const bestFitOption = useMemo(() => {
     if (!isOverBudget) return null;
-    const fitting = options.filter((o) => o.totalCostINR <= targetBudget);
-    if (fitting.length > 0) {
-      return [...fitting].sort((a, b) => a.totalCostINR - b.totalCostINR)[0];
+    if (fittingOptions.length > 0) {
+      return [...fittingOptions].sort((a, b) => a.totalCostINR - b.totalCostINR)[0];
     }
+    // If none fits, pre-select Budget option
     return options.find((o) => o.id === 'budget') || options[0];
-  }, [isOverBudget, options, targetBudget]);
+  }, [isOverBudget, fittingOptions, options]);
 
   const hasAutoSelectedRef = useRef(false);
   useEffect(() => {
@@ -74,6 +80,48 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
     }
   };
 
+  const getOptionBadge = (opt: PlanTierOption) => {
+    const fitsBudget = targetBudget > 0 && opt.totalCostINR <= targetBudget;
+
+    if (noneFits && opt.id === 'budget') {
+      const overBudgetDiff = opt.totalCostINR - targetBudget;
+      return {
+        text: `Cheapest option · ₹${overBudgetDiff.toLocaleString('en-IN')} over budget`,
+        className: 'bg-[#FCEFD9] text-[#8A4307] ring-1 ring-[#8A4307]/50'
+      };
+    }
+
+    if (isOverBudget && fitsBudget && opt.id === bestFitOption?.id) {
+      return {
+        text: 'Fits your budget',
+        className: 'bg-[#E3F1EC] text-[#0A5546] ring-1 ring-[#0E6B59]'
+      };
+    }
+
+    if (opt.id === 'balanced') {
+      return {
+        text: opt.badge === 'Fits your budget' && !fitsBudget ? 'Recommended' : opt.badge,
+        className: 'bg-[#0E6B59] text-white'
+      };
+    }
+    if (opt.id === 'budget') {
+      let text = opt.badge;
+      if (text === 'Fits your budget' && !fitsBudget) {
+        text = 'Best Value';
+      }
+      return {
+        text,
+        className: text.includes('over budget')
+          ? 'bg-[#FCEFD9] text-[#8A4307] ring-1 ring-[#8A4307]/50'
+          : 'bg-[#E3F1EC] text-[#0A5546]'
+      };
+    }
+    return {
+      text: opt.badge === 'Fits your budget' && !fitsBudget ? 'Premium Stay' : opt.badge,
+      className: 'bg-[#FCEFD9] text-[#8A4307]'
+    };
+  };
+
   return (
     <div className="card-consumer p-4 sm:p-5 space-y-4 text-left border border-[#E2E6E1] bg-white rounded-2xl shadow-xs">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2 border-b border-[#E2E6E1]">
@@ -99,6 +147,7 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
       }`}>
         {options.map((opt) => {
           const isSelected = selectedTier === opt.id;
+          const badge = getOptionBadge(opt);
           return (
             <div
               key={opt.id}
@@ -115,16 +164,8 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
                   <span className="text-xs font-bold uppercase tracking-wider text-[#55625E]">
                     {opt.tier}
                   </span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    isOverBudget && opt.id === bestFitOption?.id
-                      ? 'bg-[#E3F1EC] text-[#0A5546] ring-1 ring-[#0E6B59]'
-                      : opt.id === 'balanced'
-                      ? 'bg-[#0E6B59] text-white'
-                      : opt.id === 'budget'
-                      ? 'bg-[#E3F1EC] text-[#0A5546]'
-                      : 'bg-[#FCEFD9] text-[#8A4307]'
-                  }`}>
-                    {isOverBudget && opt.id === bestFitOption?.id ? 'Fits your budget' : opt.badge}
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badge.className}`}>
+                    {badge.text}
                   </span>
                 </div>
                 <div className="text-base font-extrabold text-[#15201D]">
