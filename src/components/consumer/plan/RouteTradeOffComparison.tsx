@@ -4,15 +4,10 @@ import {
   Train,
   Car,
   Bus,
-  Clock,
   Sparkles,
-  Compass,
-  ArrowRight,
-  CheckCircle2,
-  Eye,
-  Sliders
+  Compass
 } from 'lucide-react';
-import { RouteDiscoveryComparison, RouteOption } from '../../../types/travelBooking';
+import { RouteDiscoveryComparison } from '../../../types/travelBooking';
 
 interface RouteTradeOffComparisonProps {
   comparison?: RouteDiscoveryComparison;
@@ -57,17 +52,9 @@ export const RouteTradeOffComparison: React.FC<RouteTradeOffComparisonProps> = (
     <div className="card-consumer p-5 sm:p-6 space-y-5 text-left border-[#E2E6E1] bg-gradient-to-b from-[#FFFFFF] to-[#F8FAF9]">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#E2E6E1]">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#E3F1EC] text-[#0E6B59] uppercase tracking-wider">
-              Route Discovery
-            </span>
-            <span className="text-xs text-[#55625E]">· Time Saved vs. Scenic Value</span>
-          </div>
-          <h3 className="text-lg font-bold text-[#15201D] font-heading">
-            Travel Route & Trade-off Comparison
-          </h3>
-        </div>
+        <h3 className="text-lg font-bold text-[#15201D] font-heading">
+          How to get there
+        </h3>
 
         <div className="text-xs text-[#55625E]">
           Recommended: <strong className="text-[#0E6B59] font-bold">{comparison.recommendedMode}</strong>
@@ -79,7 +66,7 @@ export const RouteTradeOffComparison: React.FC<RouteTradeOffComparisonProps> = (
         <div className="p-3.5 rounded-xl bg-[#E3F1EC]/50 border border-[#0E6B59]/20 space-y-2">
           <div className="flex items-center gap-2 text-xs font-bold text-[#0E6B59]">
             <Sparkles className="h-4 w-4 shrink-0 text-[#0E6B59]" />
-            <span>Special Sensory & Scenic Highlights on this Route</span>
+            <span>On the way</span>
           </div>
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-[#15201D]">
             {comparison.sensoryHighlights.map((hl, idx) => (
@@ -147,7 +134,7 @@ export const RouteTradeOffComparison: React.FC<RouteTradeOffComparisonProps> = (
                 {/* Scenic Score & Highlight */}
                 <div className="pt-2 border-t border-[#E2E6E1] space-y-1">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#55625E]">Scenic Experience:</span>
+                    <span className="text-[#55625E]">Scenic:</span>
                     <span className="font-bold text-[#15201D]">
                       {opt.scenicScore}/10 ★
                     </span>

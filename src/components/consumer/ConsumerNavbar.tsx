@@ -1,17 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Send,
   User,
   Check,
   Menu,
   X,
-  HelpCircle,
   LogOut,
   Mail,
-  AlertTriangle,
-  ChevronDown
+  Send,
+  ChevronDown,
+  AlertTriangle
 } from 'lucide-react';
-import { Currency } from '../../types/travelBooking';
 import type { User as SupabaseUser } from '../../services/persistence';
 
 export type FlowStep = 'describe' | 'clarify' | 'plan' | 'review' | 'done' | 'mytrips';
@@ -19,8 +17,6 @@ export type FlowStep = 'describe' | 'clarify' | 'plan' | 'review' | 'done' | 'my
 interface ConsumerNavbarProps {
   currentStep: FlowStep;
   onNavigate: (step: FlowStep) => void;
-  currency: Currency;
-  setCurrency: (c: Currency) => void;
   onOpenHowItWorks: () => void;
   hasConfirmedTrips?: boolean;
   authUser?: SupabaseUser | null;
@@ -32,14 +28,11 @@ interface ConsumerNavbarProps {
   onOpenSavedPlans?: () => void;
   savedPlansCount?: number;
   myTripsTab?: 'booked' | 'saved';
-  onOpenSurvey?: () => void;
 }
 
 export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
   currentStep,
   onNavigate,
-  currency,
-  setCurrency,
   onOpenHowItWorks,
   hasConfirmedTrips = false,
   authUser = null,
@@ -49,12 +42,10 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
   onSignOut,
   onOpenSavedPlans,
   savedPlansCount = 0,
-  myTripsTab,
-  onOpenSurvey
+  myTripsTab
 }) => {
   const onSavedPlansView = currentStep === 'mytrips' && myTripsTab === 'saved';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   // Email linking state
@@ -121,28 +112,6 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
       setIsSigningOut(false);
     }
   };
-
-  // Map sub-steps to the 4 canonical progress steps
-  const getStepStatus = (stepIndex: number): 'completed' | 'current' | 'upcoming' => {
-    // 0: Describe, 1: Plan (Clarify/Plan), 2: Review, 3: Done
-    let activeIndex = 0;
-    if (currentStep === 'clarify' || currentStep === 'plan') activeIndex = 1;
-    if (currentStep === 'review') activeIndex = 2;
-    if (currentStep === 'done') activeIndex = 3;
-
-    if (stepIndex < activeIndex) return 'completed';
-    if (stepIndex === activeIndex) return 'current';
-    return 'upcoming';
-  };
-
-  const stepsList = [
-    { label: 'Describe', stepKey: 'describe' as FlowStep },
-    { label: 'Plan', stepKey: 'plan' as FlowStep },
-    { label: 'Review', stepKey: 'review' as FlowStep },
-    { label: 'Done', stepKey: 'done' as FlowStep }
-  ];
-
-  const showProgressBar = currentStep !== 'describe' && currentStep !== 'mytrips';
 
   const userDisplayName = authUser?.email ? authUser.email : 'Guest';
   const isUserGuest = isAuthAnonymous || !authUser?.email;
@@ -218,29 +187,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
               How it works
             </button>
 
-            {onOpenSurvey && (
-              <button
-                type="button"
-                id="nav-survey-btn"
-                onClick={onOpenSurvey}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#0E6B59]/30 bg-[#E3F1EC]/60 text-xs font-semibold text-[#0E6B59] hover:bg-[#E3F1EC] transition cursor-pointer"
-                aria-label="User Research Survey"
-              >
-                <span>Research Survey</span>
-                <span className="w-2 h-2 rounded-full bg-[#0E6B59] animate-pulse" />
-              </button>
-            )}
 
-            {/* Currency Pill */}
-            <div className="relative">
-              <button
-                onClick={() => setCurrencyDropdownOpen(!currencyDropdownOpen)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#E2E6E1] bg-[#FFFFFF] text-xs font-semibold text-[#15201D] hover:bg-[#F5F6F3] transition cursor-pointer"
-                aria-label="Currency ₹ INR"
-              >
-                <span>₹ INR</span>
-              </button>
-            </div>
 
             {/* Account Menu Trigger */}
             <div className="relative" ref={accountMenuRef}>
@@ -487,17 +434,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
           >
             How it works
           </button>
-          {onOpenSurvey && (
-            <button
-              onClick={() => {
-                onOpenSurvey();
-                setMobileMenuOpen(false);
-              }}
-              className="flex items-center w-full text-left py-2.5 min-h-[44px] text-sm font-semibold text-[#0E6B59]"
-            >
-              Research Survey (Feedback)
-            </button>
-          )}
+
 
           {/* Mobile Save Email & Sign out */}
           {isUserGuest && (
@@ -559,54 +496,7 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
         </div>
       )}
 
-      {/* 4-Step Progress Bar Under Header (Shown after the first screen) */}
-      {showProgressBar && (
-        <div className="border-t border-[#E2E6E1] bg-[#F5F6F3]/60 py-2.5 px-4">
-          <div className="max-w-2xl mx-auto flex items-center justify-between">
-            {stepsList.map((step, idx) => {
-              const status = getStepStatus(idx);
-              const isCurrent = status === 'current';
-              const isCompleted = status === 'completed';
 
-              return (
-                <div key={step.label} className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5">
-                    {isCompleted ? (
-                      <span className="h-5 w-5 rounded-full bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center text-xs font-bold">
-                        <Check className="h-3 w-3 stroke-[3]" />
-                      </span>
-                    ) : isCurrent ? (
-                      <span className="h-5 w-5 rounded-full bg-[#0E6B59] flex items-center justify-center">
-                        <span className="h-2 w-2 rounded-full bg-white" />
-                      </span>
-                    ) : (
-                      <span className="h-5 w-5 rounded-full bg-[#E2E6E1] flex items-center justify-center">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#55625E]" />
-                      </span>
-                    )}
-
-                    <span
-                      className={`text-xs ${
-                        isCurrent
-                          ? 'font-bold text-[#15201D]'
-                          : isCompleted
-                          ? 'font-medium text-[#0E6B59]'
-                          : 'font-medium text-[#55625E]'
-                      }`}
-                    >
-                      {step.label}
-                    </span>
-                  </div>
-
-                  {idx < stepsList.length - 1 && (
-                    <div className="hidden sm:block w-8 md:w-14 h-[1px] bg-[#E2E6E1] mx-1" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </header>
   );
 };

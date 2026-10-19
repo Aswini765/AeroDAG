@@ -15,7 +15,6 @@ import { CheckoutBookingFlow } from './components/consumer/CheckoutBookingFlow';
 import { BookingConfirmationView } from './components/consumer/BookingConfirmationView';
 import { MyTripsView } from './components/consumer/MyTripsView';
 import { HowItWorksModal } from './components/consumer/HowItWorksModal';
-import { PrototypeUsabilitySurveyModal } from './components/consumer/PrototypeUsabilitySurveyModal';
 import { parseBudgetINR } from './services/budgetParser';
 
 import {
@@ -34,7 +33,6 @@ import { suggestAlternative } from './services/destinationSuggestions';
 import { DestinationProfile } from './types/destinationProfile';
 import { KeepTripsCard } from './components/consumer/KeepTripsCard';
 import { computeFullTripCost } from './services/fullTripCostHelper';
-import { ExternalLink } from 'lucide-react';
 
 const APP_NOT_PLACES = new Set([
   'the', 'a', 'an', 'my', 'our', 'weekend', 'week', 'days', 'day', 'budget', 'summer', 'winter', 'monsoon',
@@ -55,9 +53,8 @@ import {
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<FlowStep>('describe');
-  const [currency, setCurrency] = useState<Currency>('INR');
+  const currency: Currency = 'INR';
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
-  const [isSurveyOpen, setIsSurveyOpen] = useState(false);
 
   // Phase 6: Supabase Auth & Session State
   const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
@@ -968,10 +965,7 @@ export default function App() {
         }}
         savedPlansCount={savedPlansCount}
         myTripsTab={myTripsTab}
-        currency={currency}
-        setCurrency={setCurrency}
         onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
-        onOpenSurvey={() => setIsSurveyOpen(true)}
         hasConfirmedTrips={confirmedTrips.length > 0}
         authUser={authUser}
         isAuthAnonymous={isAuthAnonymous}
@@ -1105,21 +1099,11 @@ export default function App() {
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-xs">
-            <a
-              href="YOUR_FORM_LINK"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[#0E6B59] hover:underline cursor-pointer font-semibold inline-flex items-center gap-1"
-            >
-              <span>Give feedback</span>
-              <ExternalLink className="h-3 w-3" />
-            </a>
-            <span>·</span>
             <button
               onClick={() => setIsHowItWorksOpen(true)}
               className="text-[#0E6B59] hover:underline cursor-pointer font-medium"
             >
-              How it works & System Architecture
+              How it works
             </button>
             <span>·</span>
             <span>&copy; 2026 AeroDAG · Demo</span>
@@ -1131,12 +1115,6 @@ export default function App() {
       <HowItWorksModal
         isOpen={isHowItWorksOpen}
         onClose={() => setIsHowItWorksOpen(false)}
-      />
-
-      {/* 5. Usability Survey & Research Modal */}
-      <PrototypeUsabilitySurveyModal
-        isOpen={isSurveyOpen}
-        onClose={() => setIsSurveyOpen(false)}
       />
     </div>
   );
