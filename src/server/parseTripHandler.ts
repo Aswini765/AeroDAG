@@ -151,7 +151,8 @@ Schema: ${JSON.stringify(tripSchema.shape)}
     }
     // Use canonical catalog destination if matched, or fallback to parsed destination
     const canonicalDestination = matchSupportedDestination(data.destination) || data.destination.trim();
-    const destinationType = data.destinationType || (isKnownRegion(canonicalDestination) ? 'region' : 'city');
+    // Our own list decides what is a region; the model's guess never overrides it (Goa, Coorg and cities stay single-place trips).
+    const destinationType = isKnownRegion(canonicalDestination) ? 'region' : 'city';
 
     // No traveller count given: report as missing (the UI assumes a default and labels it "assumed").
     if (totalTravellers === 0) {

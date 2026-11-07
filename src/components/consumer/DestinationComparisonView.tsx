@@ -96,11 +96,10 @@ export const DestinationComparisonView: React.FC<DestinationComparisonViewProps>
                   <div className="flex items-center justify-between pb-2.5 border-b border-[#E2E6E1]/70">
                     <span className="text-[#55625E] font-medium">Fits budget?</span>
                     <span
-                      className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md ${
-                        item.fitsBudget
-                          ? 'bg-[#E3F1EC] text-[#0E6B59]'
-                          : 'bg-[#FCEFD9] text-[#8A4307]'
-                      }`}
+                      className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md ${item.fitsBudget
+                        ? 'bg-[#E3F1EC] text-[#0E6B59]'
+                        : 'bg-[#FCEFD9] text-[#8A4307]'
+                        }`}
                     >
                       {item.fitsBudget ? (
                         <>
@@ -171,7 +170,7 @@ export const DestinationComparisonView: React.FC<DestinationComparisonViewProps>
       <div className="p-3.5 rounded-xl bg-[#F6F8F6] border border-[#E2E6E1] text-xs text-[#55625E] flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-[#0E6B59] shrink-0" />
         <span>
-          Every comparison column is computed using the identical full cost engine including stay, travel, dining, activities and the 25% contingency buffer.
+          Every comparison column is computed using the identical full cost engine including stay, travel, dining, activities and the 15% surprise buffer.
         </span>
       </div>
     </div>

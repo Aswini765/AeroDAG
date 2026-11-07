@@ -10,13 +10,10 @@ import {
   ChevronDown,
   ChevronUp,
   ShieldCheck,
-  Star,
-  ThumbsUp,
-  Award,
-  Sparkles
+  Utensils
 } from 'lucide-react';
 import { HotelItem, TransferItem } from '../../../types/travelBooking';
-import { extractHotelReviews, cleanHotelName } from '../../../services/hotelReviewExtractor';
+import { extractHotelReviews } from '../../../services/hotelReviewExtractor';
 
 interface TrustAndVerificationCardProps {
   hotel: HotelItem;
@@ -32,42 +29,42 @@ export const TrustAndVerificationCard: React.FC<TrustAndVerificationCardProps> =
 
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
   const [isChecklistExpanded, setIsChecklistExpanded] = useState(false);
-  const [selectedReviewIdx, setSelectedReviewIdx] = useState(0);
 
-  // Extract structured reviews & authoritative outbound links
+  // Extract authoritative outbound review links
   const reviewProfile = extractHotelReviews(hotel, hotel.city);
   const cleanName = reviewProfile.cleanName;
 
+  // The 4 pre-booking checks (ground-floor rooms, cancellation, breakfast, family bed capacity)
   const checklistItems = [
     {
-      id: 'reviews',
-      icon: <Search className="h-4 w-4 text-[#0E6B59] shrink-0" />,
-      title: 'Read recent Google reviews',
-      desc: 'Check reviews from past 3–6 months for cleanliness and noise.',
-      actionLabel: 'Google Reviews',
-      url: reviewProfile.externalLinks.googleMapsReviewsUrl
-    },
-    {
-      id: 'maps-pin',
-      icon: <MapPin className="h-4 w-4 text-[#0E6B59] shrink-0" />,
-      title: 'Check hotel pin on Google Maps',
-      desc: 'Confirm exact road access and walking distance to sights.',
-      actionLabel: 'Maps Pin',
-      url: reviewProfile.externalLinks.googleMapsReviewsUrl
-    },
-    {
-      id: 'room-type',
+      id: 'bed-capacity',
       icon: <BedDouble className="h-4 w-4 text-[#0E6B59] shrink-0" />,
-      title: 'Confirm room type & bedding',
-      desc: 'Verify bed configuration and extra bed policies on Booking.com.',
+      title: 'Confirm room type & family bed capacity',
+      desc: 'Verify king bed + extra rollaway or twin bedding policy before booking.',
       actionLabel: 'Verify Room',
       url: reviewProfile.externalLinks.bookingComUrl
+    },
+    {
+      id: 'ground-floor',
+      icon: <MapPin className="h-4 w-4 text-[#0E6B59] shrink-0" />,
+      title: 'Confirm ground-floor or lift access',
+      desc: 'Ensure step-free access for elders, prams or heavy luggage.',
+      actionLabel: 'Maps & Access',
+      url: reviewProfile.externalLinks.googleMapsReviewsUrl
+    },
+    {
+      id: 'breakfast',
+      icon: <Utensils className="h-4 w-4 text-[#0E6B59] shrink-0" />,
+      title: 'Confirm breakfast inclusion',
+      desc: 'Check if daily morning breakfast is included in room tariff.',
+      actionLabel: 'Hotel Details',
+      url: reviewProfile.externalLinks.makeMyTripUrl
     },
     {
       id: 'cancellation',
       icon: <FileText className="h-4 w-4 text-[#0E6B59] shrink-0" />,
       title: 'Confirm cancellation rules',
-      desc: 'Double-check free cancellation cut-offs before booking.',
+      desc: 'Double-check free cancellation cut-offs and refund terms.',
       actionLabel: 'TripAdvisor Check',
       url: reviewProfile.externalLinks.tripAdvisorUrl
     }
@@ -88,7 +85,7 @@ export const TrustAndVerificationCard: React.FC<TrustAndVerificationCardProps> =
       data-testid="trust-and-verification-card"
       className="card-consumer p-4 sm:p-5 text-left border border-[#E2E6E1] bg-white rounded-2xl shadow-xs space-y-4"
     >
-      {/* Header: Title and Overall Verified Rating */}
+      {/* Header: Hotel details */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#E2E6E1]">
         <div className="flex items-center gap-2.5">
           <div className="p-2 rounded-xl bg-[#E3F1EC] text-[#0E6B59]">
@@ -97,220 +94,95 @@ export const TrustAndVerificationCard: React.FC<TrustAndVerificationCardProps> =
           <div>
             <h3 className="text-sm sm:text-base font-bold text-[#15201D] font-heading flex items-center gap-2">
               <span>{cleanName}</span>
-              <span className="text-[10px] font-semibold text-[#0E6B59] bg-[#E3F1EC] px-2 py-0.5 rounded-full">
-                Verified Stay
-              </span>
             </h3>
             <p className="text-xs text-[#55625E]">
               {reviewProfile.fullLocation}
             </p>
           </div>
         </div>
-
-        {/* Rating Score Badge */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <div className="bg-[#0E6B59] text-white px-2.5 py-1 rounded-xl text-center shadow-xs">
-            <div className="text-sm font-black flex items-center justify-center gap-1">
-              <span>{reviewProfile.overallRating}</span>
-              <Star className="h-3 w-3 fill-current text-yellow-300" />
-            </div>
-            <div className="text-[9px] text-white/90">
-              {reviewProfile.totalReviewsCount}+ reviews
-            </div>
-          </div>
-        </div>
       </div>
 
-      {/* Authoritative Review Sites Direct Redirects */}
-      <div className="space-y-1.5">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-[#55625E] flex items-center justify-between">
-          <span>Official Review Sources</span>
-          <span className="text-[10px] text-[#0E6B59] font-medium">Direct to property reviews</span>
+      {/* Section: Read real reviews (4 Outbound search links) */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-[#15201D] flex items-center gap-1.5">
+            <Search className="h-3.5 w-3.5 text-[#0E6B59]" />
+            <span>Read real reviews</span>
+          </h4>
+          <span className="text-[11px] text-[#55625E]">
+            Opens live external reviews in new tab
+          </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
           <a
             href={reviewProfile.externalLinks.googleMapsReviewsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2.5 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] hover:bg-white hover:border-[#0E6B59] transition flex items-center justify-between group shadow-2xs"
-            title="Open Google Maps Reviews"
+            className="p-3 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] hover:bg-white hover:border-[#0E6B59] transition flex items-center justify-between group shadow-2xs cursor-pointer min-h-[44px]"
+            title="Read Google Maps Reviews"
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-sm">📍</span>
+              <span className="text-base">📍</span>
               <div className="text-left truncate">
                 <div className="text-xs font-bold text-[#15201D] truncate group-hover:text-[#0E6B59]">Google Maps</div>
                 <div className="text-[10px] text-[#55625E]">Guest reviews</div>
               </div>
             </div>
-            <ExternalLink className="h-3 w-3 text-[#55625E] group-hover:text-[#0E6B59] shrink-0" />
+            <ExternalLink className="h-3.5 w-3.5 text-[#55625E] group-hover:text-[#0E6B59] shrink-0" />
           </a>
 
           <a
             href={reviewProfile.externalLinks.tripAdvisorUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2.5 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] hover:bg-white hover:border-[#0E6B59] transition flex items-center justify-between group shadow-2xs"
-            title="Open TripAdvisor Reviews"
+            className="p-3 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] hover:bg-white hover:border-[#0E6B59] transition flex items-center justify-between group shadow-2xs cursor-pointer min-h-[44px]"
+            title="Read TripAdvisor Reviews"
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-sm">🦉</span>
+              <span className="text-base">🦉</span>
               <div className="text-left truncate">
                 <div className="text-xs font-bold text-[#15201D] truncate group-hover:text-[#0E6B59]">TripAdvisor</div>
                 <div className="text-[10px] text-[#55625E]">Ranked & rated</div>
               </div>
             </div>
-            <ExternalLink className="h-3 w-3 text-[#55625E] group-hover:text-[#0E6B59] shrink-0" />
+            <ExternalLink className="h-3.5 w-3.5 text-[#55625E] group-hover:text-[#0E6B59] shrink-0" />
           </a>
 
           <a
             href={reviewProfile.externalLinks.bookingComUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2.5 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] hover:bg-white hover:border-[#0E6B59] transition flex items-center justify-between group shadow-2xs"
-            title="Open Booking.com Property Page"
+            className="p-3 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] hover:bg-white hover:border-[#0E6B59] transition flex items-center justify-between group shadow-2xs cursor-pointer min-h-[44px]"
+            title="Read Booking.com Reviews"
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-sm">🏨</span>
+              <span className="text-base">🏨</span>
               <div className="text-left truncate">
                 <div className="text-xs font-bold text-[#15201D] truncate group-hover:text-[#0E6B59]">Booking.com</div>
-                <div className="text-[10px] text-[#55625E]">Verified guests</div>
+                <div className="text-[10px] text-[#55625E]">Guest reviews</div>
               </div>
             </div>
-            <ExternalLink className="h-3 w-3 text-[#55625E] group-hover:text-[#0E6B59] shrink-0" />
+            <ExternalLink className="h-3.5 w-3.5 text-[#55625E] group-hover:text-[#0E6B59] shrink-0" />
           </a>
 
           <a
             href={reviewProfile.externalLinks.makeMyTripUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2.5 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] hover:bg-white hover:border-[#0E6B59] transition flex items-center justify-between group shadow-2xs"
-            title="Open MakeMyTrip Verified Hotel"
+            className="p-3 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] hover:bg-white hover:border-[#0E6B59] transition flex items-center justify-between group shadow-2xs cursor-pointer min-h-[44px]"
+            title="Read MakeMyTrip Reviews"
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-sm">✈️</span>
+              <span className="text-base">✈️</span>
               <div className="text-left truncate">
                 <div className="text-xs font-bold text-[#15201D] truncate group-hover:text-[#0E6B59]">MakeMyTrip</div>
-                <div className="text-[10px] text-[#55625E]">Indian traveller fav</div>
+                <div className="text-[10px] text-[#55625E]">Traveller ratings</div>
               </div>
             </div>
-            <ExternalLink className="h-3 w-3 text-[#55625E] group-hover:text-[#0E6B59] shrink-0" />
+            <ExternalLink className="h-3.5 w-3.5 text-[#55625E] group-hover:text-[#0E6B59] shrink-0" />
           </a>
         </div>
-      </div>
-
-      {/* Sub-Ratings Bar */}
-      <div className="p-3 bg-[#F4F9F7] rounded-xl border border-[#0E6B59]/20 space-y-2">
-        <div className="flex items-center justify-between text-xs font-bold text-[#15201D]">
-          <span className="flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5 text-[#0E6B59]" />
-            <span>Guest Rating Breakdown</span>
-          </span>
-          <span className="text-[#0E6B59] text-[11px] font-semibold">Cleanliness & Service benchmarked</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-          <div className="bg-white/80 p-2 rounded-lg border border-[#CBD5E1]/40">
-            <div className="text-[10px] text-[#55625E]">Cleanliness</div>
-            <div className="font-extrabold text-[#15201D] flex items-center gap-1">
-              <span>{reviewProfile.subRatings.cleanliness}</span>
-              <span className="text-[10px] text-[#0E6B59] font-normal">/ 5.0</span>
-            </div>
-          </div>
-
-          <div className="bg-white/80 p-2 rounded-lg border border-[#CBD5E1]/40">
-            <div className="text-[10px] text-[#55625E]">Location & Safety</div>
-            <div className="font-extrabold text-[#15201D] flex items-center gap-1">
-              <span>{reviewProfile.subRatings.location}</span>
-              <span className="text-[10px] text-[#0E6B59] font-normal">/ 5.0</span>
-            </div>
-          </div>
-
-          <div className="bg-white/80 p-2 rounded-lg border border-[#CBD5E1]/40">
-            <div className="text-[10px] text-[#55625E]">Staff & Service</div>
-            <div className="font-extrabold text-[#15201D] flex items-center gap-1">
-              <span>{reviewProfile.subRatings.service}</span>
-              <span className="text-[10px] text-[#0E6B59] font-normal">/ 5.0</span>
-            </div>
-          </div>
-
-          <div className="bg-white/80 p-2 rounded-lg border border-[#CBD5E1]/40">
-            <div className="text-[10px] text-[#55625E]">Food & Breakfast</div>
-            <div className="font-extrabold text-[#15201D] flex items-center gap-1">
-              <span>{reviewProfile.subRatings.foodAndBreakfast}</span>
-              <span className="text-[10px] text-[#0E6B59] font-normal">/ 5.0</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Extracted Structured Guest Reviews */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-[#15201D] flex items-center gap-1.5">
-            <Award className="h-3.5 w-3.5 text-[#0E6B59]" />
-            <span>Extracted Verified Guest Experiences</span>
-          </h4>
-          <span className="text-[10px] text-[#55625E]">
-            {reviewProfile.reviews.length} authentic persona reviews
-          </span>
-        </div>
-
-        {/* Persona Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
-          {reviewProfile.reviews.map((rev, idx) => (
-            <button
-              key={rev.id}
-              type="button"
-              onClick={() => setSelectedReviewIdx(idx)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition shrink-0 ${
-                selectedReviewIdx === idx
-                  ? 'bg-[#0E6B59] text-white shadow-2xs font-bold'
-                  : 'bg-[#F1F5F9] text-[#55625E] hover:bg-[#E2E8F0]'
-              }`}
-            >
-              {rev.persona}
-            </button>
-          ))}
-        </div>
-
-        {/* Active Guest Review Content */}
-        {reviewProfile.reviews[selectedReviewIdx] && (
-          <div className="p-3.5 rounded-xl border border-[#CBD5E1] bg-[#FAFCFA] space-y-2 text-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-[#15201D]">{reviewProfile.reviews[selectedReviewIdx].author}</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#E3F1EC] text-[#0E6B59] font-semibold">
-                  ✓ Verified Stay
-                </span>
-                <span className="text-[10px] text-[#55625E]">{reviewProfile.reviews[selectedReviewIdx].date}</span>
-              </div>
-              <div className="flex items-center gap-1 text-[#0E6B59] font-black">
-                <span>{reviewProfile.reviews[selectedReviewIdx].rating.toFixed(1)}</span>
-                <Star className="h-3 w-3 fill-current text-yellow-400" />
-              </div>
-            </div>
-
-            <div className="font-semibold text-[#15201D]">
-              "{reviewProfile.reviews[selectedReviewIdx].title}"
-            </div>
-
-            <p className="text-[11px] text-[#55625E] leading-relaxed">
-              {reviewProfile.reviews[selectedReviewIdx].comment}
-            </p>
-
-            <div className="pt-2 border-t border-[#E2E6E1]/60 flex items-center justify-between text-[10px] text-[#55625E]">
-              <span className="inline-flex items-center gap-1 font-medium text-[#0E6B59]">
-                <Sparkles className="h-3 w-3" />
-                <span>{reviewProfile.reviews[selectedReviewIdx].highlightTag}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <ThumbsUp className="h-3 w-3 text-[#0E6B59]" />
-                <span>{reviewProfile.reviews[selectedReviewIdx].helpfulCount} people found this helpful</span>
-              </span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Pre-Booking 4 Checklist Items (Collapsible) */}
@@ -320,7 +192,7 @@ export const TrustAndVerificationCard: React.FC<TrustAndVerificationCardProps> =
           className="flex items-center justify-between cursor-pointer select-none py-1"
         >
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-[#15201D]">4 Pre-Payment Self Checks</span>
+            <span className="text-xs font-bold text-[#15201D]">4 Pre-Booking Checks</span>
             <span className="text-[10px] font-semibold text-[#0E6B59] bg-[#E3F1EC] px-2 py-0.5 rounded-full">
               {checkedCount}/4 verified
             </span>
@@ -350,41 +222,39 @@ export const TrustAndVerificationCard: React.FC<TrustAndVerificationCardProps> =
                       : 'bg-[#FAFCFA] border-[#E2E6E1] text-[#15201D] hover:border-[#0E6B59]/40'
                   }`}
                 >
-                  <button
-                    type="button"
+                  <div
                     onClick={() => toggleCheck(item.id)}
-                    className="flex items-center gap-2 text-left flex-1 cursor-pointer min-h-[36px]"
-                    aria-label={`Toggle check: ${item.title}`}
+                    className="flex items-center gap-2.5 flex-1 cursor-pointer select-none"
                   >
-                    <div className="shrink-0 text-[#0E6B59]">
+                    <button
+                      type="button"
+                      className="text-[#0E6B59] focus:outline-hidden"
+                      aria-label={`Toggle check for ${item.title}`}
+                    >
                       {isChecked ? (
-                        <CheckSquare className="h-4 w-4 fill-[#E3F1EC] text-[#0E6B59]" />
+                        <CheckSquare className="h-4 w-4 stroke-[2.5]" />
                       ) : (
                         <Square className="h-4 w-4 text-[#CBD5E1]" />
                       )}
-                    </div>
+                    </button>
                     <div>
-                      <div className="flex items-center gap-1.5 font-bold text-xs">
-                        {item.icon}
-                        <span className={isChecked ? 'line-through text-[#55625E]' : 'text-[#15201D]'}>
-                          {item.title}
-                        </span>
+                      <div className={`text-xs font-bold ${isChecked ? 'line-through text-[#55625E]' : ''}`}>
+                        {item.title}
                       </div>
-                      <p className="text-[10px] text-[#55625E] leading-relaxed">
+                      <div className="text-[10px] text-[#55625E]">
                         {item.desc}
-                      </p>
+                      </div>
                     </div>
-                  </button>
+                  </div>
 
                   <a
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-2 py-1 text-xs font-semibold text-[#0E6B59] hover:underline shrink-0 flex items-center gap-1 min-h-[36px]"
-                    title={item.actionLabel}
+                    className="text-[10px] font-bold text-[#0E6B59] bg-[#E3F1EC] hover:bg-[#0E6B59] hover:text-white px-2 py-1 rounded-md transition flex items-center gap-1 shrink-0"
                   >
                     <span>{item.actionLabel}</span>
-                    <ExternalLink className="h-3 w-3" />
+                    <ExternalLink className="h-2.5 w-2.5" />
                   </a>
                 </div>
               );

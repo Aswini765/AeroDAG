@@ -185,8 +185,7 @@ export const StayAreaMapCard: React.FC<StayAreaMapCardProps> = ({
                   className="text-xs font-bold text-[#0E6B59] hover:underline flex items-center gap-1 min-h-[44px] py-1 cursor-pointer"
                   title="Open real reviews on Google in a new tab"
                 >
-                  <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                  <span>{area.rating}★ ({area.reviewCount}) · Reviews</span>
+                  <span>Read real reviews on Google</span>
                   <ExternalLink className="h-3 w-3" />
                 </a>
 

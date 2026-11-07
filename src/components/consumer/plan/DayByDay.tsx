@@ -51,9 +51,8 @@ export const DayByDay: React.FC<DayByDayProps> = ({
     id: 'morning',
     pinNumber: 1,
     timeSlot: 'Morning',
-    name: (currentDay.morning.split(/[.:]/)[0] || 'Morning Discovery').slice(0, 32),
+    name: (currentDay.morning.split(/[.:]/)[0] || 'Morning Discovery').trim(),
     description: currentDay.morning,
-    rating: 4.6,
     costINR: Math.round((currentDay.estimatedCostINR || 1200) * 0.35),
     travelTimeToNext: currentDay.stopDriveTimes?.[0]?.note || '15 min drive · 4.2 km',
     coordinates: { x: 30, y: 32 },
@@ -64,9 +63,8 @@ export const DayByDay: React.FC<DayByDayProps> = ({
     id: 'afternoon',
     pinNumber: 2,
     timeSlot: 'Afternoon',
-    name: (currentDay.afternoon.split(/[.:]/)[0] || 'Afternoon Highlights').slice(0, 32),
+    name: (currentDay.afternoon.split(/[.:]/)[0] || 'Afternoon Highlights').trim(),
     description: currentDay.afternoon,
-    rating: 4.5,
     costINR: Math.round((currentDay.estimatedCostINR || 1200) * 0.40),
     travelTimeToNext: currentDay.stopDriveTimes?.[1]?.note || '20 min drive · 6.5 km',
     coordinates: { x: 70, y: 45 },
@@ -77,9 +75,8 @@ export const DayByDay: React.FC<DayByDayProps> = ({
     id: 'evening',
     pinNumber: 3,
     timeSlot: 'Evening',
-    name: (currentDay.evening.split(/[.:]/)[0] || 'Sunset & Dinner').slice(0, 32),
+    name: (currentDay.evening.split(/[.:]/)[0] || 'Sunset & Dinner').trim(),
     description: currentDay.evening,
-    rating: 4.7,
     costINR: Math.round((currentDay.estimatedCostINR || 1200) * 0.25),
     travelTimeToNext: `15 min drive back to ${cleanStay}`,
     coordinates: { x: 45, y: 78 },
@@ -295,20 +292,17 @@ export const DayByDay: React.FC<DayByDayProps> = ({
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#0E6B59] bg-[#E3F1EC] px-1.5 py-0.2 rounded">
                       {stop.timeSlot}
                     </span>
-                    <div className="flex items-center gap-1 text-[11px] font-bold text-[#15201D]">
-                      <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                      <span>{stop.rating}★</span>
-                    </div>
+
                   </div>
 
-                  <div className="text-xs sm:text-sm font-bold text-[#15201D] line-clamp-1">
+                  <div className="text-xs sm:text-sm font-bold text-[#15201D] line-clamp-2">
                     {stop.name}
                   </div>
 
                   {/* Travel time to next stop */}
                   <div className="flex items-center gap-1 text-[11px] text-[#55625E]">
                     <Car className="h-3 w-3 text-[#0E6B59] shrink-0" />
-                    <span>travelTimeToNext: <strong>{stop.travelTimeToNext}</strong></span>
+                    <span>Next stop: <strong>{stop.travelTimeToNext}</strong></span>
                   </div>
                 </div>
               </div>

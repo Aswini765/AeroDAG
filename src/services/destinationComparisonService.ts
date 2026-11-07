@@ -13,7 +13,7 @@ import { TripPlan, TripPreferences } from '../types/travelBooking';
 import { TripPlanningEngine } from './tripPlanningEngine';
 import { computeFullTripCost } from './fullTripCostHelper';
 import { getSeasonOptionsForDestination } from './destinationsData';
-import { resolveTravelDates } from './dateResolver';
+import { resolveTravelDates, formatDateRange } from './dateResolver';
 
 export interface ComparisonPlaceItem {
   destination: string;
@@ -163,11 +163,15 @@ export function detectComparisonIntent(text: string): {
     transportMode = 'Cab';
   }
 
-  // Extract dates
-  let travelDates = '14–20 Nov 2026';
+  // Extract dates (Prompt 4 rule: dates and duration must agree: end date = start date + durationDays - 1)
+  let travelDates = '';
   const resolved = resolveTravelDates(text);
   if (resolved && resolved.ok) {
     travelDates = resolved.label;
+  } else {
+    const start = new Date(2026, 10, 14);
+    const end = new Date(2026, 10, 14 + (durationDays - 1));
+    travelDates = formatDateRange(start, end);
   }
 
   return {

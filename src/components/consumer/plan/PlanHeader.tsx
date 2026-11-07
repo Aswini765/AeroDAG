@@ -27,9 +27,11 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
   const cleanCity = (plan.destination || 'Goa').replace(/,\s*India$/i, '').split(',')[0].trim();
   const areaName = plan.hotelZone || plan.hotel?.area || '';
 
-  // B7: Trusted booking URLs (city only, zero PII)
+  // B7: Trusted booking URLs (search params included, zero PII)
   const isTrainTrip = Boolean(plan.selectedTrain && !plan.flight);
-  const primaryBookingUrl = isTrainTrip ? 'https://www.irctc.co.in' : 'https://www.makemytrip.com';
+  const primaryBookingUrl = isTrainTrip
+    ? 'https://www.irctc.co.in/nget/train-search'
+    : `https://www.makemytrip.com/hotels/hotel-listing/?city=${encodeURIComponent(cleanCity)}`;
   const primaryBookingLabel = isTrainTrip ? 'Book on IRCTC' : 'Book on MakeMyTrip';
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${areaName} ${cleanCity}`)}`;
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Check,
   Users,
@@ -21,11 +21,12 @@ import { resolveTravelDates, formatDateRange } from '../../services/dateResolver
 import { findLongWeekends } from '../../services/longWeekendFinder';
 import { fetchDestinationProfile } from '../../services/destinationProfileClient';
 import { buildPlanFromDestinationProfile } from '../../services/aiDestinationPlanBuilder';
+import { DESTINATIONS } from './WhereShouldWeGo';
 
 interface ClarifyScreenProps {
   initialPrompt: string;
   tripContext: TripContext;
-  onPlanReady: (plan: TripPlan, preferences: TripPreferences) => void;
+  onPlanReady: (plan: TripPlan, preferences: TripPreferences, context?: TripContext) => void;
   onBackToDescribe: () => void;
 }
 
@@ -92,7 +93,7 @@ export function validateTravelDate(dateStr: string): { isValid: boolean; normali
   return { isValid: true, normalized: trimmed.includes('2026') ? trimmed : `${trimmed} 2026` };
 }
 
-type StepKey = 'dates' | 'who' | 'time' | 'needs' | 'budget';
+type StepKey = 'basics' | 'dates' | 'who' | 'time' | 'needs' | 'budget';
 
 export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
   initialPrompt,
@@ -137,11 +138,12 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
   // Active step flow: only include questions the user has not already answered
   const activeSteps = useMemo<StepKey[]>(() => {
     const list: StepKey[] = [];
-    if (!datesAlreadyStated) list.push('dates');
-    if (!travellersAlreadyStated) list.push('who');
-    if (!timeAlreadyStated) list.push('time');
-    if (!needsAlreadyStated) list.push('needs');
-    if (!budgetAlreadyStated) list.push('budget');
+    // Prompt 4 rule: When budget or traveller count is missing from the prompt, show ONE short question step
+    if (!travellersAlreadyStated || !budgetAlreadyStated) {
+      list.push('basics');
+    }
+    // Dates, pace and needs have sensible defaults shown as editable chips on the plan,
+    // so they are not extra steps before the answer.
     return list;
   }, [datesAlreadyStated, travellersAlreadyStated, timeAlreadyStated, needsAlreadyStated, budgetAlreadyStated]);
 
@@ -180,6 +182,60 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
   );
 
   const [selectedNeeds, setSelectedNeeds] = useState<string[]>(tripContext.tripNeeds || []);
+
+  // Prompt 4: Combined Basics Quick Picks (Travellers & Budget)
+  const [selectedTravellersCount, setSelectedTravellersCount] = useState<number>(
+    tripContext.totalTravellers && tripContext.totalTravellers > 0 ? tripContext.totalTravellers : 2
+  );
+  const [pickedBudgetINR, setSelectedBudgetINR] = useState<number | null>(
+    tripContext.budgetTotalINR && tripContext.budgetTotalINR > 0 && tripContext.fieldSources?.budget === 'stated'
+      ? tripContext.budgetTotalINR
+      : null
+  );
+
+  // Budget quick picks are centred on a typical total for this place, length and group size,
+  // so a Coorg weekend isn't offered ₹1,00,000 and nothing silently defaults to ₹60,000.
+  const roundTo = (n: number, step: number) => Math.max(step, Math.round(n / step) * step);
+  const typicalTotalINR = (() => {
+    const destName = (tripContext.destination || '').toLowerCase();
+    const card = DESTINATIONS.find((d) => destName.includes(d.name.toLowerCase()));
+    const perDay = card ? card.baseCostPerDayINR : 3500;
+    const days = Math.max(1, tripContext.durationDays || 4);
+    return roundTo(perDay * days * Math.max(1, selectedTravellersCount), 1000);
+  })();
+  const budgetQuickPicks = Array.from(new Set([
+    roundTo(typicalTotalINR * 0.75, 5000),
+    roundTo(typicalTotalINR, 5000),
+    roundTo(typicalTotalINR * 1.5, 5000)
+  ]));
+  const selectedBudgetINR = pickedBudgetINR ?? roundTo(typicalTotalINR, 5000);
+  const [customTravellersInput, setCustomTravellersInput] = useState('');
+  const [customBudgetInput, setCustomBudgetInput] = useState('');
+  const [isCustomTravellersOpen, setIsCustomTravellersOpen] = useState(false);
+  const [isCustomBudgetOpen, setIsCustomBudgetOpen] = useState(false);
+
+  const handleApplyBasics = () => {
+    const finalTravellers = isCustomTravellersOpen && parseInt(customTravellersInput, 10) > 0
+      ? parseInt(customTravellersInput, 10)
+      : selectedTravellersCount;
+    const finalBudget = isCustomBudgetOpen && parseInt(customBudgetInput.replace(/[^\d]/g, ''), 10) > 0
+      ? parseInt(customBudgetInput.replace(/[^\d]/g, ''), 10)
+      : selectedBudgetINR;
+
+    const updated = {
+      ...tripContext,
+      adultsCount: finalTravellers,
+      totalTravellers: finalTravellers,
+      budgetTotalINR: finalBudget,
+      fieldSources: {
+        ...tripContext.fieldSources,
+        travellers: 'stated' as const,
+        budget: 'stated' as const
+      }
+    };
+    setTripContext(updated);
+    handleNextStep();
+  };
 
   // Prompt 7: Conversational question phrasing acknowledging user inputs
   const conversationalAck = useMemo(() => {
@@ -405,9 +461,18 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     buildLockRef.current = true;
     setIsLoading(true);
     try {
-      const finalDates = tripContext.dates || '14–20 Nov 2026';
+      const wantedDays = Math.max(1, tripContext.durationDays || 4);
+      let finalDates = tripContext.dates || '';
+      if (!finalDates || !resolveTravelDates(finalDates)?.ok) {
+        // Next Friday at least a week away, matching the trip length
+        const now = new Date();
+        const toFri = (5 - now.getDay() + 7) % 7;
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toFri + 7);
+        const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + wantedDays - 1);
+        finalDates = formatDateRange(start, end);
+      }
       const resolved = resolveTravelDates(finalDates);
-      const daysCount = resolved && resolved.ok ? resolved.days : (tripContext.durationDays || 7);
+      const daysCount = resolved && resolved.ok ? resolved.days : wantedDays;
 
       const ctxToBuild: TripContext = {
         ...tripContext,
@@ -415,8 +480,9 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
         durationDays: daysCount,
         fieldSources: {
           ...tripContext.fieldSources,
-          dates: 'stated',
-          duration: 'stated'
+          // Keep "assumed" when we picked the dates, so the user can see and change them
+          dates: tripContext.fieldSources?.dates === 'stated' ? 'stated' : 'assumed',
+          duration: tripContext.fieldSources?.duration || 'assumed'
         }
       };
 
@@ -456,13 +522,21 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
       };
 
       setTimeout(() => {
-        onPlanReady(generatedPlan, preferences);
+        onPlanReady(generatedPlan, preferences, ctxToBuild);
       }, 800);
     } catch (err) {
       console.error('Plan generation failed', err);
       setIsLoading(false);
     }
   };
+
+  // Nothing left to ask: build the plan straight away (no extra "Build" tap)
+  useEffect(() => {
+    if (currentStep === 'ready' && !isLoading && !buildLockRef.current) {
+      void handleBuildPlan();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
 
   // Loading screen with 4 plain-language lines
   if (isLoading) {
@@ -522,7 +596,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
           <span>Back</span>
         </button>
 
-        {totalSteps > 0 && (
+        {totalSteps > 1 && (
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-bold text-[#0E6B59]">
               {Math.min(currentStepIndex + 1, totalSteps)} of {totalSteps}
@@ -600,8 +674,8 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
             </button>
           )}
 
-          {/* Budget Chip if known */}
-          {tripContext.budgetTotalINR && (
+          {/* Budget Chip only once the user has given a budget (never show a silent default) */}
+          {tripContext.budgetTotalINR && tripContext.fieldSources?.budget === 'stated' && (
             <button
               type="button"
               onClick={() => handleRemoveUnderstoodChip('budget')}
@@ -723,6 +797,142 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                   </p>
                 )}
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* STEP: BASICS (Prompt 4 rule: "How many of you, and roughly what budget?") */}
+        {currentStep === 'basics' && (
+          <div className="space-y-4 animate-fade-in-slide">
+            <div className="flex items-start gap-2.5">
+              <span className="w-8 h-8 rounded-full bg-[#0E6B59] text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                AI
+              </span>
+              <div className="bg-[#F6F8F6] rounded-2xl rounded-tl-sm p-4 text-xs sm:text-sm text-[#15201D] space-y-1 border border-[#E2E6E1]">
+                <div className="font-bold">How many of you, and roughly what budget?</div>
+                <div className="text-[11px] text-[#55625E]">
+                  Quick picks to tailor your options and stay within a realistic cap:
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 pl-10">
+              {/* 1. Travellers Quick Picks */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-[#15201D] flex items-center gap-1.5">
+                  <Users className="h-4 w-4 text-[#0E6B59]" />
+                  <span>Number of travellers:</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[1, 2, 3, 4].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTravellersCount(num);
+                        setIsCustomTravellersOpen(false);
+                      }}
+                      className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                        !isCustomTravellersOpen && selectedTravellersCount === num
+                          ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0E6B59] shadow-xs'
+                          : 'border-[#E2E6E1] bg-white text-[#15201D] hover:border-[#0E6B59]/40'
+                      }`}
+                    >
+                      {num} {num === 1 ? 'person' : 'people'}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomTravellersOpen(true)}
+                    className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                      isCustomTravellersOpen
+                        ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0E6B59] shadow-xs'
+                        : 'border-[#E2E6E1] bg-white text-[#15201D] hover:border-[#0E6B59]/40'
+                    }`}
+                  >
+                    More / custom
+                  </button>
+                </div>
+                {isCustomTravellersOpen && (
+                  <div className="pt-1 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={customTravellersInput}
+                      onChange={(e) => setCustomTravellersInput(e.target.value)}
+                      placeholder="e.g. 5"
+                      className="w-32 bg-white border border-[#CBD5E1] rounded-xl px-3 py-2 text-xs font-bold text-[#15201D] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none min-h-[44px]"
+                    />
+                    <span className="text-xs text-[#55625E]">travellers</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Budget Quick Picks */}
+              <div className="space-y-2 pt-2 border-t border-[#E2E6E1]/70">
+                <label className="text-xs font-bold text-[#15201D] flex items-center gap-1.5">
+                  <Wallet className="h-4 w-4 text-[#0E6B59]" />
+                  <span>Rough total trip budget:</span>
+                </label>
+                <p className="text-[11px] text-[#55625E]">
+                  Typical for {selectedTravellersCount} {selectedTravellersCount === 1 ? 'person' : 'people'}: about ₹{typicalTotalINR.toLocaleString('en-IN')}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {budgetQuickPicks.map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBudgetINR(amt);
+                        setIsCustomBudgetOpen(false);
+                      }}
+                      className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                        !isCustomBudgetOpen && selectedBudgetINR === amt
+                          ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0E6B59] shadow-xs'
+                          : 'border-[#E2E6E1] bg-white text-[#15201D] hover:border-[#0E6B59]/40'
+                      }`}
+                    >
+                      ₹{amt.toLocaleString('en-IN')}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomBudgetOpen(true)}
+                    className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                      isCustomBudgetOpen
+                        ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0E6B59] shadow-xs'
+                        : 'border-[#E2E6E1] bg-white text-[#15201D] hover:border-[#0E6B59]/40'
+                    }`}
+                  >
+                    Type own
+                  </button>
+                </div>
+                {isCustomBudgetOpen && (
+                  <div className="pt-1 flex items-center gap-2">
+                    <span className="text-xs font-bold text-[#15201D]">₹</span>
+                    <input
+                      type="text"
+                      value={customBudgetInput}
+                      onChange={(e) => setCustomBudgetInput(e.target.value)}
+                      placeholder="e.g. 75000"
+                      className="w-40 bg-white border border-[#CBD5E1] rounded-xl px-3 py-2 text-xs font-bold text-[#15201D] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none min-h-[44px]"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Continue Button */}
+              <div className="pt-3">
+                <button
+                  type="button"
+                  onClick={handleApplyBasics}
+                  className="btn-primary w-full min-h-[44px] py-2.5 px-4 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <span>Continue</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -63,10 +63,10 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
             <div className="flex flex-col sm:items-end gap-1.5">
               <div className="flex items-center gap-2">
                 <a
-                  href="https://www.makemytrip.com/flights/"
+                  href={`https://www.makemytrip.com/flights/?itinerary=${flight.originCode || 'BLR'}-${flight.destinationCode || 'GOI'}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => trackBookOnClicked({ provider: 'MakeMyTrip', itemType: 'flight', url: 'https://www.makemytrip.com/flights/' })}
+                  onClick={() => trackBookOnClicked({ provider: 'MakeMyTrip', itemType: 'flight', url: `https://www.makemytrip.com/flights/?itinerary=${flight.originCode || 'BLR'}-${flight.destinationCode || 'GOI'}` })}
                   className="text-xs text-[#0E6B59] font-bold hover:underline inline-flex items-center gap-1 min-h-[32px] sm:min-h-0 bg-[#E3F1EC]/50 px-2 py-0.5 rounded-md"
                 >
                   <span>Book on MakeMyTrip</span>
@@ -216,10 +216,10 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
             <div className="flex flex-col sm:items-end gap-1.5">
               <div className="flex flex-wrap items-center gap-2">
                 <a
-                  href="https://www.makemytrip.com/hotels/"
+                  href={`https://www.makemytrip.com/hotels/hotel-listing/?city=${encodeURIComponent(hotel.city || hotel.area || 'Goa')}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => trackBookOnClicked({ provider: 'MakeMyTrip', itemType: 'hotel', url: 'https://www.makemytrip.com/hotels/' })}
+                  onClick={() => trackBookOnClicked({ provider: 'MakeMyTrip', itemType: 'hotel', url: `https://www.makemytrip.com/hotels/hotel-listing/?city=${encodeURIComponent(hotel.city || hotel.area || 'Goa')}` })}
                   className="text-xs text-[#0E6B59] font-bold hover:underline inline-flex items-center gap-1 min-h-[32px] sm:min-h-0 bg-[#E3F1EC]/50 px-2 py-0.5 rounded-md"
                 >
                   <span>Book on MakeMyTrip</span>

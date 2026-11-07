@@ -61,7 +61,7 @@ export function evaluateMonthWorthiness(
   const month = extractMonthFromDatesOrText(datesStr, userText);
   const mLower = month.toLowerCase();
 
-  const sourceLabel = isAiEstimated ? 'AI estimate' : 'Verified catalog';
+  const sourceLabel = isAiEstimated ? 'AI estimate' : 'Hand-built guide';
 
   // 1. Araku Valley
   if (cleanDest.includes('araku')) {
@@ -294,7 +294,7 @@ export function evaluateStayAreaChoice(
     recommendedArea: 'Central Heritage & Scenic Area',
     reason: hasKids
       ? "Chosen for family-friendly location with minimal transit fatigue."
-      : "Chosen for central access to key sights and verified dining."
+      : "Chosen for central access to key sights and good places to eat."
   };
 }
 

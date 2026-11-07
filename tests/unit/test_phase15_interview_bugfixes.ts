@@ -152,16 +152,13 @@ async function runTests() {
   }
 
   // =========================================================================
-  // BUG 4: DEFAULT SURPRISE BUFFER LARGER THAN 15% AND USER ADJUSTABLE
+  // BUG 4: ONE TOTAL EVERYWHERE — FIXED 15% BUFFER (PROMPT 1 RULE)
   // =========================================================================
-  console.log('\n[4] Testing Default Surprise Buffer > 15% and User Adjustable');
+  console.log('\n[4] Testing One Total Everywhere — Fixed 15% Surprise Buffer');
 
-  const planOptionsFile = fs.readFileSync('src/components/consumer/plan/PlanOptionsSelector.tsx', 'utf-8');
-  assert(planOptionsFile.includes('min={10}') && planOptionsFile.includes('max={50}'), 'PlanOptionsSelector provides a 10%–50% adjustable slider');
-  assert(planOptionsFile.includes('useState<number>(25)'), 'PlanOptionsSelector slider defaults to 25% (larger than 15%)');
-
-  const fullTripCostCardFile = fs.readFileSync('src/components/consumer/plan/FullTripCostCard.tsx', 'utf-8');
-  assert(fullTripCostCardFile.includes('useState<number>(25)'), 'FullTripCostCard slider defaults to 25% (larger than 15%)');
+  const fullTripCostHelperFile = fs.readFileSync('src/services/fullTripCostHelper.ts', 'utf-8');
+  assert(fullTripCostHelperFile.includes('SURPRISE_BUFFER_PERCENT = 15') || fullTripCostHelperFile.includes('bufferPercent = SURPRISE_BUFFER_PERCENT'), 'Full trip cost helper fixes surprise buffer at 15%');
+  assert(!fullTripCostHelperFile.includes('baseBufferPercent: number = 25'), 'No 25% default in fullTripCostHelper');
 
   // =========================================================================
   // BUG 5: REMOVE INVENTED-SOUNDING PLACE NAMES

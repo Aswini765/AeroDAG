@@ -346,30 +346,41 @@ export function generatePlanOptions(
     ...extractBreakdown(comfortCost)
   };
 
-  // PRD Rule: Budget must differ from Balanced in stay property or transport mode, not only flight price.
-  // If no real difference exists (same hotel and same transport mode), show 2 options.
+  // PRD & Prompt 5 Rule:
+  // 1. Budget < Balanced < Comfort in total, always; each differs in stay or transport mode.
+  // If two would be equal, show fewer and say "Only N real options for this trip".
   const sameStay = (budgetOption.hotel.id === balancedOption.hotel.id || budgetOption.hotel.name === balancedOption.hotel.name);
   const sameTransportMode = budgetOption.travelMode === balancedOption.travelMode;
   const budgetDiffersReal = !sameStay || !sameTransportMode;
 
-  const candidateOptions: PlanTierOption[] = budgetDiffersReal
-    ? [budgetOption, balancedOption, comfortOption]
-    : [balancedOption, comfortOption];
+  const candidateOptions: PlanTierOption[] = [];
 
+  // Budget option included only if strictly cheaper than Balanced AND differs in stay or transport mode
+  if (budgetOption.totalCostINR < balancedCost.totalWithBufferINR && budgetDiffersReal) {
+    candidateOptions.push(budgetOption);
+  }
+
+  // Balanced option is the reference baseline
+  candidateOptions.push(balancedOption);
+
+  // Comfort option included only if strictly more expensive than Balanced
+  if (comfortOption.totalCostINR > balancedCost.totalWithBufferINR) {
+    candidateOptions.push(comfortOption);
+  }
+
+  // Enforce strictly unique totals and strictly ascending order: Budget < Balanced < Comfort
   const distinctOptions: PlanTierOption[] = [];
-  const seenKeys = new Set<string>();
+  const seenTotals = new Set<number>();
 
   for (const opt of candidateOptions) {
-    const transitKey = opt.flight?.id || opt.train?.id || opt.travelMode;
-    const key = `${opt.hotel.id || opt.hotel.name}_${transitKey}`;
-    if (!seenKeys.has(key)) {
-      seenKeys.add(key);
+    if (!seenTotals.has(opt.totalCostINR)) {
+      seenTotals.add(opt.totalCostINR);
       distinctOptions.push(opt);
     }
   }
 
   // Determine "Recommended": highest-comfort option whose total <= targetBudget
-  // Hierarchy: Comfort > Balanced > Budget
+  // Hierarchy: Comfort > Balanced > Budget. None if over budget!
   let recommendedId: 'comfort' | 'balanced' | 'budget' | null = null;
   if (targetBudget > 0) {
     const comfortFits = distinctOptions.find((o) => o.id === 'comfort' && o.totalCostINR <= targetBudget);
@@ -383,6 +394,7 @@ export function generatePlanOptions(
     } else if (budgetFits) {
       recommendedId = 'budget';
     }
+    // If NONE fits (all > targetBudget), recommendedId remains null!
   }
 
   for (const opt of distinctOptions) {
@@ -393,6 +405,8 @@ export function generatePlanOptions(
     } else if (targetBudget > 0 && opt.totalCostINR > targetBudget) {
       const overDiff = opt.totalCostINR - targetBudget;
       opt.badge = `+₹${overDiff.toLocaleString('en-IN')} over budget`;
+    } else {
+      opt.badge = opt.tier;
     }
   }
 

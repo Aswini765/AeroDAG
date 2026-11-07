@@ -12,7 +12,8 @@ import {
   ChevronUp,
   Star,
   X,
-  Info
+  Info,
+  ShieldCheck
 } from 'lucide-react';
 import { TripPlan, TripPreferences } from '../../../types/travelBooking';
 import { PlanTierOption, generatePlanOptions } from '../../../services/planOptionsGenerator';
@@ -32,18 +33,29 @@ const TIER_PHOTOS: Record<string, string> = {
   comfort: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=600&q=80'
 };
 
-const TIER_RATINGS: Record<string, { rating: number; reviews: number }> = {
-  budget: { rating: 4.2, reviews: 184 },
-  balanced: { rating: 4.5, reviews: 312 },
-  comfort: { rating: 4.8, reviews: 520 }
-};
+// Max 12 words trade-off line per tier using real area type (Prompt 5: no beachfront for backwaters or hills)
+function getTradeOff(tier: string, destination?: string, stayArea?: string): string {
+  const d = (destination || '').toLowerCase();
+  const a = (stayArea || '').toLowerCase();
+  const isBackwaters = d.includes('kerala') || d.includes('alleppey') || a.includes('punnamada') || a.includes('backwater');
+  const isHills = d.includes('coorg') || d.includes('ooty') || d.includes('munnar') || d.includes('araku') || a.includes('tea') || a.includes('estate');
+  const isHeritage = d.includes('rajasthan') || d.includes('jaipur') || d.includes('udaipur') || d.includes('mysuru');
 
-// Max 12 words trade-off line per tier
-const TIER_TRADEOFFS: Record<string, string> = {
-  budget: 'Comfortable central stay that saves money for local dining and activities.',
-  balanced: 'Ideal mix of scenic resort location, direct flights, and relaxed pacing.',
-  comfort: 'Premium beachfront stay with luxury amenities and fastest private cab transfers.'
-};
+  if (tier === 'budget') {
+    return 'Comfortable central stay that saves money for local dining and activities.';
+  }
+  if (tier === 'balanced') {
+    if (isBackwaters) return 'Scenic lakefront backwater stay with optimal travel pacing.';
+    if (isHills) return 'Peaceful plantation retreat with optimal travel pacing.';
+    if (isHeritage) return 'Authentic heritage haveli stay with optimal travel pacing.';
+    return 'Ideal mix of scenic location, direct flights, and relaxed pacing.';
+  }
+  // comfort
+  if (isBackwaters) return 'Premium backwater resort stay with luxury amenities and private transfers.';
+  if (isHills) return 'Luxury hill estate stay with panoramic views and fastest private transfers.';
+  if (isHeritage) return 'Grand palace heritage stay with royal amenities and private transfers.';
+  return 'Premium resort stay with luxury amenities and fastest private cab transfers.';
+}
 
 export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
   currentPlan,
@@ -56,8 +68,8 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
   const emittedRef = useRef<TripPlan | null>(null);
   const [selectedTier, setSelectedTier] = useState<'budget' | 'balanced' | 'comfort'>('balanced');
   
-  // Buffer slider defaults to 25% (must keep useState<number>(25), min={10}, max={50})
-  const [bufferPercent, setBufferPercent] = useState<number>(25);
+  // Surprise buffer is fixed strictly at 15% (Prompt 1 rule)
+  const bufferPercent = 15;
   const [activeSheetOption, setActiveSheetOption] = useState<PlanTierOption | null>(null);
 
   if (currentPlan !== baseRef.current && currentPlan !== emittedRef.current) {
@@ -68,8 +80,8 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
 
   const basePlan = baseRef.current;
   const options = useMemo(
-    () => generatePlanOptions(basePlan, preferences, { customBufferPercent: bufferPercent, useCategoryWeights: true }),
-    [basePlan, preferences, bufferPercent]
+    () => generatePlanOptions(basePlan, preferences),
+    [basePlan, preferences]
   );
 
   const targetBudget = preferences?.budgetTotalINR || basePlan.budget?.targetINR || 60000;
@@ -77,8 +89,8 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
   const targetBudgetPerPerson = Math.round(targetBudget / travellersCount);
 
   const fullCost = useMemo(
-    () => computeFullTripCost(basePlan, preferences, { customBufferPercent: bufferPercent, useCategoryWeights: true }),
-    [basePlan, preferences, bufferPercent]
+    () => computeFullTripCost(basePlan, preferences),
+    [basePlan, preferences]
   );
   const isOverBudget = fullCost.budgetStatus === 'over';
 
@@ -139,7 +151,7 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
     if (budgetStaySavings > 1500) {
       levers.push({
         title: 'Choose standard 3★ stay / single base',
-        description: 'Standard verified stay with included breakfast',
+        description: 'A simpler stay with breakfast included',
         savingsINR: budgetStaySavings,
         newTotalINR: Math.max(0, lowestTotal - budgetStaySavings)
       });
@@ -215,7 +227,7 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
 
     const overAmount = opt.totalCostINR - targetBudget;
     return {
-      text: `Over by ₹${overAmount.toLocaleString('en-IN')}`,
+      text: `₹${overAmount.toLocaleString('en-IN')} over budget`,
       className: 'bg-[#FCEFD9] text-[#8A4307] ring-1 ring-[#8A4307]/50',
       isOver: true
     };
@@ -275,16 +287,16 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
         <div>
           <h3 className="text-sm sm:text-base font-bold text-[#15201D] font-heading flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-[#0E6B59]" />
-            <span>{options.length} Trip Options</span>
+            <span>{options.length === 1 ? 'Your trip option' : `${options.length} ways to do this trip`}</span>
             {options.length === 2 && (
               <span className="text-[11px] font-semibold text-[#8A4307] bg-[#FCEFD9] px-2 py-0.5 rounded-full">
-                Only 2 options fit
+                Only 2 real options for this trip
               </span>
             )}
           </h3>
           <p className="text-xs text-[#55625E]">
             {options.length === 2
-              ? 'Only 2 options fit · Budget and Balanced share stay property and transport mode.'
+              ? 'Only 2 real options for this trip · Each option offers a distinct stay tier and transport pacing.'
               : 'Tap any card to view cost breakdown or change plan.'}
           </p>
         </div>
@@ -300,8 +312,7 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
           const isSelected = selectedTier === opt.id;
           const badge = getOptionBadge(opt);
           const photoUrl = TIER_PHOTOS[opt.id] || TIER_PHOTOS.balanced;
-          const ratingData = TIER_RATINGS[opt.id] || { rating: 4.4, reviews: 200 };
-          const tradeOff = TIER_TRADEOFFS[opt.id] || opt.tagline;
+          const tradeOff = getTradeOff(opt.id, basePlan.destination, opt.stayArea) || opt.tagline;
 
           return (
             <div
@@ -346,11 +357,6 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
                     <span className="text-xs font-bold uppercase tracking-wider text-[#55625E]">
                       {opt.tier}
                     </span>
-                    <div className="flex items-center gap-1 text-[11px] text-[#15201D] font-bold">
-                      <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                      <span>{ratingData.rating}★</span>
-                      <span className="text-[10px] text-[#55625E] font-normal">({ratingData.reviews})</span>
-                    </div>
                   </div>
 
                   {/* Stay Area */}
@@ -416,7 +422,7 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
             </span>
             <div>
               <h4 className="text-xs sm:text-sm font-bold text-[#15201D]">
-                None of the {options.length} options fit ₹{targetBudget.toLocaleString('en-IN')} — here's what would:
+                {options.length === 1 ? 'This plan' : `None of the ${options.length} options`} {options.length === 1 ? "doesn't" : ""} fit ₹{targetBudget.toLocaleString('en-IN')} — here's what would:
               </h4>
               <p className="text-[11px] text-[#55625E]">
                 Concrete levers with computed savings to bring this trip within your target:
@@ -550,30 +556,13 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
               </div>
             </div>
 
-            {/* ADJUSTABLE BUFFER SLIDER (Default > 15%, test requires min={10}, max={50}, useState<number>(25)) */}
-            <div className="p-3.5 rounded-xl bg-[#F4F9F7] border border-[#0E6B59]/20 space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-[#15201D]">
-                <div className="flex items-center gap-1.5">
-                  <Sliders className="h-3.5 w-3.5 text-[#0E6B59]" />
-                  <span>Adjust Surprise Buffer: <strong className="text-[#0E6B59]">{bufferPercent}%</strong></span>
-                </div>
-                <span className="text-[10px] text-[#55625E]">Default 25% (overruns 24–70%)</span>
+            {/* Surprise Buffer: 15% fixed (Prompt 1 rule) */}
+            <div className="p-3.5 rounded-xl bg-[#F4F9F7] border border-[#0E6B59]/20 flex items-center justify-between text-xs text-[#15201D]">
+              <div className="flex items-center gap-1.5 font-bold">
+                <ShieldCheck className="h-4 w-4 text-[#0E6B59]" />
+                <span>Surprise Buffer: <strong className="text-[#0E6B59]">15% included</strong></span>
               </div>
-
-              <div className="flex items-center gap-3">
-                <span className="text-[11px] text-[#55625E]">10%</span>
-                <input
-                  type="range"
-                  min={10}
-                  max={50}
-                  step={5}
-                  value={bufferPercent}
-                  onChange={(e) => setBufferPercent(Number(e.target.value))}
-                  className="w-full h-2 bg-[#CBD5E1] rounded-lg appearance-none cursor-pointer accent-[#0E6B59]"
-                  aria-label="Adjust surprise buffer"
-                />
-                <span className="text-[11px] text-[#55625E]">50%</span>
-              </div>
+              <span className="text-[10px] text-[#55625E]">Fixed safety margin for unexpected expenses</span>
             </div>
 
             {/* Apply & Select Plan Button */}

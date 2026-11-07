@@ -43,7 +43,10 @@ async function runTests() {
     assert(!cleaned.includes('~₹'), `Removed '~₹' price tags from: "${item.raw}" -> "${cleaned}"`);
     assert(!cleaned.includes('/night'), `Removed '/night' from: "${item.raw}" -> "${cleaned}"`);
     assert(!cleaned.includes('4★') && !cleaned.includes('5★'), `Removed star prefixes from: "${item.raw}" -> "${cleaned}"`);
-    assert(!cleaned.includes('(demo)') && !cleaned.includes('(verified)'), `Removed demo/verified brackets from: "${item.raw}" -> "${cleaned}"`);
+    // Prompt 2: Keep (demo) and (sample) so UI never claims it's a real hotel
+    if (item.raw.includes('(demo)')) {
+      assert(cleaned.includes('(demo)'), `Preserved (demo) label: "${cleaned}"`);
+    }
   }
 
   // ============================================================
@@ -75,23 +78,9 @@ async function runTests() {
   const profile = extractHotelReviews(mockHotel, 'Jaipur');
 
   assert(profile.cleanName.length > 3, `Clean name has valid length: "${profile.cleanName}"`);
-  assert(profile.overallRating === 4.7, `Preserves hotel review score: ${profile.overallRating}`);
-  assert(profile.totalReviewsCount === 840, `Preserves reviews count: ${profile.totalReviewsCount}`);
-
-  // Check subratings
-  assert(profile.subRatings.cleanliness >= 4.5, `Cleanliness subrating is strong: ${profile.subRatings.cleanliness}`);
-  assert(profile.subRatings.service >= 4.5, `Service subrating is strong: ${profile.subRatings.service}`);
-
-  // Check authentic guest reviews
-  assert(profile.reviews.length >= 3, `Extracts at least 3 structured guest reviews: found ${profile.reviews.length}`);
-  const familyRev = profile.reviews.find((r) => r.persona.toLowerCase().includes('family'));
-  assert(Boolean(familyRev), 'Contains dedicated family-with-kids reviewer persona');
-  const seniorRev = profile.reviews.find((r) => r.persona.toLowerCase().includes('senior'));
-  assert(Boolean(seniorRev), 'Contains dedicated senior traveler reviewer persona');
-
-  // Verify external review URLs are proper and not noisy
+  // Verify external review URLs are proper and not noisy (Prompt 2 requirement: 4 real outbound search links)
   const links = profile.externalLinks;
-  assert(links.googleMapsReviewsUrl.includes('google.com/maps') && links.googleMapsReviewsUrl.includes('reviews'),
+  assert(links.googleMapsReviewsUrl.includes('google.com/maps'),
     `Google Maps reviews link is properly formed: ${links.googleMapsReviewsUrl}`);
   assert(links.tripAdvisorUrl.includes('tripadvisor.in'),
     `TripAdvisor link points to tripadvisor.in: ${links.tripAdvisorUrl}`);
@@ -99,6 +88,10 @@ async function runTests() {
     `Booking.com link points to booking.com: ${links.bookingComUrl}`);
   assert(links.makeMyTripUrl.includes('makemytrip.com'),
     `MakeMyTrip link points to makemytrip.com: ${links.makeMyTripUrl}`);
+
+  // Assert no fake reviews array or fake subratings attached (Prompt 2 rule)
+  assert((profile as any).reviews === undefined, 'No fake reviews array generated');
+  assert((profile as any).subRatings === undefined, 'No fake subratings generated');
 
   // ============================================================
   // Test 3: Google Maps Zero-Key Embed Query Formats

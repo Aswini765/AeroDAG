@@ -47,9 +47,9 @@ export const UnifiedPlanMap: React.FC<UnifiedPlanMapProps> = ({
 
     if (itinerary && itinerary.length > 0) {
       const dayData = itinerary[Math.min(activeDayNumber - 1, itinerary.length - 1)] || itinerary[0];
-      const morningName = (dayData.morning.split(/[.:]/)[0] || 'Morning Highlights').slice(0, 30);
-      const afternoonName = (dayData.afternoon.split(/[.:]/)[0] || 'Afternoon Sights').slice(0, 30);
-      const eveningName = (dayData.evening.split(/[.:]/)[0] || 'Sunset & Dining').slice(0, 30);
+      const morningName = (dayData.morning.split(/[.:]/)[0] || 'Morning Highlights').trim();
+      const afternoonName = (dayData.afternoon.split(/[.:]/)[0] || 'Afternoon Sights').trim();
+      const eveningName = (dayData.evening.split(/[.:]/)[0] || 'Sunset & Dining').trim();
 
       return [
         { pinNumber: 1, title: morningName, timeSlot: '09:30 AM · Morning', coordinates: { x: 30, y: 35 } },

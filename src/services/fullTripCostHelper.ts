@@ -20,9 +20,10 @@ import {
   calculateLocalTransportEstimateINR,
   calculateActivitiesEstimateINR,
   calculateShoppingMiscEstimateINR,
-  calculateSurpriseBufferINR,
-  SURPRISE_BUFFER_PERCENT
+  calculateSurpriseBufferINR
 } from '../config/estimateRates';
+
+export const SURPRISE_BUFFER_PERCENT = 15;
 
 export interface CostLineItem {
   id: string;
@@ -60,7 +61,7 @@ export interface FullTripCostCalculation {
 
 export function computeCategoryWeightedBuffer(
   lines: CostLineItem[],
-  baseBufferPercent: number = 25
+  baseBufferPercent: number = 15
 ): {
   bufferAmountINR: number;
   categoryBuffers: CategoryBufferBreakdown;
@@ -282,26 +283,12 @@ export function computeFullTripCost(
 
   const subtotalINR = lines.reduce((acc, item) => acc + item.amountINR, 0);
 
-  // 7. Buffer for surprises (supports custom percent & category-weighted buffers)
-  let bufferPercent = SURPRISE_BUFFER_PERCENT;
-  let bufferAmountINR = 0;
-  let categoryBuffers: CategoryBufferBreakdown;
-
-  if (options?.useCategoryWeights) {
-    const basePct = options.customBufferPercent ?? 25;
-    const weighted = computeCategoryWeightedBuffer(lines, basePct);
-    bufferAmountINR = weighted.bufferAmountINR;
-    categoryBuffers = weighted.categoryBuffers;
-    bufferPercent = weighted.categoryBuffers.effectiveBufferPercent;
-  } else if (options?.customBufferPercent !== undefined) {
-    bufferPercent = options.customBufferPercent;
-    bufferAmountINR = Math.round(subtotalINR * (bufferPercent / 100));
-    categoryBuffers = computeCategoryWeightedBuffer(lines, bufferPercent).categoryBuffers;
-  } else {
-    bufferPercent = SURPRISE_BUFFER_PERCENT;
-    bufferAmountINR = calculateSurpriseBufferINR(subtotalINR);
-    categoryBuffers = computeCategoryWeightedBuffer(lines, bufferPercent).categoryBuffers;
-  }
+  // 7. Buffer for surprises (Default fixed at 15% per Prompt 1 rule; accepts custom override if explicitly provided)
+  const bufferPercent = options?.customBufferPercent !== undefined
+    ? options.customBufferPercent
+    : SURPRISE_BUFFER_PERCENT;
+  const bufferAmountINR = Math.round(subtotalINR * (bufferPercent / 100));
+  const categoryBuffers: CategoryBufferBreakdown = computeCategoryWeightedBuffer(lines, bufferPercent).categoryBuffers;
 
   // 8. Total with the buffer
   const totalWithBufferINR = subtotalINR + bufferAmountINR;

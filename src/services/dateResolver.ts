@@ -204,7 +204,9 @@ export function findStartDate(
   if (/\bday after tomorrow\b/.test(s)) return { date: addDays(startOfDay(today), 2), matchedText: 'day after tomorrow' };
   if (/\btomorrow\b/.test(s)) return { date: addDays(startOfDay(today), 1), matchedText: 'tomorrow' };
   if (/\btoday\b|\btonight\b/.test(s)) return { date: startOfDay(today), matchedText: 'today' };
-  let m = s.match(new RegExp(`${DAY_RE}\\s*(?:of\\s+)?${MONTH_RE}(?:,?\\s*(\\d{4}))?`));
+  // Match "from/on/starting 14 november" first to avoid capturing leading duration digits
+  let m = s.match(new RegExp(`(?:from|on|starting|leaving)\\s+(?:the\\s+)?${DAY_RE}\\s*(?:of\\s+)?${MONTH_RE}(?:,?\\s*(\\d{4}))?`))
+    || s.match(new RegExp(`${DAY_RE}\\s*(?:of\\s+)?${MONTH_RE}(?:,?\\s*(\\d{4}))?`));
   if (m) {
     const mi = monthIndex(m[2]);
     const d = makeDate(pickYear(mi, +m[1], today, m[3]), mi, +m[1]);

@@ -178,7 +178,7 @@ export const MoreOptionsModal: React.FC<MoreOptionsModalProps> = ({
                       <div className="text-sm font-bold text-[#15201D]">{d.name}</div>
                       <span className="text-xs font-semibold text-[#0E6B59]">₹{d.priceForTwoINR} for two</span>
                     </div>
-                    <div className="text-xs text-[#55625E]">{d.cuisine} · {d.area} · Rating: {d.rating}★</div>
+                    <div className="text-xs text-[#55625E]">{d.cuisine} · {d.area}</div>
                     <div className="text-[11px] text-[#55625E]/80">Must try: {d.recommendedDishes.join(', ')}</div>
                   </div>
                 ))

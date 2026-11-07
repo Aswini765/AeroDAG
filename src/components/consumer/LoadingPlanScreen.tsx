@@ -15,13 +15,21 @@ const PROGRESS_LINES = [
 
 export const LoadingPlanScreen: React.FC<LoadingPlanScreenProps> = ({ destination = 'Goa' }) => {
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
+  const [isSlow, setIsSlow] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentLineIndex((prev) => (prev < PROGRESS_LINES.length - 1 ? prev + 1 : prev));
     }, 450);
 
-    return () => clearInterval(timer);
+    const slowTimer = setTimeout(() => {
+      setIsSlow(true);
+    }, 4000);
+
+    return () => {
+      clearInterval(timer);
+      clearTimeout(slowTimer);
+    };
   }, []);
 
   return (
@@ -38,9 +46,15 @@ export const LoadingPlanScreen: React.FC<LoadingPlanScreenProps> = ({ destinatio
           <h2 className="text-xl font-bold text-[#15201D] font-heading">
             Building your {destination} plan
           </h2>
-          <p className="text-xs text-[#55625E]">
-            Scanning routes & real stay options · under 20s
-          </p>
+          {isSlow ? (
+            <p className="text-xs font-semibold text-[#8A4307] bg-[#FCEFD9] px-2.5 py-1 rounded-lg animate-fade-in">
+              Waking up the planner — about 30 seconds the first time
+            </p>
+          ) : (
+            <p className="text-xs text-[#55625E]">
+              Scanning routes & real stay options · under 20s
+            </p>
+          )}
         </div>
 
         {/* 4 Plain-Language Progress Lines */}

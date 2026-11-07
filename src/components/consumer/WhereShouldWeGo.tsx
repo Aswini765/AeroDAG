@@ -98,14 +98,13 @@ export const WhereShouldWeGo: React.FC<WhereShouldWeGoProps> = ({ onSelectSugges
 
   const handleCardClick = (dest: DestinationCardData) => {
     const roughPerPerson = Math.round(dest.baseCostPerDayINR * selectedDays * tierMultiplier / 1000) * 1000;
-    const totalBudget = roughPerPerson * 2;
     trackCardClick({
       destination: dest.name,
       days: selectedDays,
       pricePerPerson: roughPerPerson,
       vibe: dest.vibe
     });
-    const prompt = `${selectedDays} days in ${dest.name} for 2 adults under budget ₹${totalBudget.toLocaleString('en-IN')}. ${dest.shortLine}`;
+    const prompt = `${selectedDays} days in ${dest.name}`;
     onSelectSuggestion(prompt);
   };
 

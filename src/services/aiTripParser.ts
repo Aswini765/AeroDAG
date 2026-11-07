@@ -1,3 +1,4 @@
+import { isKnownRegion } from '../server/parseTripHandler';
 // src/services/aiTripParser.ts
 // Client-side bridge to POST /api/parse-trip (server-side Gemini).
 // The rule-based parser in App.tsx is always the fallback ("Basic mode").
@@ -141,8 +142,9 @@ export function applyAiParse(
   ctx.destination = data.destination;
   fieldSources.destination = 'stated';
 
-  if (data.destinationType) {
-    ctx.destinationType = data.destinationType;
+  if (data.destination) {
+    // Only states/regions on our known list get the route step; never trust the model's region guess alone.
+    ctx.destinationType = isKnownRegion(data.destination) ? 'region' : 'city';
     fieldSources.destinationType = toTag(src.destinationType);
   }
 

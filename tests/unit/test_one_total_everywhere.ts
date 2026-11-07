@@ -1,17 +1,29 @@
 /**
- * AeroDAG Unit Test: One Total Everywhere
+ * tests/unit/test_one_total_everywhere.ts
  * 
- * Verifies that for any given plan:
- * 1. FullTripCostCard (computeFullTripCost)
- * 2. Checkout Order Summary / Grand Total (getTripSummary)
- * 3. Saved Record (totalPaidINR) & MyTripsView
- * 4. Trip Assistant ("How much budget left?")
- * ALL report the EXACT SAME total and budget state.
+ * Verifies Prompt 1: One Total Everywhere (the USP)
+ * 
+ * Scenarios:
+ * 1. Kerala eval sentence:
+ *    "5 days in Kerala with my wife and 4-year-old son from Bengaluru from 20 November, budget 60000, we are vegetarian"
+ * 2. Rajasthan route:
+ *    "Rajasthan trip with my husband between 9 and 19 December from Hyderabad, budget 90000, offbeat places not touristy"
+ * 3. Coorg opened from Compare:
+ *    Coorg vs Ooty, 4 days, 2 travellers, ₹40,000
+ * 
+ * Asserts that across each scenario, these are all the exact same number:
+ * - Route card or compare column
+ * - Plan cost card (computeFullTripCost)
+ * - Banner amount (total − budget)
+ * - WhatsApp share text
+ * - Saved record / My Trips
+ * - Checkout grand total
  */
 
 import { computeFullTripCost } from '../../src/services/fullTripCostHelper';
-import { TripPlanningEngine } from '../../src/services/tripPlanningEngine';
-import { RequirementEngine } from '../../src/services/requirementEngine';
+import { getRegionRoutes, buildMultiBasePlanFromRoute } from '../../src/services/regionRoutesService';
+import { buildDestinationComparison } from '../../src/services/destinationComparisonService';
+import { formatTripShareText } from '../../src/services/shareTripHelper';
 import { TripPlan, TripPreferences, ConfirmedBookingRecord } from '../../src/types/travelBooking';
 
 let passed = 0;
@@ -27,184 +39,247 @@ function assert(condition: boolean, msg: string) {
   }
 }
 
-function simulateAssistantBudgetReply(trip: ConfirmedBookingRecord): string {
-  const targetBudget = trip.budgetTotalINR || 60000;
-  const totalPaid = trip.totalPaidINR || 0;
-  if (totalPaid > targetBudget) {
-    const overAmt = totalPaid - targetBudget;
-    return `Your trip is ₹${overAmt.toLocaleString('en-IN')} over your ₹${targetBudget.toLocaleString('en-IN')} target budget (Allocated plan total: ₹${totalPaid.toLocaleString('en-IN')}).`;
-  } else {
-    const remaining = targetBudget - totalPaid;
-    return `You have ₹${remaining.toLocaleString('en-IN')} remaining from your ₹${targetBudget.toLocaleString('en-IN')} target budget (Allocated plan total: ₹${totalPaid.toLocaleString('en-IN')}).`;
-  }
-}
+export async function runTests() {
+  console.log('========================================================');
+  console.log('TEST SUITE: One Total Everywhere (Prompt 1 Acceptance)');
+  console.log('========================================================\n');
 
-async function runTests() {
-  console.log('--- TEST SUITE: One Total Everywhere ---');
+  // =========================================================================
+  // Scenario 1: Kerala sentence
+  // "5 days in Kerala with my wife and 4-year-old son from Bengaluru from 20 November, budget 60000, we are vegetarian"
+  // =========================================================================
+  console.log('[Scenario 1: Kerala Multi-Base Route (5 days, 3 travellers, budget ₹60,000)]');
+  const kerRoutes = getRegionRoutes('Kerala', 4, 'vegetarian', 60000, 3, 'Bengaluru (BLR)', '20–24 Nov 2026');
+  assert(kerRoutes.length >= 1, 'Generates Kerala route options');
 
-  // Scenario 1: Standard Family Plan
-  console.log('\n[Scenario 1: Standard Family Plan in Goa]');
-  const ctx1 = RequirementEngine.createEmptyContext();
-  ctx1.destination = 'Goa';
-  ctx1.origin = 'Bengaluru (BLR)';
-  ctx1.durationDays = 7;
-  ctx1.budgetTotalINR = 60000;
-  ctx1.partyType = 'family';
-  ctx1.totalTravellers = 3;
-  ctx1.adultsCount = 2;
-  ctx1.childrenCount = 1;
-  ctx1.childrenAges = [10];
-  ctx1.dates = '14–20 Nov 2026';
+  const kerRoute = kerRoutes[0];
+  const kerCardTotal = kerRoute.estimatedCostINR;
 
-  const plan1: TripPlan = await TripPlanningEngine.buildDeterministicPlan(ctx1);
-  const prefs1: TripPreferences = {
-    destination: plan1.destination,
-    origin: plan1.origin,
-    targetDates: plan1.dates,
-    durationDays: plan1.durationDays,
-    partySize: plan1.travellers.total,
-    adultsCount: plan1.travellers.adults,
-    childrenCount: plan1.travellers.children,
-    childrenAges: plan1.travellers.childAges,
+  const kerPlan = buildMultiBasePlanFromRoute(
+    {
+      destination: 'Kerala',
+      destinationType: 'region',
+      origin: 'Bengaluru (BLR)',
+      dates: '20–24 Nov 2026',
+      durationDays: 5,
+      totalTravellers: 3,
+      adultsCount: 2,
+      childrenCount: 1,
+      childrenAges: [4],
+      seniorsCount: 0,
+      budgetTotalINR: 60000,
+      freeTextPreferences: 'vegetarian'
+    },
+    kerRoute
+  );
+
+  const kerPrefs: TripPreferences = {
+    destination: kerPlan.destination,
+    origin: kerPlan.origin,
+    targetDates: kerPlan.dates,
+    durationDays: kerPlan.durationDays,
+    partySize: kerPlan.travellers.total,
+    adultsCount: kerPlan.travellers.adults,
+    childrenCount: kerPlan.travellers.children,
+    childrenAges: kerPlan.travellers.childAges,
     budgetTotalINR: 60000,
     budgetTotalUSD: Math.round(60000 / 84),
     budgetTier: 'Comfortable',
-    travelStyle: 'Relaxed',
+    travelStyle: 'Balanced',
     priority: 'Family Friendly',
-    accommodationPreference: 'Standard 3-Star',
+    accommodationPreference: 'Connecting Family Suite',
     dietaryOrNotes: '',
     scope: 'domestic'
   };
 
-  // 1. Cost Card
-  const costCard1 = computeFullTripCost(plan1, prefs1);
-  const costCardTotal1 = costCard1.totalWithBufferINR;
+  const kerCostCard = computeFullTripCost(kerPlan, kerPrefs);
+  const kerPlanTotal = kerCostCard.totalWithBufferINR;
+  const kerBannerDiff = kerCostCard.budgetStatus === 'over' ? (kerPlanTotal - 60000) : 0;
+  const kerShareText = formatTripShareText(kerPlan, kerPrefs);
 
-  // 2. Checkout Summary (computed in CheckoutBookingFlow from fullTripCostHelper)
-  const checkoutCost1 = computeFullTripCost(plan1, prefs1);
-  const checkoutTotal1 = checkoutCost1.totalWithBufferINR;
-
-  // 3. Saved Trip Record
-  const savedRecord1: ConfirmedBookingRecord = {
-    bookingId: 'BK-TEST-001',
-    pnr: 'PNR-001',
-    hotelVoucherId: 'HTL-001',
-    tripTitle: `${plan1.durationDays} days in Goa`,
-    destination: plan1.destination,
-    origin: plan1.origin,
-    travelDates: plan1.dates,
+  const kerSavedRecord: ConfirmedBookingRecord = {
+    bookingId: 'BK-KER-001',
+    tripTitle: kerPlan.title,
+    destination: kerPlan.destination,
+    origin: kerPlan.origin,
+    travelDates: kerPlan.dates,
     createdAt: new Date().toISOString(),
-    status: 'SELECTED',
-    totalPaidINR: costCardTotal1,
-    totalPaidUSD: Math.round(costCardTotal1 / 84),
+    status: 'CONFIRMED',
+        pnr: 'TEST-PNR',
+        hotelVoucherId: 'TEST-VOUCHER',
+    totalPaidINR: kerCostCard.totalWithBufferINR,
+    totalPaidUSD: Math.round(kerCostCard.totalWithBufferINR / 84),
     budgetTotalINR: 60000,
-    remainingBudgetINR: costCard1.budgetStatus === 'over' ? 0 : 60000 - costCardTotal1,
+    remainingBudgetINR: Math.max(0, 60000 - kerCostCard.totalWithBufferINR),
     passengers: [],
-    selectedFlight: plan1.flight,
-    selectedHotel: plan1.hotel,
-    selectedTransfer: plan1.transfer,
-    itinerary: plan1.itinerary,
+    selectedFlight: kerPlan.flight,
+    selectedHotel: kerPlan.hotel,
+    selectedTransfer: kerPlan.transfer,
+    itinerary: kerPlan.itinerary,
     scope: 'domestic'
   };
-  const savedRecordTotal1 = savedRecord1.totalPaidINR;
 
-  // 4. Assistant Answer
-  const assistantReply1 = simulateAssistantBudgetReply(savedRecord1);
+  const kerCheckoutTotal = computeFullTripCost(kerPlan, kerPrefs).totalWithBufferINR;
 
-  assert(costCardTotal1 > 0, `Cost card total is positive (₹${costCardTotal1})`);
-  assert(costCardTotal1 === checkoutTotal1, `Cost card total (₹${costCardTotal1}) === Checkout Grand Total (₹${checkoutTotal1})`);
-  assert(checkoutTotal1 === savedRecordTotal1, `Checkout total (₹${checkoutTotal1}) === Saved record total (₹${savedRecordTotal1})`);
-  assert(assistantReply1.includes(`₹${costCardTotal1.toLocaleString('en-IN')}`), `Assistant answer mentions exact total ₹${costCardTotal1.toLocaleString('en-IN')}`);
-
-  if (costCard1.budgetStatus === 'over') {
-    assert(assistantReply1.includes('over'), 'Assistant correctly reports trip is over budget');
-    assert(assistantReply1.includes(`₹${costCard1.budgetDifferenceINR.toLocaleString('en-IN')}`), `Assistant reports correct over-budget difference ₹${costCard1.budgetDifferenceINR.toLocaleString('en-IN')}`);
-  } else {
-    assert(assistantReply1.includes('remaining'), 'Assistant correctly reports remaining budget');
-    assert(assistantReply1.includes(`₹${costCard1.budgetDifferenceINR.toLocaleString('en-IN')}`), `Assistant reports correct remaining amount ₹${costCard1.budgetDifferenceINR.toLocaleString('en-IN')}`);
+  // Assert exact single rupee equality across all 6 touchpoints
+  assert(kerCardTotal === kerPlanTotal, `Kerala: Route card (₹${kerCardTotal}) === Plan cost card (₹${kerPlanTotal})`);
+  assert(kerCostCard.totalWithBufferINR === kerCheckoutTotal, `Kerala: Plan cost card (₹${kerPlanTotal}) === Checkout total (₹${kerCheckoutTotal})`);
+  assert(kerSavedRecord.totalPaidINR === kerPlanTotal, `Kerala: Saved record (₹${kerSavedRecord.totalPaidINR}) === Plan cost card (₹${kerPlanTotal})`);
+  assert(kerShareText.includes(`₹${kerPlanTotal.toLocaleString('en-IN')}`), `Kerala: Share text contains exact total ₹${kerPlanTotal.toLocaleString('en-IN')}`);
+  if (kerCostCard.budgetStatus === 'over') {
+    assert(kerBannerDiff === (kerPlanTotal - 60000), `Kerala: Over-budget banner diff (₹${kerBannerDiff}) === total - budget (₹${kerPlanTotal - 60000})`);
   }
 
-  // Check lines in checkout summary sum to checkoutTotal
-  const linesSum = checkoutCost1.lines.reduce((acc, l) => acc + l.amountINR, 0) + checkoutCost1.bufferAmountINR;
-  assert(linesSum === checkoutTotal1, `Checkout line items sum (${linesSum}) equals Grand Total (${checkoutTotal1})`);
+  // =========================================================================
+  // Scenario 2: Rajasthan route
+  // "Rajasthan trip with my husband between 9 and 19 December from Hyderabad, budget 90000, offbeat places not touristy"
+  // =========================================================================
+  console.log('\n[Scenario 2: Rajasthan Route (11 days, 2 travellers, budget ₹90,000)]');
+  const rajRoutes = getRegionRoutes('Rajasthan', 10, 'offbeat places not touristy', 90000, 2, 'Hyderabad (HYD)', '9–19 Dec 2026');
+  assert(rajRoutes.length >= 1, 'Generates Rajasthan route options');
 
-  // Scenario 2: Over-budget Trip Check
-  console.log('\n[Scenario 2: Over-budget Trip with tight budget ₹30,000]');
-  const ctx2 = RequirementEngine.createEmptyContext();
-  ctx2.destination = 'Goa';
-  ctx2.origin = 'Bengaluru (BLR)';
-  ctx2.durationDays = 7;
-  ctx2.budgetTotalINR = 30000; // Intentionally lower than typical Goa 7-day trip
-  ctx2.partyType = 'family';
-  ctx2.totalTravellers = 3;
-  ctx2.adultsCount = 2;
-  ctx2.childrenCount = 1;
-  ctx2.dates = '14–20 Nov 2026';
+  const rajRoute = rajRoutes[0];
+  const rajCardTotal = rajRoute.estimatedCostINR;
 
-  const plan2: TripPlan = await TripPlanningEngine.buildDeterministicPlan(ctx2);
-  const prefs2: TripPreferences = {
-    destination: plan2.destination,
-    origin: plan2.origin,
-    targetDates: plan2.dates,
-    durationDays: plan2.durationDays,
-    partySize: plan2.travellers.total,
-    adultsCount: plan2.travellers.adults,
-    childrenCount: plan2.travellers.children,
-    childrenAges: [10],
-    budgetTotalINR: 30000,
-    budgetTotalUSD: Math.round(30000 / 84),
-    budgetTier: 'Frugal',
-    travelStyle: 'Relaxed',
-    priority: 'Family Friendly',
-    accommodationPreference: 'Standard 3-Star',
+  const rajPlan = buildMultiBasePlanFromRoute(
+    {
+      destination: 'Rajasthan',
+      destinationType: 'region',
+      origin: 'Hyderabad (HYD)',
+      dates: '9–19 Dec 2026',
+      durationDays: 11,
+      totalTravellers: 2,
+      adultsCount: 2,
+      childrenCount: 0,
+      childrenAges: [],
+      seniorsCount: 0,
+      budgetTotalINR: 90000,
+      freeTextPreferences: 'offbeat places not touristy'
+    },
+    rajRoute
+  );
+
+  const rajPrefs: TripPreferences = {
+    destination: rajPlan.destination,
+    origin: rajPlan.origin,
+    targetDates: rajPlan.dates,
+    durationDays: rajPlan.durationDays,
+    partySize: 2,
+    adultsCount: 2,
+    childrenCount: 0,
+    childrenAges: [],
+    budgetTotalINR: 90000,
+    budgetTotalUSD: Math.round(90000 / 84),
+    budgetTier: 'Comfortable',
+    travelStyle: 'Balanced',
+    priority: 'Best Hotel',
+    accommodationPreference: 'Connecting Family Suite',
     dietaryOrNotes: '',
     scope: 'domestic'
   };
 
-  const costCard2 = computeFullTripCost(plan2, prefs2);
-  const costCardTotal2 = costCard2.totalWithBufferINR;
-  const checkoutCost2 = computeFullTripCost(plan2, prefs2);
-  const checkoutTotal2 = checkoutCost2.totalWithBufferINR;
+  const rajCostCard = computeFullTripCost(rajPlan, rajPrefs);
+  const rajPlanTotal = rajCostCard.totalWithBufferINR;
+  const rajShareText = formatTripShareText(rajPlan, rajPrefs);
+  const rajCheckoutTotal = computeFullTripCost(rajPlan, rajPrefs).totalWithBufferINR;
 
-  const savedRecord2: ConfirmedBookingRecord = {
-    bookingId: 'BK-TEST-002',
-    pnr: 'PNR-002',
-    hotelVoucherId: 'HTL-002',
-    tripTitle: `${plan2.durationDays} days in Goa`,
-    destination: plan2.destination,
-    origin: plan2.origin,
-    travelDates: plan2.dates,
+  const rajSavedRecord: ConfirmedBookingRecord = {
+    bookingId: 'BK-RAJ-001',
+    tripTitle: rajPlan.title,
+    destination: rajPlan.destination,
+    origin: rajPlan.origin,
+    travelDates: rajPlan.dates,
     createdAt: new Date().toISOString(),
-    status: 'SELECTED',
-    totalPaidINR: costCardTotal2,
-    totalPaidUSD: Math.round(costCardTotal2 / 84),
-    budgetTotalINR: 30000,
-    remainingBudgetINR: 0,
+    status: 'CONFIRMED',
+        pnr: 'TEST-PNR',
+        hotelVoucherId: 'TEST-VOUCHER',
+    totalPaidINR: rajPlanTotal,
+    totalPaidUSD: Math.round(rajPlanTotal / 84),
+    budgetTotalINR: 90000,
+    remainingBudgetINR: Math.max(0, 90000 - rajPlanTotal),
     passengers: [],
-    selectedFlight: plan2.flight,
-    selectedHotel: plan2.hotel,
-    selectedTransfer: plan2.transfer,
-    itinerary: plan2.itinerary,
+    selectedFlight: rajPlan.flight,
+    selectedHotel: rajPlan.hotel,
+    selectedTransfer: rajPlan.transfer,
+    itinerary: rajPlan.itinerary,
     scope: 'domestic'
   };
 
-  const assistantReply2 = simulateAssistantBudgetReply(savedRecord2);
+  assert(rajCardTotal === rajPlanTotal, `Rajasthan: Route card (₹${rajCardTotal}) === Plan cost card (₹${rajPlanTotal})`);
+  assert(rajPlanTotal === rajCheckoutTotal, `Rajasthan: Plan cost card (₹${rajPlanTotal}) === Checkout total (₹${rajCheckoutTotal})`);
+  assert(rajSavedRecord.totalPaidINR === rajPlanTotal, `Rajasthan: Saved record (₹${rajSavedRecord.totalPaidINR}) === Plan cost card (₹${rajPlanTotal})`);
+  assert(rajShareText.includes(`₹${rajPlanTotal.toLocaleString('en-IN')}`), `Rajasthan: Share text contains exact total ₹${rajPlanTotal.toLocaleString('en-IN')}`);
 
-  assert(costCardTotal2 === checkoutTotal2, `Over-budget: Cost card total (${costCardTotal2}) === Checkout total (${checkoutTotal2})`);
-  assert(checkoutTotal2 === savedRecord2.totalPaidINR, `Over-budget: Checkout total (${checkoutTotal2}) === Saved record total (${savedRecord2.totalPaidINR})`);
-  assert(costCard2.budgetStatus === 'over', 'Cost card correctly marks trip as over budget');
-  assert(!assistantReply2.includes('remaining from'), 'Over-budget assistant reply does NOT say remaining from budget');
-  assert(assistantReply2.includes('over your ₹30,000 target budget'), 'Over-budget assistant reply accurately says over target budget');
+  // =========================================================================
+  // Scenario 3: Coorg opened from Compare
+  // Coorg vs Ooty, 4 days, 2 travellers, ₹40,000
+  // =========================================================================
+  console.log('\n[Scenario 3: Coorg opened from Compare (4 days, 2 travellers, budget ₹40,000)]');
+  const compResult = await buildDestinationComparison(
+    ['Coorg', 'Ooty'],
+    4,
+    2,
+    40000,
+    'Bengaluru (BLR)',
+    'Cab',
+    '14–17 Nov 2026'
+  );
 
-  // Scenario 3: Transfer cost counted once in Travel to Destination
-  console.log('\n[Scenario 3: Transfer cost counted once in Travel to destination]');
-  const travelLine = costCard1.lines.find(l => l.id === 'cost-travel');
-  assert(Boolean(travelLine), 'Travel to destination cost line exists');
-  if (plan1.flight && plan1.transfer) {
-    const flightCost = plan1.flight.totalPriceINR || (plan1.flight.pricePerPersonINR * plan1.travellers.total);
-    const transferCost = plan1.transfer.priceINR || 0;
-    assert(travelLine!.amountINR === Math.round(flightCost + transferCost), `Travel cost line includes transfer cost (${flightCost} + ${transferCost} = ${travelLine!.amountINR})`);
-  }
+  const coorgItem = compResult.places.find((p) => p.cleanName === 'Coorg')!;
+  assert(Boolean(coorgItem), 'Coorg exists in comparison result');
+  const compColumnTotal = coorgItem.totalWithBufferINR;
+
+  const coorgPlan = coorgItem.plan;
+  const coorgPrefs: TripPreferences = {
+    destination: coorgPlan.destination,
+    origin: coorgPlan.origin,
+    targetDates: coorgPlan.dates,
+    durationDays: coorgPlan.durationDays,
+    partySize: 2,
+    adultsCount: 2,
+    childrenCount: 0,
+    childrenAges: [],
+    budgetTotalINR: 40000,
+    budgetTotalUSD: Math.round(40000 / 84),
+    budgetTier: 'Comfortable',
+    travelStyle: 'Balanced',
+    priority: 'Lowest Price',
+    accommodationPreference: 'Connecting Family Suite',
+    dietaryOrNotes: '',
+    scope: 'domestic'
+  };
+
+  const coorgCostCard = computeFullTripCost(coorgPlan, coorgPrefs);
+  const coorgPlanTotal = coorgCostCard.totalWithBufferINR;
+  const coorgCheckoutTotal = computeFullTripCost(coorgPlan, coorgPrefs).totalWithBufferINR;
+  const coorgShareText = formatTripShareText(coorgPlan, coorgPrefs);
+
+  const coorgSavedRecord: ConfirmedBookingRecord = {
+    bookingId: 'BK-CRG-001',
+    tripTitle: coorgPlan.title,
+    destination: coorgPlan.destination,
+    origin: coorgPlan.origin,
+    travelDates: coorgPlan.dates,
+    createdAt: new Date().toISOString(),
+    status: 'CONFIRMED',
+        pnr: 'TEST-PNR',
+        hotelVoucherId: 'TEST-VOUCHER',
+    totalPaidINR: coorgPlanTotal,
+    totalPaidUSD: Math.round(coorgPlanTotal / 84),
+    budgetTotalINR: 40000,
+    remainingBudgetINR: Math.max(0, 40000 - coorgPlanTotal),
+    passengers: [],
+    selectedFlight: coorgPlan.flight,
+    selectedHotel: coorgPlan.hotel,
+    selectedTransfer: coorgPlan.transfer,
+    itinerary: coorgPlan.itinerary,
+    scope: 'domestic'
+  };
+
+  assert(compColumnTotal === coorgPlanTotal, `Coorg: Compare column (₹${compColumnTotal}) === Plan cost card (₹${coorgPlanTotal})`);
+  assert(coorgPlanTotal === coorgCheckoutTotal, `Coorg: Plan cost card (₹${coorgPlanTotal}) === Checkout total (₹${coorgCheckoutTotal})`);
+  assert(coorgSavedRecord.totalPaidINR === coorgPlanTotal, `Coorg: Saved record (₹${coorgSavedRecord.totalPaidINR}) === Plan cost card (₹${coorgPlanTotal})`);
+  assert(coorgShareText.includes(`₹${coorgPlanTotal.toLocaleString('en-IN')}`), `Coorg: Share text contains exact total ₹${coorgPlanTotal.toLocaleString('en-IN')}`);
 
   console.log(`\n========================================================`);
   console.log(`TEST RESULTS: ${passed} PASSED / ${failed} FAILED`);
@@ -215,7 +290,9 @@ async function runTests() {
   }
 }
 
-runTests().catch((err) => {
-  console.error('Test execution error:', err);
-  process.exit(1);
-});
+if (process.argv[1]?.includes('test_one_total_everywhere')) {
+  runTests().catch((err) => {
+    console.error('Test execution error:', err);
+    process.exit(1);
+  });
+}

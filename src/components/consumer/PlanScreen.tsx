@@ -400,24 +400,28 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                       Trip is slightly over budget by ₹{overAmountINR.toLocaleString('en-IN')} ({percentOver.toFixed(1)}%)
                     </h3>
                     <p className="text-[11px] text-[#55625E]">
-                      Pick the Budget tier option to stay within your ₹{targetBudget.toLocaleString('en-IN')} target.
+                      {generatePlanOptions(plan, preferences).some((o) => o.id === 'budget')
+                        ? `Pick the Budget tier option to stay within your ₹${targetBudget.toLocaleString('en-IN')} target.`
+                        : `Adjust trip duration or transit to stay within your ₹${targetBudget.toLocaleString('en-IN')} target.`}
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const options = generatePlanOptions(plan, preferences);
-                    const budgetOpt = options.find((o) => o.id === 'budget');
-                    if (budgetOpt) {
-                      onPlanChange(budgetOpt.plan);
-                    }
-                  }}
-                  className="btn-primary text-xs py-2 px-3.5 shrink-0 min-h-[44px] flex items-center gap-1.5 shadow-xs"
-                >
-                  <span>Choose Budget option</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </button>
+                {generatePlanOptions(plan, preferences).some((o) => o.id === 'budget') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const options = generatePlanOptions(plan, preferences);
+                      const budgetOpt = options.find((o) => o.id === 'budget');
+                      if (budgetOpt) {
+                        onPlanChange(budgetOpt.plan);
+                      }
+                    }}
+                    className="btn-primary text-xs py-2 px-3.5 shrink-0 min-h-[44px] flex items-center gap-1.5 shadow-xs"
+                  >
+                    <span>Choose Budget option</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -435,16 +439,27 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
             </div>
           )}
 
-          {/* MOBILE: Sticky Map on Top (~38vh height, about 40%) */}
-          <div className="block lg:hidden sticky top-2 z-30 mb-3 shadow-md">
-            <UnifiedPlanMap
-              destination={plan.destination}
-              stayArea={currentStayArea}
-              activePin={activePin}
-              onSelectPin={(pin) => setActivePin(pin)}
-              itinerary={plan.itinerary}
-              className="h-[36vh] min-h-[210px] max-h-[280px]"
-            />
+          {/* MOBILE: Collapsible Map (collapsed by default at 375px per Prompt 6) */}
+          <div className="block lg:hidden mb-3">
+            <details className="card-consumer p-0 overflow-hidden border border-[#E2E6E1] bg-white rounded-2xl shadow-xs group">
+              <summary className="p-3.5 flex items-center justify-between text-xs font-bold text-[#15201D] cursor-pointer hover:bg-[#F9FAF9] select-none">
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-[#0E6B59]" />
+                  <span>Map & Route Visualizer</span>
+                </div>
+                <span className="text-[11px] font-semibold text-[#0E6B59]">Tap to view map</span>
+              </summary>
+              <div className="p-2 border-t border-[#E2E6E1]">
+                <UnifiedPlanMap
+                  destination={plan.destination}
+                  stayArea={currentStayArea}
+                  activePin={activePin}
+                  onSelectPin={(pin) => setActivePin(pin)}
+                  itinerary={plan.itinerary}
+                  className="h-[36vh] min-h-[210px] max-h-[280px]"
+                />
+              </div>
+            </details>
           </div>
 
           {/* TWO PANES ON DESKTOP (Left = Chat & Plan Cards; Right = Sticky Map) */}
@@ -468,7 +483,6 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                 <FullTripCostCard
                   plan={plan}
                   preferences={preferences}
-                  onApplyEstimate={onPlanChange}
                 />
               </div>
 
@@ -736,7 +750,6 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
               <FullTripCostCard
                 plan={plan}
                 preferences={preferences}
-                onApplyEstimate={onPlanChange}
               />
             </div>
           </div>

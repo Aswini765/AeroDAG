@@ -86,7 +86,7 @@ export class MockHotelProvider implements HotelProvider {
       baseHotels = [
         {
           id: 'ht-dyn-1',
-          name: `4★ Verified Boutique Stay · ${params.destination}`,
+          name: `4★ Boutique Stay (sample) · ${params.destination}`,
           area: 'Central Promenade',
           city: params.destination,
           starRating: 4,

@@ -483,7 +483,6 @@ export default function App() {
       ctx.destination = 'Bengaluru';
     } else if (ai.kind === 'ok' && ai.data.destination) {
       ctx.destination = ai.data.destination.replace(/,\s*India$/i, '').trim();
-      if (ai.data.destinationType) ctx.destinationType = ai.data.destinationType;
     } else {
       const placeTripMatch = promptText.match(/(?:^|\b)([A-Z][a-zA-Z\s]+?)\s+trip\b/i);
       const destMatch = promptText.match(/(?:trip\s+to|going\s+to|holiday\s+in|vacation\s+in|visit(?:ing)?|travel\s+to|explore|in|to)\s+([A-Za-z\s]+?)(?:\s+(?:with|for|under|from|starting|on|in|budget|\d|$))/i);
@@ -513,9 +512,8 @@ export default function App() {
     }
     fieldSources.destination = 'stated';
 
-    if (!ctx.destinationType) {
-      ctx.destinationType = isKnownRegion(ctx.destination) ? 'region' : 'city';
-    }
+    // Our known-region list is the only thing that makes a trip multi-base.
+    ctx.destinationType = isKnownRegion(ctx.destination) ? 'region' : 'city';
 
     // Check profile if destination is outside the 4 detailed destinations
     let profileData: DestinationProfile | null = null;
@@ -759,12 +757,30 @@ export default function App() {
       fieldSources.duration = 'assumed';
       const now = new Date();
       const dow = now.getDay(); // 0 Sun, 1 Mon ... 6 Sat
-      const toSat = (6 - dow + 7) % 7;
+      // On a Saturday or Sunday, "weekend" means next weekend, not today.
+      const toSat = dow === 6 ? 7 : (6 - dow + 7) % 7;
       const sat = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toSat);
       const sun = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toSat + 1);
       ctx.dates = formatDateRange(sat, sun);
       fieldSources.dates = 'assumed';
     }
+    // No dates given: assume the next sensible window that matches the trip length
+    // (a Friday at least a week away), shown as ASSUMED so the user can change it.
+    if (!ctx.dates) {
+      const days = Math.max(1, ctx.durationDays || 4);
+      const now = new Date();
+      const toFri = (5 - now.getDay() + 7) % 7;
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toFri + (toFri < 7 ? 7 : 0));
+      const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + days - 1);
+      ctx.dates = formatDateRange(start, end);
+      fieldSources.dates = 'assumed';
+    }
+
+    // Trips <= 3 days never get multi-base routes
+    if (ctx.durationDays && ctx.durationDays <= 3) {
+      ctx.destinationType = 'city';
+    }
+
     // Free-text preferences like "offbeat, not touristy", "vegetarian" (Prompt 3 rule: store as preferences, not pace)
     const freeTextPrefs: string[] = [];
     if (/offbeat/i.test(promptText) || /not\s+touristy/i.test(promptText) || /less\s+crowded/i.test(promptText)) {
@@ -803,6 +819,10 @@ export default function App() {
 
     // Prompt 3: A state or region is not a destination: ask, don't pick a city
     if (ctx.destinationType === 'region') {
+      if (!hasStatedAll && (fieldSources.budget !== 'stated' || fieldSources.travellers !== 'stated')) {
+        setCurrentStep('clarify');
+        return null;
+      }
       setCurrentStep('region_route');
       return null;
     }
@@ -1098,8 +1118,41 @@ export default function App() {
   };
 
   // Handle plan finalized from Clarify Screen
-  const handlePlanReadyFromClarify = (plan: TripPlan, prefs: TripPreferences) => {
+  const handlePlanReadyFromClarify = (plan: TripPlan, prefs: TripPreferences, builtContext?: TripContext) => {
     setActiveDraftBookingId(null);
+    if (tripContext.destinationType === 'region') {
+      setTripContext((prev) => ({
+        ...prev,
+        budgetTotalINR: prefs.budgetTotalINR,
+        totalTravellers: prefs.partySize,
+        adultsCount: prefs.adultsCount,
+        childrenCount: prefs.childrenCount,
+        childrenAges: prefs.childrenAges || [],
+        dates: prefs.targetDates,
+        durationDays: prefs.durationDays,
+        fieldSources: {
+          ...prev.fieldSources,
+          budget: 'stated',
+          travellers: 'stated',
+          dates: 'stated',
+          duration: 'stated'
+        }
+      }));
+      setCurrentStep('region_route');
+      return;
+    }
+    // Keep "What we understood" in step with what the plan actually used
+    if (builtContext) {
+      setTripContext({
+        ...builtContext,
+        dates: plan.dates,
+        durationDays: plan.durationDays,
+        totalTravellers: plan.travellers.total,
+        adultsCount: plan.travellers.adults,
+        childrenCount: plan.travellers.children,
+        budgetTotalINR: plan.budget.targetINR
+      });
+    }
     setActiveTripPlan(plan);
     setTripPreferences(prefs);
     setCurrentStep('plan');
@@ -1192,6 +1245,31 @@ export default function App() {
             comparison={comparisonResult}
             onSelectPlacePlan={(plan) => {
               setActiveTripPlan(plan);
+              // Prompt 4: Pass destination, durationDays, dates, budget and travellers as STATED
+              const updatedCtx: TripContext = {
+                ...tripContext,
+                destination: plan.destination,
+                destinationType: 'city',
+                durationDays: plan.durationDays,
+                dates: plan.dates,
+                budgetTotalINR: plan.budget?.targetINR || 40000,
+                totalTravellers: plan.travellers?.total || 2,
+                adultsCount: plan.travellers?.adults || 2,
+                childrenCount: plan.travellers?.children || 0,
+                childrenAges: plan.travellers?.childAges || [],
+                seniorsCount: plan.travellers?.seniors || 0,
+                origin: plan.origin || 'Bengaluru (BLR)',
+                fieldSources: {
+                  destination: 'stated',
+                  duration: 'stated',
+                  dates: 'stated',
+                  budget: 'stated',
+                  travellers: 'stated',
+                  origin: 'assumed'
+                }
+              };
+              setTripContext(updatedCtx);
+
               const prefs: TripPreferences = {
                 destination: plan.destination,
                 origin: plan.origin,

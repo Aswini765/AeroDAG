@@ -430,14 +430,14 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
           <div className="flex-1">
             <textarea
               id="trip-description-input"
-              rows={1}
+              rows={2}
               value={inputText}
               onChange={(e) => {
                 setInputText(e.target.value);
                 if (errorMessage) setErrorMessage(null);
               }}
               placeholder="e.g. 4 days in Coorg for 2 adults under ₹25,000, or: Coorg or Ooty by train"
-              className="w-full bg-transparent border-0 resize-none text-[#15201D] placeholder-[#55625E]/60 text-xs sm:text-sm focus:ring-0 focus:outline-none p-1 font-sans leading-normal"
+              className="w-full bg-transparent border-0 resize-none text-[#15201D] placeholder-[#55625E]/60 text-xs sm:text-sm focus:ring-0 focus:outline-none p-1 font-sans leading-relaxed min-h-[56px] sm:min-h-[44px]"
             />
           </div>
 
@@ -533,7 +533,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
                 key={dest.name}
                 onClick={() => {
                   trackCardClick({ destination: dest.name, days: selectedDays, pricePerPerson: roughPerPerson, vibe: dest.vibe });
-                  void handleSubmit(undefined, `${selectedDays} days in ${dest.name} for 2 adults under budget ₹${(roughPerPerson * 2).toLocaleString('en-IN')}. ${dest.shortLine}`);
+                  void handleSubmit(undefined, `${selectedDays} days in ${dest.name}`);
                 }}
                 className={`w-[155px] sm:w-[195px] shrink-0 snap-center rounded-xl border bg-white transition-all cursor-pointer flex flex-col justify-between overflow-hidden group ${
                   isChecked ? 'border-[#0E6B59] ring-2 ring-[#0E6B59]/20 shadow-md' : 'border-[#E2E6E1] hover:border-[#0E6B59] hover:shadow-md'
@@ -566,6 +566,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
                     <input
                       type="checkbox"
                       checked={isChecked}
+                      aria-label={`Compare ${dest.name}`}
                       onChange={() => toggleCompare(dest.name)}
                       className="rounded text-[#0E6B59] focus:ring-0 h-3 w-3 cursor-pointer"
                     />
@@ -593,7 +594,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
                     onClick={(e) => {
                       e.stopPropagation();
                       trackCardClick({ destination: dest.name, days: selectedDays, pricePerPerson: roughPerPerson, vibe: dest.vibe });
-                      void handleSubmit(undefined, `${selectedDays} days in ${dest.name} for 2 adults under budget ₹${(roughPerPerson * 2).toLocaleString('en-IN')}. ${dest.shortLine}`);
+                      void handleSubmit(undefined, `${selectedDays} days in ${dest.name}`);
                     }}
                     className="w-full min-h-[44px] px-2.5 py-1.5 rounded-lg bg-[#0E6B59] text-white text-xs font-bold hover:bg-[#0A5546] transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
                   >
