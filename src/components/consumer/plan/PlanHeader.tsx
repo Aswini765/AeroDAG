@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Bookmark, ArrowRight, ExternalLink, Share2, Check, MessageCircle } from 'lucide-react';
 import { TripPlan, TripPreferences } from '../../../types/travelBooking';
 import { shareTripPlan, getWhatsAppShareUrl } from '../../../services/shareTripHelper';
+import { trackShareClicked, trackBookOnClicked } from '../../../services/telemetry/posthog';
 
 interface PlanHeaderProps {
   plan: TripPlan;
@@ -34,9 +35,18 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
 
   // B5: Share state
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
+  const [isProceedingReview, setIsProceedingReview] = useState(false);
+
+  const handleProceedReview = () => {
+    if (isProceedingReview) return;
+    setIsProceedingReview(true);
+    onProceedToReview();
+    setTimeout(() => setIsProceedingReview(false), 1500);
+  };
 
   const handleShareClick = async () => {
     const res = await shareTripPlan(plan, preferences);
+    trackShareClicked({ destination: plan.destination, method: res.method });
     if (res.method === 'clipboard') {
       setShareStatus('copied');
       setTimeout(() => setShareStatus('idle'), 2500);
@@ -133,6 +143,7 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
             href={whatsappUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => trackShareClicked({ destination: plan.destination, method: 'whatsapp' })}
             className="btn-secondary w-full sm:w-auto min-h-[44px] flex items-center justify-center gap-1.5 text-xs font-bold text-[#128C7E] border-[#128C7E]/30 hover:border-[#128C7E]"
             title="Share directly via WhatsApp"
           >
@@ -161,6 +172,11 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
             target="_blank"
             rel="noopener noreferrer"
             id="book-on-trusted-site-btn"
+            onClick={() => trackBookOnClicked({
+              provider: isTrainTrip ? 'IRCTC' : 'MakeMyTrip',
+              itemType: isTrainTrip ? 'train' : 'flight',
+              url: primaryBookingUrl
+            })}
             className="btn-primary w-full sm:w-auto min-h-[44px] flex items-center justify-center gap-2 text-xs sm:text-sm font-bold shadow-sm"
           >
             <span>{primaryBookingLabel}</span>
@@ -170,12 +186,13 @@ export const PlanHeader: React.FC<PlanHeaderProps> = ({
           {/* B7: Secondary Demo Booking */}
           <button
             type="button"
-            onClick={onProceedToReview}
+            onClick={handleProceedReview}
+            disabled={isProceedingReview}
             id="review-and-book-btn"
-            className="btn-secondary w-full sm:w-auto min-h-[44px] text-xs font-semibold text-[#55625E] hover:text-[#15201D]"
+            className="btn-secondary w-full sm:w-auto min-h-[44px] text-xs font-semibold text-[#55625E] hover:text-[#15201D] disabled:opacity-50"
             aria-label="Try demo booking"
           >
-            <span>Try demo booking</span>
+            <span>{isProceedingReview ? 'Opening checkout…' : 'Try demo booking'}</span>
           </button>
         </div>
       </div>

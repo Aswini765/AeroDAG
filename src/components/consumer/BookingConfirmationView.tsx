@@ -51,7 +51,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
           <span>Sample prices · Demo booking — no real payment</span>
         </div>
         <span className="text-[#4A5753] hidden sm:inline">
-          Live inventory disabled
+          Simulation mode active
         </span>
       </div>
 
@@ -78,7 +78,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
           </h1>
 
           <p className="text-xs sm:text-sm text-[#55625E] max-w-lg mx-auto mt-2 leading-relaxed">
-            This was a demo booking — no tickets were issued and nothing was charged. In a live version, confirmations would come directly from the airline and hotel.
+            This was a demo booking — no tickets were issued and nothing was charged. In a production version, confirmations would come directly from the airline and hotel.
           </p>
         </div>
 

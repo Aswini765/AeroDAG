@@ -26,6 +26,16 @@ export type UserFacingTag = 'stated' | 'assumed' | 'needed';
 
 export interface TripContext {
   destination: string | null;
+  destinationType?: 'city' | 'region' | null;
+  freeTextPreferences?: string | null;
+  chosenRegionRoute?: {
+    id: string;
+    title: string;
+    tagline?: string;
+    bases: Array<{ name: string; nights: number; area?: string }>;
+    travelHours: number;
+    estimatedCostINR: number;
+  } | null;
   origin: string | null;
   dates: string | null;
   durationDays: number | null;
@@ -103,6 +113,9 @@ export class RequirementEngine {
   static createEmptyContext(): TripContext {
     return {
       destination: null,
+      destinationType: null,
+      freeTextPreferences: null,
+      chosenRegionRoute: null,
       origin: null,
       dates: null,
       durationDays: null,
@@ -170,6 +183,12 @@ export class RequirementEngine {
       } else if (lower.includes('kerala') || lower.includes('munnar') || lower.includes('alleppey')) {
         context.destination = 'Kerala, India';
         newlyExtracted.push('Destination: Kerala');
+      } else if (lower.includes('coorg') || lower.includes('madikeri') || lower.includes('kodagu')) {
+        context.destination = 'Coorg, India';
+        newlyExtracted.push('Destination: Coorg');
+      } else if (lower.includes('mysuru') || lower.includes('mysore')) {
+        context.destination = 'Mysuru, India';
+        newlyExtracted.push('Destination: Mysuru');
       } else if (lower.includes('rajasthan') || lower.includes('jaipur') || lower.includes('udaipur')) {
         context.destination = 'Rajasthan (Jaipur & Udaipur)';
         newlyExtracted.push('Destination: Rajasthan');

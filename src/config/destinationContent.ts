@@ -158,7 +158,7 @@ export const DESTINATION_CONTENT: Record<string, DestinationContent> = {
         {
           mode: 'Flight',
           title: 'Flight to Kochi (COK) + Scenic Mountain Cab',
-          duration: 'approx. 1h 15m flight + approx. 3.5h drive',
+          duration: 'Direct flight + approx. 3.5h drive',
           costPerPersonINR: 4200,
           timeSavedText: 'Saves approx. 6 hours vs direct road',
           scenicHighlight: 'Cheeyappara and Valara waterfall viewpoints along the Munnar hill highway.',

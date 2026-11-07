@@ -29,6 +29,12 @@ import {
   PlanUpgradeOption,
   BalancingOption
 } from '../types/travelBooking';
+import {
+  evaluateMonthWorthiness,
+  isOffbeatRequested,
+  evaluateStayAreaChoice,
+  getHowToGetThereModes
+} from './seasonAndFitHelper';
 import { TripContext } from './requirementEngine';
 import { getTravelProviders } from './providers';
 import { inferTripScope, formatINR, generateVerificationChecks } from './travelCatalog';
@@ -336,7 +342,24 @@ export class TripPlanningEngine {
 
     const evaluatedCandidates: CandidateEvaluation[] = [];
 
-    for (const h of hotels) {
+    const stayAreaEval = evaluateStayAreaChoice(
+      destination,
+      { adults, children, seniors, childAges },
+      `${context.notes?.join(' ')} ${context.freeTextPreferences || ''}`
+    );
+
+    // Prompt 9: Stay-area choice uses group type (kids/seniors -> quieter South Goa, etc.)
+    const sortedHotels = [...hotels].sort((a, b) => {
+      if (destination.toLowerCase().includes('goa') && (children > 0 || seniors > 0)) {
+        const aIsSouth = a.area.toLowerCase().includes('south') || a.subZoneType === 'peaceful_family';
+        const bIsSouth = b.area.toLowerCase().includes('south') || b.subZoneType === 'peaceful_family';
+        if (aIsSouth && !bIsSouth) return -1;
+        if (!aIsSouth && bIsSouth) return 1;
+      }
+      return 0;
+    });
+
+    for (const h of sortedHotels) {
       if (h.maxCapacity < totalTravellers) continue;
 
       // B3: Needs matching tags
@@ -731,7 +754,11 @@ export class TripPlanningEngine {
       seasonalRecommendation: buildSeasonalRecommendation(destination, context.partyType),
       routeComparison: buildRouteDiscoveryComparison(origin, destination, targetBudgetINR, totalTravellers),
       budgetBuffer: buildRealisticBudgetBuffer(destination, targetBudgetINR, durationDays, totalTravellers),
-      trustVerification: buildTrustVerificationDetails(destination, selectedHotel, selectedTransfer)
+      trustVerification: buildTrustVerificationDetails(destination, selectedHotel, selectedTransfer),
+      monthWorthiness: evaluateMonthWorthiness(destination, dates, `${context.notes?.join(' ')} ${context.freeTextPreferences || ''}`, false),
+      isOffbeatLeaning: isOffbeatRequested(context.freeTextPreferences || '', context.notes),
+      stayAreaReason: stayAreaEval.reason,
+      transitModeComparison: getHowToGetThereModes(destination, origin, totalTravellers, context.transportMode || 'Flight')
     };
 
     return this.validateAndRepairTripPlan(initialPlan);

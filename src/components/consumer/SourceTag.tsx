@@ -14,7 +14,7 @@ const KIND_CONFIG: Record<
   { label: string; textColor: string; bgColor: string; borderColor: string }
 > = {
   live: {
-    label: 'Live',
+    label: 'Sample',
     textColor: '#0A5546',
     bgColor: '#E3F1EC',
     borderColor: 'rgba(10, 85, 70, 0.2)'
@@ -74,13 +74,13 @@ export const SourceTag: React.FC<SourceTagProps> = ({
 
   let tooltip: string | undefined = undefined;
   if (kind === 'live') {
-    tooltip = retrievedAt ? `Fetched ${retrievedAt}` : 'Fetched live from provider';
+    tooltip = retrievedAt ? `Fetched ${retrievedAt}` : 'Fetched from provider';
   } else if (kind === 'estimate' || kind === 'assumed') {
     tooltip = 'Estimated based on planning parameters';
   } else if (kind === 'reserved') {
     tooltip = 'Reserved contingency buffer';
   } else if (kind === 'sample') {
-    tooltip = 'Catalog sample pricing (not live provider quote)';
+    tooltip = 'Catalog sample pricing (not real-time provider quote)';
   }
 
   return (

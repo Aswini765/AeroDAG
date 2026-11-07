@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { TripPlan, TripPreferences } from '../../../types/travelBooking';
 import { computeFullTripCost } from '../../../services/fullTripCostHelper';
-import { Sparkles, Info, AlertTriangle, CheckCircle2, Share2, MessageCircle, Check } from 'lucide-react';
+import { Sparkles, Info, AlertTriangle, CheckCircle2, Share2, MessageCircle, Check, Sliders } from 'lucide-react';
 import { shareTripPlan, getWhatsAppShareUrl } from '../../../services/shareTripHelper';
 
 interface FullTripCostCardProps {
@@ -13,7 +13,8 @@ export const FullTripCostCard: React.FC<FullTripCostCardProps> = ({
   plan,
   preferences
 }) => {
-  const cost = computeFullTripCost(plan, preferences);
+  const [bufferPercent, setBufferPercent] = useState<number>(25);
+  const cost = computeFullTripCost(plan, preferences, { customBufferPercent: bufferPercent, useCategoryWeights: true });
   const childrenCount = (plan.travellers?.children ?? (plan.travellers?.childAges?.length || 0)) || (preferences?.childrenCount ?? (preferences?.childrenAges?.length || 0)) || 0;
   const hasChildren = childrenCount > 0;
   const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'shared'>('idle');
@@ -78,7 +79,7 @@ export const FullTripCostCard: React.FC<FullTripCostCardProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-[#F5F6F3] border border-[#E2E6E1]">
         <div className="space-y-1">
           <div className="text-xs font-medium text-[#55625E]">
-            Total with 15% buffer
+            Total with {cost.bufferPercent}% buffer
           </div>
           <div className="text-3xl sm:text-4xl font-extrabold text-[#15201D] font-heading tracking-tight">
             ₹{cost.totalWithBufferINR.toLocaleString('en-IN')}
@@ -98,6 +99,59 @@ export const FullTripCostCard: React.FC<FullTripCostCardProps> = ({
           <div className="text-xs text-[#55625E]">
             Across {cost.totalTravellers} traveller{cost.totalTravellers === 1 ? '' : 's'}{hasChildren ? ' (including children)' : ''}
           </div>
+        </div>
+      </div>
+
+      {/* Buffer Slider: Per-Category weighted buffer */}
+      <div className="p-3.5 rounded-xl bg-[#F4F9F7] border border-[#0E6B59]/20 space-y-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-[#15201D]">
+            <Sliders className="h-3.5 w-3.5 text-[#0E6B59]" />
+            <span>Buffer Slider: {bufferPercent}%</span>
+            <span className="text-[10px] text-[#0E6B59] bg-[#E3F1EC] px-2 py-0.5 rounded-full font-medium">
+              Heavier on Food (+35%) & Shopping (+40%)
+            </span>
+          </div>
+          <div className="text-[11px] text-[#55625E]">
+            Move slider to stress-test your budget against real overruns
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] font-medium text-[#55625E]">10%</span>
+          <input
+            type="range"
+            min={10}
+            max={50}
+            step={5}
+            value={bufferPercent}
+            onChange={(e) => setBufferPercent(Number(e.target.value))}
+            className="w-full h-2 bg-[#CBD5E1] rounded-lg appearance-none cursor-pointer accent-[#0E6B59]"
+            aria-label="Cost buffer slider"
+          />
+          <span className="text-[11px] font-medium text-[#55625E]">50%</span>
+        </div>
+
+        <div className="flex items-center gap-2 overflow-x-auto pt-0.5 scrollbar-none text-[10px]">
+          {[
+            { val: 15, label: '15% Tight' },
+            { val: 25, label: '25% (Default · Recommended)' },
+            { val: 35, label: '35% Realistic' },
+            { val: 45, label: '45% Extra Safe' }
+          ].map((preset) => (
+            <button
+              key={preset.val}
+              type="button"
+              onClick={() => setBufferPercent(preset.val)}
+              className={`px-2 py-0.5 rounded font-medium transition shrink-0 ${
+                bufferPercent === preset.val
+                  ? 'bg-[#0E6B59] text-white'
+                  : 'bg-white border border-[#CBD5E1] text-[#55625E] hover:border-[#0E6B59]'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -143,20 +197,33 @@ export const FullTripCostCard: React.FC<FullTripCostCardProps> = ({
             </div>
           ))}
 
-          {/* 15% Buffer for Surprises Line */}
-          <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-[#E3F1EC]/40 text-xs border border-[#0E6B59]/20 font-medium">
-            <div className="space-y-0.5">
-              <div className="font-bold text-[#0E6B59] flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>Buffer for surprises (15%)</span>
+          {/* Buffer for Surprises Line with Category Details */}
+          <div className="p-3 rounded-xl bg-[#E3F1EC]/40 text-xs border border-[#0E6B59]/20 font-medium space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="font-bold text-[#0E6B59] flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>Buffer for surprises ({cost.bufferPercent}%)</span>
+                </div>
+                <div className="text-[11px] text-[#55625E]">
+                  Weighted heavier on food and shopping based on traveller overruns (24%–70%)
+                </div>
               </div>
-              <div className="text-[11px] text-[#55625E]">
-                Local transport quirks, unexpected autos, tips, emergency buffer
+              <div className="font-bold text-sm text-[#0E6B59] shrink-0">
+                ₹{cost.bufferAmountINR.toLocaleString('en-IN')}
               </div>
             </div>
-            <div className="font-bold text-sm text-[#0E6B59] shrink-0">
-              ₹{cost.bufferAmountINR.toLocaleString('en-IN')}
-            </div>
+
+            {cost.categoryBuffers && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1.5 border-t border-[#0E6B59]/20 text-[10px] text-[#55625E]">
+                <div className="bg-white/70 p-1.5 rounded">Food buffer: <strong className="text-[#15201D]">₹{cost.categoryBuffers.foodBufferINR.toLocaleString('en-IN')}</strong></div>
+                <div className="bg-white/70 p-1.5 rounded">Shopping buffer: <strong className="text-[#15201D]">₹{cost.categoryBuffers.shoppingBufferINR.toLocaleString('en-IN')}</strong></div>
+                <div className="bg-white/70 p-1.5 rounded">Local cabs: <strong className="text-[#15201D]">₹{cost.categoryBuffers.localTransportBufferINR.toLocaleString('en-IN')}</strong></div>
+                <div className="bg-white/70 p-1.5 rounded">Stay: <strong className="text-[#15201D]">₹{cost.categoryBuffers.stayBufferINR.toLocaleString('en-IN')}</strong></div>
+                <div className="bg-white/70 p-1.5 rounded">Transit: <strong className="text-[#15201D]">₹{cost.categoryBuffers.travelBufferINR.toLocaleString('en-IN')}</strong></div>
+                <div className="bg-white/70 p-1.5 rounded">Activities: <strong className="text-[#15201D]">₹{cost.categoryBuffers.activitiesBufferINR.toLocaleString('en-IN')}</strong></div>
+              </div>
+            )}
           </div>
 
           {/* Grand Total Row */}

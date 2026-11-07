@@ -86,7 +86,7 @@ export class MockHotelProvider implements HotelProvider {
       baseHotels = [
         {
           id: 'ht-dyn-1',
-          name: `${params.destination} Grand Heritage Resort & Spa`,
+          name: `4★ Verified Boutique Stay · ${params.destination}`,
           area: 'Central Promenade',
           city: params.destination,
           starRating: 4,
@@ -109,7 +109,7 @@ export class MockHotelProvider implements HotelProvider {
         },
         {
           id: 'ht-dyn-2',
-          name: `The Royal Vista Boutique Hotel`,
+          name: `3★ Centrally Located Stay · ${params.destination}`,
           area: 'Historic District',
           city: params.destination,
           starRating: 3,
@@ -132,7 +132,7 @@ export class MockHotelProvider implements HotelProvider {
         },
         {
           id: 'ht-dyn-3',
-          name: `Imperial Oasis Luxury Resort`,
+          name: `5★ Premium Resort & Spa · ${params.destination}`,
           area: 'Scenic Bay',
           city: params.destination,
           starRating: 5,

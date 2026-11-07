@@ -32,6 +32,16 @@ export interface CostLineItem {
   subtitle?: string;
 }
 
+export interface CategoryBufferBreakdown {
+  stayBufferINR: number;
+  travelBufferINR: number;
+  localTransportBufferINR: number;
+  foodBufferINR: number;
+  activitiesBufferINR: number;
+  shoppingBufferINR: number;
+  effectiveBufferPercent: number;
+}
+
 export interface FullTripCostCalculation {
   lines: CostLineItem[];
   subtotalINR: number;
@@ -45,11 +55,58 @@ export interface FullTripCostCalculation {
   budgetDifferenceINR: number;
   statusLabel: string;
   statusTip?: string;
+  categoryBuffers?: CategoryBufferBreakdown;
+}
+
+export function computeCategoryWeightedBuffer(
+  lines: CostLineItem[],
+  baseBufferPercent: number = 25
+): {
+  bufferAmountINR: number;
+  categoryBuffers: CategoryBufferBreakdown;
+} {
+  // Category weights: Food & Shopping have the highest observed overruns (24-70%),
+  // while pre-booked stay & travel have lower variance.
+  const stayLine = lines.find((l) => l.id === 'cost-stay')?.amountINR || 0;
+  const travelLine = lines.find((l) => l.id === 'cost-travel')?.amountINR || 0;
+  const localTransportLine = lines.find((l) => l.id === 'cost-local-transport')?.amountINR || 0;
+  const foodLine = lines.find((l) => l.id === 'cost-food')?.amountINR || 0;
+  const activitiesLine = lines.find((l) => l.id === 'cost-activities')?.amountINR || 0;
+  const shoppingLine = lines.find((l) => l.id === 'cost-shopping')?.amountINR || 0;
+
+  const multiplier = baseBufferPercent / 25;
+  const stayBufferINR = Math.round(stayLine * (0.10 * multiplier));
+  const travelBufferINR = Math.round(travelLine * (0.05 * multiplier));
+  const localTransportBufferINR = Math.round(localTransportLine * (0.25 * multiplier));
+  const foodBufferINR = Math.round(foodLine * (0.35 * multiplier));
+  const activitiesBufferINR = Math.round(activitiesLine * (0.15 * multiplier));
+  const shoppingBufferINR = Math.round(shoppingLine * (0.40 * multiplier));
+
+  const totalBuffer = stayBufferINR + travelBufferINR + localTransportBufferINR + foodBufferINR + activitiesBufferINR + shoppingBufferINR;
+  const subtotal = stayLine + travelLine + localTransportLine + foodLine + activitiesLine + shoppingLine;
+  const effectiveBufferPercent = subtotal > 0 ? Math.round((totalBuffer / subtotal) * 100) : baseBufferPercent;
+
+  return {
+    bufferAmountINR: totalBuffer,
+    categoryBuffers: {
+      stayBufferINR,
+      travelBufferINR,
+      localTransportBufferINR,
+      foodBufferINR,
+      activitiesBufferINR,
+      shoppingBufferINR,
+      effectiveBufferPercent
+    }
+  };
 }
 
 export function computeFullTripCost(
   plan: TripPlan,
-  preferences?: TripPreferences | null
+  preferences?: TripPreferences | null,
+  options?: {
+    customBufferPercent?: number;
+    useCategoryWeights?: boolean;
+  }
 ): FullTripCostCalculation {
   const durationDays = Math.max(1, plan.durationDays || 3);
   const nights = Math.max(1, durationDays - 1);
@@ -66,17 +123,28 @@ export function computeFullTripCost(
   const totalTravellers = Math.max(1, adults + children + seniors);
 
   // 1. Stay
-  const hotelNightsCost = plan.hotel
+  const hasMultipleStays = Array.isArray(plan.stays) && plan.stays.length > 1;
+  const multiStayCost = hasMultipleStays
+    ? plan.stays!.reduce((sum, s) => sum + (s.hotel.totalPriceINR || s.hotel.pricePerNightINR * s.nights), 0)
+    : 0;
+  const hotelNightsCost = hasMultipleStays
+    ? multiStayCost
+    : plan.hotel
     ? (plan.hotel.totalPriceINR || plan.hotel.pricePerNightINR * nights)
     : (plan.budget?.hotelCostINR || 0);
+
+  const staySubtitle = hasMultipleStays
+    ? `${plan.stays!.map((s) => `${s.nights}N in ${s.baseName}`).join(' + ')}`
+    : plan.hotel
+    ? `${plan.hotel.name} · ${nights} night${nights > 1 ? 's' : ''}`
+    : `${nights} night${nights > 1 ? 's' : ''}`;
+
   const stayLine: CostLineItem = {
     id: 'cost-stay',
-    name: 'Stay',
+    name: hasMultipleStays ? `Stays (${plan.stays!.length} bases)` : 'Stay',
     amountINR: Math.round(hotelNightsCost),
     isEstimate: false,
-    subtitle: plan.hotel
-      ? `${plan.hotel.name} · ${nights} night${nights > 1 ? 's' : ''}`
-      : `${nights} night${nights > 1 ? 's' : ''}`
+    subtitle: staySubtitle
   };
 
   // 2. Travel to destination (flight / train + transfer counted once)
@@ -192,17 +260,48 @@ export function computeFullTripCost(
   // Subtotal before buffer
   const lines: CostLineItem[] = [
     stayLine,
-    travelLine,
+    travelLine
+  ];
+
+  if (plan.interCityTravel) {
+    lines.push({
+      id: 'cost-intercity-travel',
+      name: 'Inter-city travel',
+      amountINR: Math.round(plan.interCityTravel.priceINR || 6500),
+      isEstimate: false,
+      subtitle: plan.interCityTravel.title || 'Private AC Cab between bases'
+    });
+  }
+
+  lines.push(
     localTransportLine,
     foodLine,
     activitiesLine,
     shoppingLine
-  ];
+  );
 
   const subtotalINR = lines.reduce((acc, item) => acc + item.amountINR, 0);
 
-  // 7. 15% Buffer for surprises
-  const bufferAmountINR = calculateSurpriseBufferINR(subtotalINR);
+  // 7. Buffer for surprises (supports custom percent & category-weighted buffers)
+  let bufferPercent = SURPRISE_BUFFER_PERCENT;
+  let bufferAmountINR = 0;
+  let categoryBuffers: CategoryBufferBreakdown;
+
+  if (options?.useCategoryWeights) {
+    const basePct = options.customBufferPercent ?? 25;
+    const weighted = computeCategoryWeightedBuffer(lines, basePct);
+    bufferAmountINR = weighted.bufferAmountINR;
+    categoryBuffers = weighted.categoryBuffers;
+    bufferPercent = weighted.categoryBuffers.effectiveBufferPercent;
+  } else if (options?.customBufferPercent !== undefined) {
+    bufferPercent = options.customBufferPercent;
+    bufferAmountINR = Math.round(subtotalINR * (bufferPercent / 100));
+    categoryBuffers = computeCategoryWeightedBuffer(lines, bufferPercent).categoryBuffers;
+  } else {
+    bufferPercent = SURPRISE_BUFFER_PERCENT;
+    bufferAmountINR = calculateSurpriseBufferINR(subtotalINR);
+    categoryBuffers = computeCategoryWeightedBuffer(lines, bufferPercent).categoryBuffers;
+  }
 
   // 8. Total with the buffer
   const totalWithBufferINR = subtotalINR + bufferAmountINR;
@@ -221,7 +320,40 @@ export function computeFullTripCost(
     budgetStatus = 'over';
     budgetDifferenceINR = totalWithBufferINR - targetBudgetINR;
     statusLabel = `₹${budgetDifferenceINR.toLocaleString('en-IN')} over budget`;
-    statusTip = `Tip: Switch to a train or choose a standard stay below to save ₹${budgetDifferenceINR.toLocaleString('en-IN')} and fit within budget.`;
+
+    // Compute actual real savings for real alternatives (Prompt 4 rule)
+    let trainSaving = 0;
+    if (plan.flight && plan.availableTrains && plan.availableTrains.length > 0) {
+      const cheapestTrain = [...plan.availableTrains].sort((a, b) => a.totalPriceINR - b.totalPriceINR)[0];
+      const flightTotal = plan.flight.totalPriceINR || (plan.flight.pricePerPersonINR * totalTravellers);
+      if (cheapestTrain && cheapestTrain.totalPriceINR < flightTotal) {
+        trainSaving = Math.round((flightTotal - cheapestTrain.totalPriceINR) * (1 + bufferPercent / 100));
+      }
+    }
+
+    let staySaving = 0;
+    if (plan.availableHotels && plan.availableHotels.length > 0 && plan.hotel) {
+      const cheaperHotels = [...plan.availableHotels].filter((h) => h.pricePerNightINR < plan.hotel.pricePerNightINR);
+      if (cheaperHotels.length > 0) {
+        const cheapest = cheaperHotels.sort((a, b) => a.pricePerNightINR - b.pricePerNightINR)[0];
+        const diffPerNight = plan.hotel.pricePerNightINR - cheapest.pricePerNightINR;
+        staySaving = Math.round(diffPerNight * nights * (1 + bufferPercent / 100));
+      }
+    }
+
+    if (trainSaving > 0 && totalWithBufferINR - trainSaving <= targetBudgetINR) {
+      statusTip = `Tip: Switch to a train to save ₹${trainSaving.toLocaleString('en-IN')} and fit within budget.`;
+    } else if (staySaving > 0 && totalWithBufferINR - staySaving <= targetBudgetINR) {
+      statusTip = `Tip: Choose a standard stay below to save ₹${staySaving.toLocaleString('en-IN')} and fit within budget.`;
+    } else if (trainSaving > 0 && staySaving > 0 && totalWithBufferINR - (trainSaving + staySaving) <= targetBudgetINR) {
+      statusTip = `Tip: Switch to a train and standard stay to save ₹${(trainSaving + staySaving).toLocaleString('en-IN')} and fit within budget.`;
+    } else if (trainSaving > 0) {
+      statusTip = `Tip: Switch to a train to save ₹${trainSaving.toLocaleString('en-IN')} (reduces total to ₹${(totalWithBufferINR - trainSaving).toLocaleString('en-IN')}).`;
+    } else if (staySaving > 0) {
+      statusTip = `Tip: Choose a standard stay below to save ₹${staySaving.toLocaleString('en-IN')} (reduces total to ₹${(totalWithBufferINR - staySaving).toLocaleString('en-IN')}).`;
+    } else {
+      statusTip = `Trip is ₹${budgetDifferenceINR.toLocaleString('en-IN')} over budget. Adjust nights or explore concrete levers below.`;
+    }
   } else if (totalWithBufferINR >= targetBudgetINR * 0.90) {
     budgetStatus = 'close';
     budgetDifferenceINR = targetBudgetINR - totalWithBufferINR;
@@ -235,7 +367,7 @@ export function computeFullTripCost(
   return {
     lines,
     subtotalINR,
-    bufferPercent: SURPRISE_BUFFER_PERCENT,
+    bufferPercent,
     bufferAmountINR,
     totalWithBufferINR,
     totalTravellers,
@@ -244,6 +376,7 @@ export function computeFullTripCost(
     budgetStatus,
     budgetDifferenceINR,
     statusLabel,
-    statusTip
+    statusTip,
+    categoryBuffers
   };
 }

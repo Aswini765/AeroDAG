@@ -61,6 +61,20 @@ export const RouteTradeOffComparison: React.FC<RouteTradeOffComparisonProps> = (
         </div>
       </div>
 
+      {/* Nani's Time-Sensitive Choice Insight Banner */}
+      <div className="p-3.5 rounded-xl bg-[#F4F9F7] border border-[#0E6B59]/20 space-y-1 text-xs">
+        <div className="flex items-center gap-1.5 font-bold text-[#0E6B59]">
+          <Sparkles className="h-3.5 w-3.5" />
+          <span>Available Time Flips the Choice (Nani’s Rule)</span>
+        </div>
+        <p className="text-[#55625E] text-[11px] leading-relaxed">
+          The choice flips with your available holiday time: take a <strong className="text-[#15201D]">scenic road trip or overnight train</strong> when you have time to spare; pick a <strong className="text-[#15201D]">flight without it</strong> to save 10+ hours for exploring.
+        </p>
+        <div className="text-[10px] text-[#0E6B59] font-medium pt-0.5">
+          Hand-curated for sample routes (no public API offers flight window seat views at scale).
+        </div>
+      </div>
+
       {/* Sensory & Scenic Highlights Banner */}
       {comparison.sensoryHighlights && comparison.sensoryHighlights.length > 0 && (
         <div className="p-3.5 rounded-xl bg-[#E3F1EC]/50 border border-[#0E6B59]/20 space-y-2">
@@ -132,7 +146,7 @@ export const RouteTradeOffComparison: React.FC<RouteTradeOffComparisonProps> = (
                 </div>
 
                 {/* Scenic Score & Highlight */}
-                <div className="pt-2 border-t border-[#E2E6E1] space-y-1">
+                <div className="pt-2 border-t border-[#E2E6E1] space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-[#55625E]">Scenic:</span>
                     <span className="font-bold text-[#15201D]">
@@ -142,6 +156,20 @@ export const RouteTradeOffComparison: React.FC<RouteTradeOffComparisonProps> = (
                   <p className="text-xs text-[#55625E] leading-relaxed">
                     {opt.scenicHighlight}
                   </p>
+                  {/* Curated Scenic Chip */}
+                  <div className="bg-[#E3F1EC] text-[#0A5546] p-2 rounded-lg text-[10px] font-medium space-y-0.5">
+                    <div className="font-bold flex items-center gap-1">
+                      <Sparkles className="h-2.5 w-2.5 text-[#0E6B59]" />
+                      <span>{opt.mode === 'Flight' ? 'Scenic Flight View' : opt.mode === 'Train' ? 'Scenic Rail Tip' : 'Scenic Road Route'}</span>
+                    </div>
+                    <div>
+                      {opt.mode === 'Flight'
+                        ? 'Window seat, left side recommended: coastal descent views.'
+                        : opt.mode === 'Train'
+                        ? 'Window seat, right side recommended: waterfall & ghats view.'
+                        : 'Scenic mountain highway with early morning forest mist.'}
+                    </div>
+                  </div>
                 </div>
               </div>
 

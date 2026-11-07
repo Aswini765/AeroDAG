@@ -1,13 +1,21 @@
-import React, { useState } from 'react';
-import { ArrowRight, DollarSign, Clock, Tag, Mic, Square } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowRight, Clock, Tag, Mic, Square, Compass, Sparkles, Check, GitCompare } from 'lucide-react';
 import { useSpeechInput } from '../../hooks/useSpeechInput';
 import { suggestAlternative, swapPlaceInText, findKnownUnsupportedPlace, suggestFromTripType, DestinationSuggestion } from '../../services/destinationSuggestions';
-import { WhereShouldWeGo } from './WhereShouldWeGo';
+import { DESTINATIONS, DestinationCardData } from './WhereShouldWeGo';
+import {
+  trackLandingView,
+  trackCardClick,
+  trackChipClick,
+  trackInputSubmit,
+  trackDemoClick
+} from '../../services/telemetry/posthog';
 
 interface DescribeScreenProps {
   /** Resolves to an error message to show, or null/void when planning moved on. */
   onStartPlan: (promptText: string) => Promise<string | null> | void;
   onTryDemo?: () => void;
+  onComparePlaces?: (places: string[]) => void;
   isAiAvailable?: boolean;
 }
 
@@ -102,9 +110,15 @@ export function detectSupportedDestination(text: string): {
 export const DescribeScreen: React.FC<DescribeScreenProps> = ({
   onStartPlan,
   onTryDemo,
+  onComparePlaces,
   isAiAvailable = false
 }) => {
+  const isOldVersion = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('v') === 'old';
+
   const [inputText, setInputText] = useState('');
+  const [activeQuickCategory, setActiveQuickCategory] = useState<string | null>(null);
+  const [selectedVibe, setSelectedVibe] = useState<'All' | 'Beach' | 'Hills' | 'Heritage' | 'Nature'>('All');
+  const [compareSelected, setCompareSelected] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<{
     text: string;
     showChips: boolean;
@@ -119,6 +133,10 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
     }
   });
   const isListening = speech.status === 'listening';
+
+  useEffect(() => {
+    trackLandingView({ page_version: isOldVersion ? 'v_old' : 'v_new' });
+  }, [isOldVersion]);
 
   const unsupportedError = (place: string) => {
     const suggestion = suggestAlternative(place);
@@ -163,7 +181,6 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
       setErrorMessage(unsupportedError(check.unsupportedTarget));
       return;
     }
-    // No place named but a kind of trip is: offer the best-fitting destination instead of an error.
     if (!check.isSupported) {
       const byType = suggestFromTripType(trimmed);
       if (byType) {
@@ -175,7 +192,6 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
         return;
       }
     }
-    // Keyboard mash is rejected locally; other unclear text goes to the AI when it is available.
     if (!check.isSupported && (looksLikeGibberish(trimmed) || !isAiAvailable)) {
       setErrorMessage({ text: UNPARSEABLE_MSG, showChips: true });
       return;
@@ -183,6 +199,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
 
     setErrorMessage(null);
     setIsSubmitting(true);
+    trackInputSubmit({ promptLength: trimmed.length, hasVoice: isListening });
     try {
       const result = await onStartPlan(trimmed);
       if (typeof result === 'string' && result) {
@@ -196,7 +213,6 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
     }
   };
 
-  /** Swap the unsupported place for a covered one and plan straight away, keeping dates, people and budget. */
   const planInstead = (dest: string) => {
     const place = errorMessage?.place;
     const next = place ? swapPlaceInText(inputText, place, dest) : `${inputText.trim().replace(/[.\s]+$/, '')} in ${dest}`;
@@ -208,12 +224,6 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
   const handleSelectExample = (prompt: string) => {
     setInputText(prompt);
     setErrorMessage(null);
-  };
-
-  const handleSelectWhereToGo = (prompt: string) => {
-    setInputText(prompt);
-    setErrorMessage(null);
-    void handleSubmit(undefined, prompt);
   };
 
   const handleSelectChip = (dest: string) => {
@@ -230,237 +240,400 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
     setErrorMessage(null);
   };
 
+  const demoLockRef = React.useRef(false);
   const handleDemoClick = () => {
+    if (demoLockRef.current || isSubmitting) return;
+    demoLockRef.current = true;
+    setIsSubmitting(true);
+    trackDemoClick({ destination: 'Goa' });
+    trackInputSubmit({ promptLength: 150, hasVoice: false, destinationMentioned: 'Goa' });
     if (onTryDemo) {
       onTryDemo();
     } else {
       onStartPlan('7 days in Goa from Bengaluru for me, my wife and our 10-year-old daughter. Budget ₹60,000. 14–20 Nov 2026. Comfortable family-friendly hotel, not too much walking.');
     }
+    setTimeout(() => {
+      demoLockRef.current = false;
+      setIsSubmitting(false);
+    }, 1500);
   };
 
-  return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 md:py-14 animate-fade-in-slide">
-      {/* Headings */}
-      <div className="text-center space-y-3 mb-8 md:mb-10">
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-[#15201D] font-heading">
-          Plan a trip you can actually take.
-        </h1>
-        <p className="text-base sm:text-lg text-[#55625E] max-w-2xl mx-auto">
-          Describe it like you'd tell a friend. We'll ask only what changes the plan — and keep it inside your budget.
-        </p>
-        <div className="pt-1 flex items-center justify-center gap-3">
-          <button
-            type="button"
-            onClick={handleDemoClick}
-            id="try-the-demo-link"
-            aria-label="Try the demo trip to Goa"
-            className="text-sm font-semibold text-[#0E6B59] hover:underline cursor-pointer inline-flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-[#0E6B59] rounded px-1.5 py-0.5"
-          >
-            <span>✨ Try the demo</span>
-          </button>
-        </div>
-      </div>
+  const handleVibeClick = (vibeId: 'All' | 'Beach' | 'Hills' | 'Heritage' | 'Nature', label: string) => {
+    setSelectedVibe(vibeId);
+    trackChipClick({ chipId: vibeId, label });
+  };
 
-      {/* Main Textarea Card */}
-      <form onSubmit={handleSubmit} className="card-consumer p-5 sm:p-6 mb-8 transition-shadow hover:shadow-md">
-        <div className="space-y-2">
-          <label htmlFor="trip-description-input" className="block text-xs font-semibold uppercase tracking-wider text-[#55625E]">
-            Your trip
-          </label>
-          <textarea
-            id="trip-description-input"
-            rows={4}
-            value={inputText}
-            onChange={(e) => {
-              setInputText(e.target.value);
-              if (errorMessage) setErrorMessage(null);
-            }}
-            placeholder="7 days in Goa from Bengaluru for me, my wife and our 10-year-old daughter. Budget ₹60,000. Comfortable family-friendly hotel, not too much walking."
-            className="w-full bg-transparent border-0 resize-none text-[#15201D] placeholder-[#55625E]/60 text-base sm:text-lg focus:ring-0 focus:outline-none p-1 font-sans leading-relaxed"
-          />
-        </div>
+  const toggleCompare = (destName: string) => {
+    setCompareSelected((prev) => {
+      if (prev.includes(destName)) {
+        return prev.filter((d) => d !== destName);
+      }
+      if (prev.length >= 3) {
+        return [...prev.slice(1), destName];
+      }
+      return [...prev, destName];
+    });
+  };
 
-        {/* Voice input status */}
-        {isListening && (
-          <div
-            id="voice-listening-status"
-            role="status"
-            aria-live="polite"
-            className="mt-2 flex items-start gap-2 text-sm text-[#0E6B59]"
-          >
-            <span className="mt-1.5 w-2 h-2 rounded-full bg-[#C2410C] animate-pulse shrink-0" aria-hidden="true" />
-            <span>
-              <span className="font-semibold">Listening…</span>{' '}
-              <span className="text-[#55625E] italic">
-                {speech.interimText || 'Say where, how long, who is going and your budget.'}
-              </span>
-            </span>
-          </div>
-        )}
-        {speech.errorText && !isListening && (
-          <div
-            id="voice-input-error"
-            role="alert"
-            className="mt-2 text-xs text-[#8A4307] bg-[#FCEFD9] rounded-lg px-3 py-2 flex items-center justify-between gap-2"
-          >
-            <span>{speech.errorText}</span>
-            <button type="button" onClick={speech.clearError} className="font-semibold underline shrink-0">
-              Dismiss
+  const handleTriggerCompare = () => {
+    if (compareSelected.length >= 2 && onComparePlaces) {
+      onComparePlaces(compareSelected);
+    }
+  };
+
+  const filteredCards = selectedVibe === 'All'
+    ? DESTINATIONS
+    : DESTINATIONS.filter((d) => d.vibe === selectedVibe);
+
+  // ==========================================
+  // OLD VERSION LAYOUT (Reachable via /?v=old)
+  // ==========================================
+  if (isOldVersion) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 md:py-14 animate-fade-in-slide">
+        {/* Headings */}
+        <div className="text-center space-y-3 mb-8 md:mb-10">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-[#15201D] font-heading">
+            Plan a trip you can actually take.
+          </h1>
+          <p className="text-base sm:text-lg text-[#55625E] max-w-2xl mx-auto">
+            Describe it like you'd tell a friend. We'll ask only what changes the plan — and keep it inside your budget.
+          </p>
+          <div className="pt-1 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={handleDemoClick}
+              id="try-the-demo-link"
+              aria-label="Try the demo trip to Goa"
+              className="text-sm font-semibold text-[#0E6B59] hover:underline cursor-pointer inline-flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-[#0E6B59] rounded px-1.5 py-0.5"
+            >
+              <span>✨ Try the demo</span>
             </button>
           </div>
+        </div>
+
+        {/* Main Textarea Card */}
+        <form onSubmit={handleSubmit} className="card-consumer p-5 sm:p-6 mb-8 transition-shadow hover:shadow-md">
+          <div className="space-y-2">
+            <label htmlFor="trip-description-input" className="block text-xs font-semibold uppercase tracking-wider text-[#55625E]">
+              Your trip
+            </label>
+            <textarea
+              id="trip-description-input"
+              rows={4}
+              value={inputText}
+              onChange={(e) => {
+                setInputText(e.target.value);
+                if (errorMessage) setErrorMessage(null);
+              }}
+              placeholder="7 days in Goa from Bengaluru for me, my wife and our 10-year-old daughter. Budget ₹60,000. Comfortable family-friendly hotel, not too much walking."
+              className="w-full bg-transparent border-0 resize-none text-[#15201D] placeholder-[#55625E]/60 text-base sm:text-lg focus:ring-0 focus:outline-none p-1 font-sans leading-relaxed"
+            />
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-[#E2E6E1] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="text-xs text-[#55625E]">
+              Plan any trip in India · detailed guides for Goa, Coorg, Kerala, Mysuru · prices in INR
+            </div>
+            <button
+              type="submit"
+              className="btn-primary w-full sm:w-auto min-h-[44px]"
+              disabled={isSubmitting}
+            >
+              <span>{isSubmitting ? 'Understanding…' : 'Plan my trip'}</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </form>
+
+        {/* Three Trust Cards (prompt 5 updated copy) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mt-12">
+          <div className="card-consumer p-5 text-left space-y-2">
+            <h2 className="text-base font-bold text-[#15201D] font-heading">Budget first</h2>
+            <p className="text-sm text-[#55625E]">
+              Budget first — we tell you if it fits, and what to change if it doesn't.
+            </p>
+          </div>
+          <div className="card-consumer p-5 text-left space-y-2">
+            <h2 className="text-base font-bold text-[#15201D] font-heading">Real travel times</h2>
+            <p className="text-sm text-[#55625E]">No hidden 2-hour drives after a flight.</p>
+          </div>
+          <div className="card-consumer p-5 text-left space-y-2">
+            <h2 className="text-base font-bold text-[#15201D] font-heading">Every price labelled</h2>
+            <p className="text-sm text-[#55625E]">Sample, estimate or AI estimate — always visible.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // MODERN FIRST VIEW (Designer Feedback — Prompt 6)
+  // No scroll on desktop; at 375px phone, input + at least 2 cards visible
+  // ==========================================
+  const selectedDays = 4;
+
+  return (
+    <div className="max-w-5xl mx-auto px-3 sm:px-6 py-2 sm:py-4 animate-fade-in-slide">
+      {/* Short Catchier Line replacing "Where should we go?" */}
+      <div className="flex items-center justify-between mb-2 sm:mb-3">
+        <div className="flex items-center gap-1.5">
+          <Compass className="h-4 w-4 text-[#0E6B59] shrink-0" />
+          <span className="text-xs sm:text-sm font-bold text-[#15201D] font-heading">
+            Pick a vibe or describe your trip
+          </span>
+        </div>
+
+        {compareSelected.length >= 2 && (
+          <button
+            type="button"
+            onClick={handleTriggerCompare}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0E6B59] text-white text-xs font-bold hover:bg-[#0A5546] shadow-sm transition animate-bounce cursor-pointer"
+          >
+            <GitCompare className="h-3.5 w-3.5" />
+            <span>Compare {compareSelected.length} places →</span>
+          </button>
+        )}
+      </div>
+
+      {/* 1. Vibe Chips Row (Top of First View) */}
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+        {[
+          { id: 'All', label: 'All Vibes', icon: '✨' },
+          { id: 'Beach', label: 'Beach', icon: '🏖️' },
+          { id: 'Hills', label: 'Hills', icon: '⛰️' },
+          { id: 'Heritage', label: 'Heritage', icon: '🏛️' },
+          { id: 'Nature', label: 'Nature', icon: '🌿' }
+        ].map((vibe) => (
+          <button
+            key={vibe.id}
+            type="button"
+            onClick={() => handleVibeClick(vibe.id as any, vibe.label)}
+            className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-semibold border transition flex items-center gap-1 cursor-pointer ${
+              selectedVibe === vibe.id
+                ? 'bg-[#0E6B59] text-white border-[#0E6B59] font-bold shadow-xs'
+                : 'bg-white text-[#15201D] border-[#E2E6E1] hover:border-[#0E6B59]/40 hover:bg-[#E3F1EC]/30'
+            }`}
+          >
+            <span>{vibe.icon}</span>
+            <span>{vibe.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* 2. Sleek Overlay-Style Input Box (Only as tall as placeholder needs, no wasted space) */}
+      <form
+        onSubmit={handleSubmit}
+        className="card-consumer p-2.5 sm:p-3 mb-3 bg-white/95 backdrop-blur-xs border border-[#CBD5E1]/80 rounded-xl shadow-xs transition-shadow hover:shadow-md"
+      >
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div className="flex-1">
+            <textarea
+              id="trip-description-input"
+              rows={1}
+              value={inputText}
+              onChange={(e) => {
+                setInputText(e.target.value);
+                if (errorMessage) setErrorMessage(null);
+              }}
+              placeholder="e.g. 4 days in Coorg for 2 adults under ₹25,000, or: Coorg or Ooty by train"
+              className="w-full bg-transparent border-0 resize-none text-[#15201D] placeholder-[#55625E]/60 text-xs sm:text-sm focus:ring-0 focus:outline-none p-1 font-sans leading-normal"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+            {speech.isSupported && (
+              <button
+                type="button"
+                id="voice-input-button"
+                onClick={speech.toggle}
+                disabled={isSubmitting}
+                aria-pressed={isListening}
+                aria-label={isListening ? 'Stop voice input' : 'Speak your trip'}
+                title={isListening ? 'Stop listening' : 'Speak your trip'}
+                className={`min-h-[38px] h-9 px-3 rounded-lg border text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer ${
+                  isListening
+                    ? 'bg-[#C2410C] border-[#C2410C] text-white'
+                    : 'bg-white border-[#CBD5E1] text-[#0E6B59] hover:bg-[#E3F1EC]'
+                }`}
+              >
+                {isListening ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                <span className="hidden sm:inline">{isListening ? 'Stop' : 'Speak'}</span>
+              </button>
+            )}
+
+            {/* Third button: Outline style, labelled "Demo" */}
+            <button
+              type="button"
+              onClick={handleDemoClick}
+              disabled={isSubmitting}
+              id="demo-button"
+              aria-label="Try Goa demo plan"
+              className="min-h-[38px] h-9 px-3 rounded-lg border border-[#0E6B59] bg-white text-[#0E6B59] hover:bg-[#E3F1EC] text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-[#0E6B59]" />
+              <span>Demo</span>
+            </button>
+
+            {/* Primary Plan Button */}
+            <button
+              type="submit"
+              className="btn-primary min-h-[38px] h-9 px-4 rounded-lg text-xs font-bold disabled:opacity-70 disabled:cursor-wait flex items-center gap-1 shrink-0"
+              aria-label="Plan my trip"
+              aria-busy={isSubmitting}
+              disabled={isSubmitting}
+            >
+              <span>{isSubmitting ? 'Understanding…' : 'Plan'}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Voice status & errors if present */}
+        {isListening && (
+          <div id="voice-listening-status" role="status" aria-live="polite" className="mt-1.5 flex items-center gap-1.5 text-xs text-[#0E6B59]">
+            <span className="w-2 h-2 rounded-full bg-[#C2410C] animate-pulse" />
+            <span>Listening… {speech.interimText || 'Say where, days, travellers, budget'}</span>
+          </div>
         )}
 
-        {/* Inline Error Callout if unsupported or empty */}
         {errorMessage && (
           <div
             id={errorMessage.showChips ? 'unsupported-destination-error' : 'empty-submit-error'}
-            data-testid={errorMessage.showChips ? 'unsupported-destination-error' : 'empty-submit-error'}
             role="alert"
-            className="mt-3 p-3.5 rounded-xl bg-[#FCEFD9] border border-[#8A4307]/30 text-xs text-[#8A4307] space-y-2 text-left"
+            className="mt-2 p-2.5 rounded-lg bg-[#FCEFD9] border border-[#8A4307]/30 text-xs text-[#8A4307] space-y-1 text-left"
           >
-            <div className="font-semibold text-[#8A4307]">
-              {errorMessage.text}
-            </div>
+            <div className="font-semibold">{errorMessage.text}</div>
             {errorMessage.suggestion && (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
+              <div className="pt-0.5">
                 <button
                   type="button"
-                  id="plan-suggested-destination"
                   onClick={() => planInstead(errorMessage.suggestion!.destination)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#0E6B59] text-white text-xs font-semibold px-3.5 py-2 hover:bg-[#0B5547] focus-visible:ring-2 focus-visible:ring-[#0E6B59] focus-visible:ring-offset-2 focus-visible:outline-none"
+                  className="inline-flex items-center gap-1 rounded-full bg-[#0E6B59] text-white text-[11px] font-semibold px-2.5 py-1 hover:bg-[#0B5547]"
                 >
-                  {errorMessage.place ? `Plan ${errorMessage.suggestion.destination} instead` : `Plan it in ${errorMessage.suggestion.destination}`}
-                  <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Plan {errorMessage.suggestion.destination} instead</span>
+                  <ArrowRight className="h-3 w-3" />
                 </button>
-                <span className="text-[11px] text-[#8A4307]/80">Your dates, travellers and budget stay the same.</span>
-              </div>
-            )}
-            {errorMessage.showChips && (
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <span className="text-[11px] text-[#8A4307]/80">{errorMessage.suggestion ? 'Or:' : errorMessage.place ? 'Plan one of these instead:' : 'Explore:'}</span>
-                {SUPPORTED_DESTINATIONS.map((dest) => (
-                  <button
-                    key={dest}
-                    type="button"
-                    onClick={() => handleSelectChip(dest)}
-                    className="pill-chip text-xs bg-white text-[#0E6B59] hover:bg-[#E3F1EC] border border-[#0E6B59]/30"
-                  >
-                    {dest}
-                  </button>
-                ))}
               </div>
             )}
           </div>
         )}
-
-        <div className="mt-4 pt-4 border-t border-[#E2E6E1] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-[#55625E]">
-            <span id="covered-destinations-note">Plan any trip in India · detailed guides for <strong className="font-semibold text-[#15201D]">Goa, Coorg, Kerala, Mysuru</strong> · prices in INR</span>
-            {!isAiAvailable && (
-              <span id="ai-basic-mode-note" className="inline-flex items-center gap-1.5 text-[#8A4307] bg-[#FCEFD9] px-2 py-0.5 rounded-full font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#8A4307]" />
-                AI parsing unavailable — using basic mode
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-          {speech.isSupported && (
-            <button
-              type="button"
-              id="voice-input-button"
-              onClick={speech.toggle}
-              disabled={isSubmitting}
-              aria-pressed={isListening}
-              aria-label={isListening ? 'Stop voice input' : 'Speak your trip instead of typing'}
-              title={isListening ? 'Stop listening' : 'Speak your trip'}
-              className={`shrink-0 inline-flex items-center justify-center gap-1.5 min-h-[44px] h-11 px-4 rounded-full border text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[#0E6B59] focus-visible:outline-none ${
-                isListening
-                  ? 'bg-[#C2410C] border-[#C2410C] text-white hover:bg-[#9A3412]'
-                  : 'bg-white border-[#0E6B59]/40 text-[#0E6B59] hover:bg-[#E3F1EC]'
-              }`}
-            >
-              {isListening ? <Square className="h-4 w-4" aria-hidden="true" /> : <Mic className="h-4 w-4" aria-hidden="true" />}
-              <span>{isListening ? 'Stop' : 'Speak'}</span>
-            </button>
-          )}
-          <button
-            type="submit"
-            className="btn-primary w-full sm:w-auto min-h-[44px] disabled:opacity-70 disabled:cursor-wait"
-            aria-label="Plan my trip"
-            aria-busy={isSubmitting}
-            disabled={isSubmitting}
-          >
-            <span>{isSubmitting ? 'Understanding your trip…' : 'Plan my trip'}</span>
-            <ArrowRight className="h-4 w-4" />
-          </button>
-          </div>
-        </div>
       </form>
 
-      {/* B2: Where should we go? — Secondary Start */}
-      <WhereShouldWeGo onSelectSuggestion={handleSelectWhereToGo} />
+      {/* 3. Destination Cards (Goa, Coorg, Mysuru, Kerala…) */}
+      {/* At 375px phone screen width, 2 cards of 155px width sit side by side above the fold */}
+      <section aria-labelledby="top-cards-heading" className="mb-4">
+        <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-2 px-2 sm:mx-0 sm:px-0 snap-x snap-mandatory scrollbar-thin">
+          {filteredCards.map((dest) => {
+            const roughPerPerson = Math.round(dest.baseCostPerDayINR * selectedDays / 1000) * 1000;
+            const isChecked = compareSelected.includes(dest.name);
 
-      {/* Example Chips */}
-      <div className="text-center space-y-3 mb-12 md:mb-16">
-        <div className="text-xs font-medium text-[#55625E]">
-          Or start from an example
+            return (
+              <div
+                key={dest.name}
+                onClick={() => {
+                  trackCardClick({ destination: dest.name, days: selectedDays, pricePerPerson: roughPerPerson, vibe: dest.vibe });
+                  void handleSubmit(undefined, `${selectedDays} days in ${dest.name} for 2 adults under budget ₹${(roughPerPerson * 2).toLocaleString('en-IN')}. ${dest.shortLine}`);
+                }}
+                className={`w-[155px] sm:w-[195px] shrink-0 snap-center rounded-xl border bg-white transition-all cursor-pointer flex flex-col justify-between overflow-hidden group ${
+                  isChecked ? 'border-[#0E6B59] ring-2 ring-[#0E6B59]/20 shadow-md' : 'border-[#E2E6E1] hover:border-[#0E6B59] hover:shadow-md'
+                }`}
+              >
+                {/* Image + Vibe Badge + Compare Checkbox */}
+                <div className="relative h-20 sm:h-26 w-full bg-[#E2E6E1] overflow-hidden">
+                  <img
+                    src={dest.imageUrl}
+                    alt={dest.name}
+                    loading="lazy"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute top-1.5 left-1.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-[#0E6B59] bg-white/95 px-2 py-0.5 rounded-full shadow-xs">
+                      {dest.vibe}
+                    </span>
+                  </div>
+
+                  {/* Prompt 8: Compare Checkbox */}
+                  <label
+                    onClick={(e) => e.stopPropagation()}
+                    className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold shadow-xs cursor-pointer ${
+                      isChecked ? 'bg-[#0E6B59] text-white' : 'bg-white/95 text-[#15201D]'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleCompare(dest.name)}
+                      className="rounded text-[#0E6B59] focus:ring-0 h-3 w-3 cursor-pointer"
+                    />
+                    <span>Compare</span>
+                  </label>
+                </div>
+
+                {/* Card Content: Name, exact "~₹X per person · N days", Plan Button */}
+                <div className="p-2.5 space-y-1.5 flex-1 flex flex-col justify-between text-left">
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm">{dest.icon}</span>
+                      <h3 className="text-xs sm:text-sm font-bold text-[#15201D] font-heading truncate">
+                        {dest.name}
+                      </h3>
+                    </div>
+                    {/* Prompt 6 exact format: "~₹X per person · N days" */}
+                    <div className="text-[10px] sm:text-[11px] font-bold text-[#15201D] mt-0.5">
+                      ~₹{roughPerPerson.toLocaleString('en-IN')} per person · {selectedDays} days
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      trackCardClick({ destination: dest.name, days: selectedDays, pricePerPerson: roughPerPerson, vibe: dest.vibe });
+                      void handleSubmit(undefined, `${selectedDays} days in ${dest.name} for 2 adults under budget ₹${(roughPerPerson * 2).toLocaleString('en-IN')}. ${dest.shortLine}`);
+                    }}
+                    className="w-full min-h-[44px] px-2.5 py-1.5 rounded-lg bg-[#0E6B59] text-white text-xs font-bold hover:bg-[#0A5546] transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                  >
+                    <span>Plan</span>
+                    <ArrowRight className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-2.5">
+      </section>
+
+      {/* 4. Example Trips */}
+      <div className="text-center space-y-1.5 mb-6">
+        <div className="text-[11px] font-medium text-[#55625E]">Or start from an example</div>
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
           {EXAMPLE_TRIPS.map((ex) => (
-            <button
-              key={ex.label}
-              type="button"
-              onClick={() => handleSelectExample(ex.prompt)}
-              className="pill-chip"
-            >
+            <button key={ex.label} type="button" onClick={() => handleSelectExample(ex.prompt)} className="pill-chip text-xs">
               {ex.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Three Trust Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
-        {/* Card 1 */}
-        <div className="card-consumer p-5 text-left space-y-2">
-          <div className="h-8 w-8 rounded-lg bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center">
-            <span className="font-bold text-base leading-none">₹</span>
-          </div>
-          <h2 className="text-base font-bold text-[#15201D] font-heading">
-            Budget first
-          </h2>
-          <p className="text-sm text-[#55625E] leading-normal">
-            Plans fit your total. Upgrades are your choice.
-          </p>
+      {/* 5. Icon Strip in Footer (NOT cards, so they don't look clickable) */}
+      <footer className="mt-8 pt-4 border-t border-[#E2E6E1]/70 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-[#55625E]">
+        <div className="flex items-center gap-1.5">
+          <span className="font-bold text-[#0E6B59]">₹</span>
+          <span><strong>Budget first</strong> — we tell you if it fits, and what to change if it doesn't.</span>
         </div>
-
-        {/* Card 2 */}
-        <div className="card-consumer p-5 text-left space-y-2">
-          <div className="h-8 w-8 rounded-lg bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center">
-            <Clock className="h-4 w-4" />
-          </div>
-          <h2 className="text-base font-bold text-[#15201D] font-heading">
-            Real travel times
-          </h2>
-          <p className="text-sm text-[#55625E] leading-normal">
-            No 2-hour drives hidden after a flight.
-          </p>
+        <div className="flex items-center gap-1.5">
+          <Clock className="h-3.5 w-3.5 text-[#0E6B59]" />
+          <span><strong>Real travel times</strong> — no hidden 2-hour drives after a flight.</span>
         </div>
-
-        {/* Card 3 */}
-        <div className="card-consumer p-5 text-left space-y-2">
-          <div className="h-8 w-8 rounded-lg bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center">
-            <Tag className="h-4 w-4" />
-          </div>
-          <h2 className="text-base font-bold text-[#15201D] font-heading">
-            Every price labelled
-          </h2>
-          <p className="text-sm text-[#55625E] leading-normal">
-            Live, estimate or sample — always visible.
-          </p>
+        <div className="flex items-center gap-1.5">
+          <Tag className="h-3.5 w-3.5 text-[#0E6B59]" />
+          <span><strong>Every price labelled</strong> — Sample, estimate or AI estimate.</span>
         </div>
-      </div>
+      </footer>
     </div>
   );
 };

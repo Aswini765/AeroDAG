@@ -19,6 +19,7 @@ import {
 import { TripContext } from './requirementEngine.ts';
 import { DestinationProfile, TopSight } from '../types/destinationProfile.ts';
 import { resolveTravelDates } from './dateResolver.ts';
+import { evaluateMonthWorthiness, isOffbeatRequested, getHowToGetThereModes } from './seasonAndFitHelper.ts';
 
 export function buildPlanFromDestinationProfile(
   context: Partial<TripContext>,
@@ -47,25 +48,42 @@ export function buildPlanFromDestinationProfile(
   };
 
   const originCodeMatch = origin.match(/\(([A-Z]{3})\)/);
-  const originCode = originCodeMatch ? originCodeMatch[1] : 'BLR';
+  let originCode = originCodeMatch ? originCodeMatch[1] : (
+    origin.toLowerCase().includes('goa') ? 'GOI' :
+    origin.toLowerCase().includes('delhi') ? 'DEL' :
+    origin.toLowerCase().includes('mumbai') ? 'BOM' :
+    origin.toLowerCase().includes('chennai') ? 'MAA' :
+    origin.toLowerCase().includes('hyderabad') ? 'HYD' :
+    origin.toLowerCase().includes('kochi') ? 'COK' : 'BLR'
+  );
   const originCity = origin.replace(/\s*\([A-Z]{3}\)/, '').trim() || 'Bengaluru';
-  const destAirportCode = primaryAirport.code;
+  let destAirportCode = primaryAirport.code;
+
+  if (originCode === destAirportCode) {
+    if (profile.name.toLowerCase().includes('bengaluru')) {
+      destAirportCode = 'BLR';
+      if (originCode === 'BLR') originCode = 'GOI';
+    } else if (profile.name.toLowerCase().includes('goa')) {
+      destAirportCode = 'GOX';
+      if (originCode === 'GOX' || originCode === 'GOI') originCode = 'BLR';
+    }
+  }
 
   const flightPricePerPersonINR = 3500;
   const flightTotalPriceINR = flightPricePerPersonINR * totalTravellers;
 
   const flight: FlightItem = {
     id: `fl-${profile.name.toLowerCase()}-1`,
-    airline: 'IndiGo',
-    airlineCode: '6E',
-    flightNumber: '6E-452',
+    airline: `Morning non-stop flight ${originCode}→${destAirportCode}`,
+    airlineCode: 'AI-EST',
+    flightNumber: '',
     originCode,
     originCity,
     destinationCode: destAirportCode,
     destinationCity: primaryAirport.name.replace(/Airport|International/gi, '').trim() || profile.name,
-    departureTime: '07:30',
-    arrivalTime: '09:00',
-    duration: '1h 30m',
+    departureTime: 'Morning',
+    arrivalTime: 'Morning',
+    duration: 'approx. 1h 45m',
     stops: 'Non-stop',
     pricePerPersonINR: flightPricePerPersonINR,
     totalPriceINR: flightTotalPriceINR,
@@ -115,7 +133,7 @@ export function buildPlanFromDestinationProfile(
 
   const budgetHotel: HotelItem = {
     id: `ht-${profile.name.toLowerCase()}-budget`,
-    name: `${profile.name} Heritage Homestay`,
+    name: `3★ stay in ${area0}, ~₹${budgetRoomPerNight.toLocaleString('en-IN')}/night`,
     area: area0,
     city: profile.name,
     starRating: 3,
@@ -140,7 +158,7 @@ export function buildPlanFromDestinationProfile(
 
   const midHotel: HotelItem = {
     id: `ht-${profile.name.toLowerCase()}-mid`,
-    name: `${profile.name} Valley & Garden Resort`,
+    name: `4★ hotel in ${area1}, ~₹${midRoomPerNight.toLocaleString('en-IN')}/night`,
     area: area1,
     city: profile.name,
     starRating: 4,
@@ -165,7 +183,7 @@ export function buildPlanFromDestinationProfile(
 
   const premiumHotel: HotelItem = {
     id: `ht-${profile.name.toLowerCase()}-premium`,
-    name: `${profile.name} Luxury Estate & Spa`,
+    name: `5★ luxury stay in ${area2}, ~₹${premiumRoomPerNight.toLocaleString('en-IN')}/night`,
     area: area2,
     city: profile.name,
     starRating: 5,
@@ -412,6 +430,9 @@ export function buildPlanFromDestinationProfile(
         detail: 'New destination with AI-estimated rates. Verify hotel pin and prices on booking platforms before payment.'
       }
     ],
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    monthWorthiness: evaluateMonthWorthiness(profile.name, dates, `${context.notes?.join(' ')} ${context.freeTextPreferences || ''}`, true),
+    isOffbeatLeaning: isOffbeatRequested(context.freeTextPreferences || '', context.notes),
+    transitModeComparison: getHowToGetThereModes(profile.name, origin, totalTravellers, 'Flight')
   };
 }

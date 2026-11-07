@@ -43,6 +43,23 @@ export interface PlanTierOption {
   train?: TrainItem | null;
   plan: TripPlan;
   diffFromBalanced: string;
+  stayCostINR: number;
+  travelCostINR: number;
+  localTransportCostINR: number;
+  foodCostINR: number;
+  shoppingCostINR: number;
+  activitiesCostINR: number;
+  bufferCostINR: number;
+  subtotalCostINR: number;
+  categoryBuffers?: {
+    stayBufferINR: number;
+    travelBufferINR: number;
+    localTransportBufferINR: number;
+    foodBufferINR: number;
+    activitiesBufferINR: number;
+    shoppingBufferINR: number;
+    effectiveBufferPercent: number;
+  };
 }
 
 function parseDurationMinutes(durationStr?: string): number {
@@ -56,7 +73,11 @@ function parseDurationMinutes(durationStr?: string): number {
 
 export function generatePlanOptions(
   basePlan: TripPlan,
-  preferences?: TripPreferences | null
+  preferences?: TripPreferences | null,
+  optionsConfig?: {
+    customBufferPercent?: number;
+    useCategoryWeights?: boolean;
+  }
 ): PlanTierOption[] {
   // Collect candidate hotels
   let availableHotels: HotelItem[] = (basePlan.availableHotels && basePlan.availableHotels.length > 0)
@@ -120,13 +141,27 @@ export function generatePlanOptions(
     balancedTravelDetail = basePlan.transfer.vehicleType;
   }
 
-  const balancedCost = computeFullTripCost(basePlan, preferences);
+  const extractBreakdown = (costCalc: ReturnType<typeof computeFullTripCost>) => ({
+    stayCostINR: costCalc.lines.find((l) => l.id === 'cost-stay')?.amountINR || 0,
+    travelCostINR: costCalc.lines.find((l) => l.id === 'cost-travel')?.amountINR || 0,
+    localTransportCostINR: costCalc.lines.find((l) => l.id === 'cost-local-transport')?.amountINR || 0,
+    foodCostINR: costCalc.lines.find((l) => l.id === 'cost-food')?.amountINR || 0,
+    activitiesCostINR: costCalc.lines.find((l) => l.id === 'cost-activities')?.amountINR || 0,
+    shoppingCostINR: costCalc.lines.find((l) => l.id === 'cost-shopping')?.amountINR || 0,
+    bufferCostINR: costCalc.bufferAmountINR,
+    subtotalCostINR: costCalc.subtotalINR,
+    categoryBuffers: costCalc.categoryBuffers
+  });
+
+  const targetBudgetINR = preferences?.budgetTotalINR || basePlan.budget?.targetINR || 0;
+  const balancedCost = computeFullTripCost(basePlan, preferences, optionsConfig);
+  const isBalancedWithinBudget = targetBudgetINR > 0 ? balancedCost.totalWithBufferINR <= targetBudgetINR : true;
 
   const balancedOption: PlanTierOption = {
     id: 'balanced',
     tier: 'Balanced',
     title: 'Balanced',
-    badge: 'Recommended',
+    badge: 'Balanced',
     tagline: 'Handpicked boutique stay with optimal travel pacing',
     totalCostINR: balancedCost.totalWithBufferINR,
     perPersonCostINR: balancedCost.perPersonINR,
@@ -140,7 +175,8 @@ export function generatePlanOptions(
     flight: basePlan.flight,
     train: basePlan.selectedTrain,
     plan: basePlan,
-    diffFromBalanced: 'Current plan · Recommended'
+    diffFromBalanced: 'Boutique stay & direct travel pacing',
+    ...extractBreakdown(balancedCost)
   };
 
   // 2. BUDGET OPTION
@@ -188,7 +224,7 @@ export function generatePlanOptions(
     flight: budgetFlight,
     train: budgetTrain
   });
-  const budgetCost = computeFullTripCost(budgetPlan, preferences);
+  const budgetCost = computeFullTripCost(budgetPlan, preferences, optionsConfig);
 
   const budgetDiffINR = balancedCost.totalWithBufferINR - budgetCost.totalWithBufferINR;
   let budgetDiffText = 'Value stay & smart economical transit';
@@ -230,7 +266,8 @@ export function generatePlanOptions(
     flight: budgetFlight,
     train: budgetTrain,
     plan: budgetPlan,
-    diffFromBalanced: budgetDiffText
+    diffFromBalanced: budgetDiffText,
+    ...extractBreakdown(budgetCost)
   };
 
   // 3. COMFORT OPTION
@@ -276,7 +313,7 @@ export function generatePlanOptions(
     flight: comfortFlight,
     train: comfortTrain
   });
-  const comfortCost = computeFullTripCost(comfortPlan, preferences);
+  const comfortCost = computeFullTripCost(comfortPlan, preferences, optionsConfig);
 
   const comfortDiffINR = comfortCost.totalWithBufferINR - balancedCost.totalWithBufferINR;
   let comfortDiffText = 'Premium resort & fastest connection';
@@ -305,19 +342,19 @@ export function generatePlanOptions(
     flight: comfortFlight,
     train: comfortTrain,
     plan: comfortPlan,
-    diffFromBalanced: comfortDiffText
+    diffFromBalanced: comfortDiffText,
+    ...extractBreakdown(comfortCost)
   };
 
-  // Check if Budget and Balanced would have the same hotel and travel
-  const budgetTransitKey = budgetOption.flight?.id || budgetOption.train?.id || budgetOption.travelMode;
-  const balancedTransitKey = balancedOption.flight?.id || balancedOption.train?.id || balancedOption.travelMode;
-  const isBudgetIdenticalToBalanced =
-    (budgetOption.hotel.id === balancedOption.hotel.id || budgetOption.hotel.name === balancedOption.hotel.name) &&
-    budgetTransitKey === balancedTransitKey;
+  // PRD Rule: Budget must differ from Balanced in stay property or transport mode, not only flight price.
+  // If no real difference exists (same hotel and same transport mode), show 2 options.
+  const sameStay = (budgetOption.hotel.id === balancedOption.hotel.id || budgetOption.hotel.name === balancedOption.hotel.name);
+  const sameTransportMode = budgetOption.travelMode === balancedOption.travelMode;
+  const budgetDiffersReal = !sameStay || !sameTransportMode;
 
-  const candidateOptions = isBudgetIdenticalToBalanced
-    ? [balancedOption, comfortOption]
-    : [budgetOption, balancedOption, comfortOption];
+  const candidateOptions: PlanTierOption[] = budgetDiffersReal
+    ? [budgetOption, balancedOption, comfortOption]
+    : [balancedOption, comfortOption];
 
   const distinctOptions: PlanTierOption[] = [];
   const seenKeys = new Set<string>();
@@ -328,6 +365,34 @@ export function generatePlanOptions(
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
       distinctOptions.push(opt);
+    }
+  }
+
+  // Determine "Recommended": highest-comfort option whose total <= targetBudget
+  // Hierarchy: Comfort > Balanced > Budget
+  let recommendedId: 'comfort' | 'balanced' | 'budget' | null = null;
+  if (targetBudget > 0) {
+    const comfortFits = distinctOptions.find((o) => o.id === 'comfort' && o.totalCostINR <= targetBudget);
+    const balancedFits = distinctOptions.find((o) => o.id === 'balanced' && o.totalCostINR <= targetBudget);
+    const budgetFits = distinctOptions.find((o) => o.id === 'budget' && o.totalCostINR <= targetBudget);
+
+    if (comfortFits) {
+      recommendedId = 'comfort';
+    } else if (balancedFits) {
+      recommendedId = 'balanced';
+    } else if (budgetFits) {
+      recommendedId = 'budget';
+    }
+  }
+
+  for (const opt of distinctOptions) {
+    if (recommendedId && opt.id === recommendedId) {
+      opt.badge = 'Recommended';
+    } else if (targetBudget > 0 && opt.totalCostINR <= targetBudget) {
+      opt.badge = opt.id === 'budget' ? 'Fits your budget' : opt.tier;
+    } else if (targetBudget > 0 && opt.totalCostINR > targetBudget) {
+      const overDiff = opt.totalCostINR - targetBudget;
+      opt.badge = `+₹${overDiff.toLocaleString('en-IN')} over budget`;
     }
   }
 

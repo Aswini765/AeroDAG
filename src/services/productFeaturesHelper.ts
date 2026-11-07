@@ -70,7 +70,7 @@ export function buildSeasonalRecommendation(
         'Lush green hillside tea carpets in Munnar with morning mountain mist; cool backwater breezes on Alleppey canals with lotus blooms.',
       crowdLevel: 'Moderate. December brings festive vacationers; November offers superior value.',
       personaSubzoneNote: isFamily
-        ? 'Sub-Zone Split: 2 Nights in Munnar (misty tea trails & Tata Tea Museum) + 1 Night in private family houseboat in Alleppey backwaters.'
+        ? 'Munnar & Tea Hills: Peaceful hillside stay with morning mist, tea trail walks, and homestyle local food.'
         : 'Coastal Sub-Zone: Varkala Cliff or Fort Kochi for vibrant bohemian cafes, heritage art, and clifftop sunset dining.',
       weatherNote: 'Hill stations (Munnar): 15°C–22°C crisp air. Backwaters: Warm 28°C with gentle lagoon breeze.'
     };

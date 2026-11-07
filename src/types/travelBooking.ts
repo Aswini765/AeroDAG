@@ -158,6 +158,7 @@ export interface VerifiedReviewItem {
 export interface ActivityDayItem {
   day: number;
   dateStr: string;
+  stayArea?: string;
   title: string;
   theme: string;
   morning: string;
@@ -392,6 +393,7 @@ export interface TripPlan {
   title: string;
   summary: string;
   destination: string;
+  destinationType?: 'city' | 'region';
   origin: string;
   dates: string;
   durationDays: number;
@@ -417,6 +419,12 @@ export interface TripPlan {
   availableTrains?: TrainItem[];
   hotel: HotelItem;
   availableHotels: HotelItem[];
+  stays?: Array<{
+    baseName: string;
+    nights: number;
+    hotel: HotelItem;
+  }>;
+  interCityTravel?: TransferItem;
   transfer: TransferItem;
   availableTransfers: TransferItem[];
   activities: ActivityItem[];
@@ -434,6 +442,22 @@ export interface TripPlan {
   budgetBuffer?: RealisticBudgetBuffer;
   trustVerification?: TrustVerificationDetails;
   isAiEstimatedDestination?: boolean;
+  monthWorthiness?: {
+    month: string;
+    verdict: 'Yes' | 'Mixed' | 'Off-season';
+    reason: string;
+    sourceLabel: string;
+  };
+  isOffbeatLeaning?: boolean;
+  stayAreaReason?: string;
+  transitModeComparison?: Array<{
+    mode: 'Flight' | 'Train' | 'Road Cab';
+    doorToDoorHoursText: string;
+    doorToDoorHours: number;
+    costForGroupINR: number;
+    scenicNote: string;
+    isRecommended?: boolean;
+  }>;
 }
 
 export interface RouteOption {

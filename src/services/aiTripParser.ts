@@ -2,13 +2,14 @@
 // Client-side bridge to POST /api/parse-trip (server-side Gemini).
 // The rule-based parser in App.tsx is always the fallback ("Basic mode").
 
-import type { TripContext } from './requirementEngine';
+import { RequirementEngine, type TripContext } from './requirementEngine';
 import { resolveTravelDates } from './dateResolver';
 
 type Source = 'stated' | 'assumed' | 'missing';
 
 export interface ParseTripData {
   destination: string;
+  destinationType?: 'city' | 'region' | null;
   origin: string | null;
   durationDays: number | null;
   dates: string | null;
@@ -17,6 +18,7 @@ export interface ParseTripData {
   seniors: Array<{ age?: number | null }>;
   budgetINR: number | null;
   pace: string | null;
+  freeTextPreferences?: string | null;
   accommodationPreference: string | null;
   transportPreference: string | null;
   sources: Record<string, Source>;
@@ -27,32 +29,87 @@ export type ParseTripResult =
   | { kind: 'ok'; data: ParseTripData }
   | { kind: 'unsupported'; place: string }
   | { kind: 'unparseable' }
+  | { kind: 'rate_limited'; message: string }
+  | { kind: 'server_error_fallback'; message?: string; isBasicMode: true; parsed?: TripContext }
   | { kind: 'failed' };
 
 export async function callParseTrip(text: string, timeoutMs = 8000): Promise<ParseTripResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch('/api/parse-trip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userMessage: text }),
-      signal: controller.signal
-    });
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) return { kind: 'failed' };
-    const body = await res.json();
-    if (res.status === 422 && body?.code === 'UNPARSEABLE') return { kind: 'unparseable' };
-    if (!res.ok) return { kind: 'failed' };
-    if (body?.basicMode) return { kind: 'failed' };
-    if (typeof body?.unsupported === 'string') return { kind: 'unsupported', place: body.unsupported };
-    if (typeof body?.destination === 'string' && body.sources) return { kind: 'ok', data: body as ParseTripData };
-    return { kind: 'failed' };
-  } catch {
-    return { kind: 'failed' };
-  } finally {
-    clearTimeout(timer);
+  const executeSingleCall = async (): Promise<{ status: number; body: any }> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch('/api/parse-trip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userMessage: text }),
+        signal: controller.signal
+      });
+      const contentType = res.headers.get('content-type') || '';
+      let body: any = null;
+      if (contentType.includes('application/json')) {
+        body = await res.json().catch(() => null);
+      }
+      return { status: res.status, body };
+    } catch {
+      return { status: 0, body: null };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const evaluateAttempt = (res: { status: number; body: any }): ParseTripResult | 'retry' => {
+    const { status, body } = res;
+    // 429 or AI rate limited -> "AI is busy, try again in a minute"
+    if (status === 429 || (status === 503 && body?.code === 'AI_RATE_LIMITED')) {
+      return { kind: 'rate_limited', message: 'AI is busy, try again in a minute' };
+    }
+    // 422 with UNPARSEABLE or 200 with no destination
+    if (status === 422 && body?.code === 'UNPARSEABLE') {
+      return { kind: 'unparseable' };
+    }
+    if (status === 200) {
+      if (body?.basicMode) {
+        return { kind: 'server_error_fallback', isBasicMode: true, message: body?.message, parsed: body?.parsed };
+      }
+      if (typeof body?.unsupported === 'string') {
+        return { kind: 'unsupported', place: body.unsupported };
+      }
+      if (typeof body?.destination === 'string' && body.destination.trim() && body.sources) {
+        return { kind: 'ok', data: body as ParseTripData };
+      }
+      // 200 with no destination -> unparseable
+      return { kind: 'unparseable' };
+    }
+    // 5xx (e.g. 500, 502, 503, 504) or network error (status 0)
+    return 'retry';
+  };
+
+  // Attempt 1
+  const first = await executeSingleCall();
+  const firstEval = evaluateAttempt(first);
+  if (firstEval !== 'retry') {
+    return firstEval;
   }
+
+  // 5xx or network error -> retry once automatically after 2 seconds
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  // Attempt 2
+  const second = await executeSingleCall();
+  const secondEval = evaluateAttempt(second);
+  if (secondEval !== 'retry') {
+    return secondEval;
+  }
+
+  // If it fails again, fall back to rule-based parsing with Basic mode tag
+  const { context: parsed } = RequirementEngine.extractAndMerge(RequirementEngine.createEmptyContext(), text);
+  parsed.parseMode = 'basic';
+  return {
+    kind: 'server_error_fallback',
+    message: 'Server error retry failed',
+    isBasicMode: true,
+    parsed
+  };
 }
 
 const ORIGIN_LABELS: Array<[RegExp, string]> = [
@@ -61,7 +118,8 @@ const ORIGIN_LABELS: Array<[RegExp, string]> = [
   [/kochi|cochin/i, 'Kochi (COK)'],
   [/bengaluru|bangalore|blr/i, 'Bengaluru (BLR)'],
   [/chennai|madras/i, 'Chennai (MAA)'],
-  [/hyderabad/i, 'Hyderabad (HYD)']
+  [/hyderabad/i, 'Hyderabad (HYD)'],
+  [/goa|goi|gox|dabolim|mopa/i, 'Goa (GOI)']
 ];
 
 const toTag = (s: Source | undefined): 'stated' | 'assumed' => (s === 'stated' ? 'stated' : 'assumed');
@@ -82,6 +140,19 @@ export function applyAiParse(
 
   ctx.destination = data.destination;
   fieldSources.destination = 'stated';
+
+  if (data.destinationType) {
+    ctx.destinationType = data.destinationType;
+    fieldSources.destinationType = toTag(src.destinationType);
+  }
+
+  if (data.freeTextPreferences) {
+    ctx.freeTextPreferences = data.freeTextPreferences;
+    if (!ctx.notes.includes(data.freeTextPreferences)) {
+      ctx.notes.push(data.freeTextPreferences);
+    }
+    fieldSources.preferences = toTag(src.freeTextPreferences);
+  }
 
   // Origin
   if (data.origin) {
@@ -116,7 +187,7 @@ export function applyAiParse(
     else if (ctx.childrenCount > 0 || ctx.seniorsCount > 0) ctx.partyType = 'family';
     else if (ctx.totalTravellers === 2) ctx.partyType = 'couple';
     else ctx.partyType = 'friends';
-    const anyStated = [src.adults, src.children, src.seniors].includes('stated');
+    const anyStated = [src.adults, src.children, src.seniors, src.totalTravellers].includes('stated');
     fieldSources.travellers = anyStated ? 'stated' : 'assumed';
   }
 

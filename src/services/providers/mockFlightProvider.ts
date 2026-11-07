@@ -184,6 +184,34 @@ export class MockFlightProvider implements FlightProvider {
       const pricePerPerson = outboundFare + returnFare;
       const totalUSD = Math.round(totalINR / 84);
 
+      const originMatch = (params.origin || '').match(/\(([A-Z]{3})\)/);
+      const originCityName = params.origin ? params.origin.replace(/\s*\(.*\)/, '').trim() : f.originCity;
+      let originAirportCode = originMatch ? originMatch[1] : f.originCode;
+      if (!originMatch && params.origin) {
+        const lowerOrigin = params.origin.toLowerCase();
+        if (lowerOrigin.includes('goa')) originAirportCode = 'GOI';
+        else if (lowerOrigin.includes('delhi')) originAirportCode = 'DEL';
+        else if (lowerOrigin.includes('mumbai')) originAirportCode = 'BOM';
+        else if (lowerOrigin.includes('chennai')) originAirportCode = 'MAA';
+        else if (lowerOrigin.includes('hyderabad')) originAirportCode = 'HYD';
+        else if (lowerOrigin.includes('kochi')) originAirportCode = 'COK';
+        else if (lowerOrigin.includes('bengaluru') || lowerOrigin.includes('blr')) originAirportCode = 'BLR';
+      }
+
+      let destCode = f.destinationCode;
+      let destCity = f.destinationCity;
+      if (originAirportCode === destCode) {
+        if (dest.includes('bengaluru') || dest.includes('bangalore')) {
+          destCode = 'BLR';
+          destCity = 'Bengaluru';
+          if (originAirportCode === 'BLR') originAirportCode = 'GOI';
+        } else if (dest.includes('goa')) {
+          destCode = 'GOX';
+          destCity = 'Goa (Mopa)';
+          if (originAirportCode === 'GOX' || originAirportCode === 'GOI') originAirportCode = 'BLR';
+        }
+      }
+
       return {
         ...f,
         id: `${f.id}-${count}pax`,
@@ -195,7 +223,10 @@ export class MockFlightProvider implements FlightProvider {
         totalPriceINR: totalINR,
         totalPriceUSD: totalUSD,
         pricePerPersonINR: pricePerPerson,
-        originCity: params.origin ? params.origin.replace(/\s*\(.*\)/, '').trim() : f.originCity,
+        originCode: originAirportCode,
+        originCity: originCityName,
+        destinationCode: destCode,
+        destinationCity: destCity,
         adjacentFamilySeatsRequested: true,
         source: 'sample' as const,
         sourceLabel: 'Sample data'

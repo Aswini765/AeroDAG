@@ -33,6 +33,11 @@ import { suggestAlternative } from './services/destinationSuggestions';
 import { DestinationProfile } from './types/destinationProfile';
 import { KeepTripsCard } from './components/consumer/KeepTripsCard';
 import { computeFullTripCost } from './services/fullTripCostHelper';
+import { RegionRouteChoiceScreen } from './components/consumer/RegionRouteChoiceScreen';
+import { RegionRouteOption, buildMultiBasePlanFromRoute } from './services/regionRoutesService';
+import { isKnownRegion } from './server/parseTripHandler';
+import { DestinationComparisonView } from './components/consumer/DestinationComparisonView';
+import { detectComparisonIntent, buildDestinationComparison, DestinationComparisonResult } from './services/destinationComparisonService';
 
 const APP_NOT_PLACES = new Set([
   'the', 'a', 'an', 'my', 'our', 'weekend', 'week', 'days', 'day', 'budget', 'summer', 'winter', 'monsoon',
@@ -71,6 +76,7 @@ export default function App() {
   const [activeTripPlan, setActiveTripPlan] = useState<TripPlan | null>(null);
   const [tripPreferences, setTripPreferences] = useState<TripPreferences | null>(null);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+  const [comparisonResult, setComparisonResult] = useState<DestinationComparisonResult | null>(null);
 
   // Confirmed bookings list
   const [confirmedTrips, setConfirmedTrips] = useState<ConfirmedBookingRecord[]>([]);
@@ -377,15 +383,63 @@ export default function App() {
     }
   };
 
+  const handleComparePlaces = async (places: string[]) => {
+    setIsLoadingPlan(true);
+    try {
+      const res = await buildDestinationComparison(
+        places,
+        tripContext.durationDays || 4,
+        tripContext.totalTravellers || 2,
+        tripContext.budgetTotalINR || 40000,
+        tripContext.origin || 'Bengaluru (BLR)',
+        tripContext.transportMode || 'Flight',
+        tripContext.dates || '14–20 Nov 2026'
+      );
+      setComparisonResult(res);
+      setCurrentStep('compare');
+    } catch (err) {
+      console.error('Failed to compare places:', err);
+    } finally {
+      setIsLoadingPlan(false);
+    }
+  };
+
   // Handle starting a plan from Screen 1 (Describe).
   // Returns an error message for the Describe screen, or null when we moved on.
   const handleStartPlan = async (promptText: string): Promise<string | null> => {
+    // Prompt 8: Detect natural comparison intent ("Coorg or Ooty, 4 days, 2 people, budget 40000")
+    const comp = detectComparisonIntent(promptText);
+    if (comp && comp.places.length >= 2) {
+      setIsLoadingPlan(true);
+      try {
+        const res = await buildDestinationComparison(
+          comp.places,
+          comp.durationDays || 4,
+          comp.travellers || 2,
+          comp.budgetTotalINR || 40000,
+          'Bengaluru (BLR)',
+          comp.transportMode || 'Flight',
+          comp.travelDates || '14–20 Nov 2026'
+        );
+        setComparisonResult(res);
+        setIsLoadingPlan(false);
+        setCurrentStep('compare');
+        return null;
+      } catch (err) {
+        console.error('Failed to build destination comparison:', err);
+        setIsLoadingPlan(false);
+      }
+    }
+
     const SUPPORTED_MSG = 'AeroDAG currently covers: Goa, Coorg, Kerala, Mysuru, Araku, Himachal, Rajasthan, Vietnam, Singapore, Thailand.';
     const UNPARSEABLE_MSG = "I couldn't understand that. Try something like: 3 days in Coorg for 2, budget ₹20,000.";
     const lower = promptText.toLowerCase();
 
     // 1. Try the AI parser first (server-side Gemini), when it is configured.
     const ai: ParseTripResult = isAiAvailable ? await callParseTrip(promptText) : { kind: 'failed' };
+    if (ai.kind === 'rate_limited') {
+      return 'AI is busy, try again in a minute';
+    }
     if (ai.kind === 'unsupported') {
       return `We can't plan ${ai.place} yet. ${SUPPORTED_MSG}`;
     }
@@ -397,35 +451,71 @@ export default function App() {
     const ctx = RequirementEngine.createEmptyContext();
     const fieldSources: Record<string, 'stated' | 'assumed' | 'needed'> = {};
 
+    const isFromGoa = /\b(?:from|leaving|departing|starting\s+from)\s+goa\b/i.test(promptText);
+    const mentionsOtherDest = /\b(bengaluru|bangalore|blr|coorg|kodagu|madikeri|kerala|munnar|alleppey|mysuru|mysore|araku|rajasthan|himachal|uttarakhand)\b/i.test(promptText);
+
     // Destination
-    if (lower.includes('goa')) {
+    if (lower.includes('goa') && (!isFromGoa || !mentionsOtherDest)) {
       ctx.destination = 'Goa';
     } else if (lower.includes('coorg') || lower.includes('kodagu') || lower.includes('madikeri')) {
       ctx.destination = 'Coorg';
     } else if (lower.includes('kerala') || lower.includes('munnar') || lower.includes('alleppey') || lower.includes('alappuzha') || /\b(kumarakom|thekkady|wayanad|varkala|kovalam|fort kochi)\b/.test(lower)) {
       ctx.destination = 'Kerala';
+      if (lower.includes('kerala')) ctx.destinationType = 'region';
     } else if (lower.includes('mysuru') || lower.includes('mysore')) {
       ctx.destination = 'Mysuru';
+    } else if (lower.includes('rajasthan')) {
+      ctx.destination = 'Rajasthan';
+      ctx.destinationType = 'region';
+    } else if (lower.includes('himachal')) {
+      ctx.destination = 'Himachal';
+      ctx.destinationType = 'region';
+    } else if (lower.includes('uttarakhand')) {
+      ctx.destination = 'Uttarakhand';
+      ctx.destinationType = 'region';
+    } else if (lower.includes('udaipur')) {
+      ctx.destination = 'Udaipur';
+    } else if (lower.includes('jaipur')) {
+      ctx.destination = 'Jaipur';
+    } else if (lower.includes('araku')) {
+      ctx.destination = 'Araku Valley';
+    } else if (lower.includes('bengaluru') || lower.includes('bangalore') || lower.includes('blr')) {
+      ctx.destination = 'Bengaluru';
     } else if (ai.kind === 'ok' && ai.data.destination) {
       ctx.destination = ai.data.destination.replace(/,\s*India$/i, '').trim();
+      if (ai.data.destinationType) ctx.destinationType = ai.data.destinationType;
     } else {
+      const placeTripMatch = promptText.match(/(?:^|\b)([A-Z][a-zA-Z\s]+?)\s+trip\b/i);
       const destMatch = promptText.match(/(?:trip\s+to|going\s+to|holiday\s+in|vacation\s+in|visit(?:ing)?|travel\s+to|explore|in|to)\s+([A-Za-z\s]+?)(?:\s+(?:with|for|under|from|starting|on|in|budget|\d|$))/i);
-      if (destMatch && destMatch[1] && !APP_NOT_PLACES.has(destMatch[1].toLowerCase().trim())) {
+      if (placeTripMatch && placeTripMatch[1] && !APP_NOT_PLACES.has(placeTripMatch[1].toLowerCase().trim())) {
+        ctx.destination = placeTripMatch[1].trim();
+      } else if (destMatch && destMatch[1] && !APP_NOT_PLACES.has(destMatch[1].toLowerCase().trim())) {
         ctx.destination = destMatch[1].trim();
       } else {
         const words = promptText.trim().split(/\s+/);
         if (words.length <= 4 && !APP_NOT_PLACES.has(words[0].toLowerCase()) && !looksLikeGibberish(words[0])) {
           ctx.destination = promptText.trim();
         } else {
+          // Never blame user with UNPARSEABLE_MSG on a 5xx / server error fallback
+          if (ai.kind === 'server_error_fallback') {
+            return 'AI service is temporarily busy. Please try again in a moment, or include your destination clearly (e.g. 5 days in Rajasthan).';
+          }
           return UNPARSEABLE_MSG;
         }
       }
     }
 
     if (!ctx.destination || looksLikeGibberish(ctx.destination)) {
+      if (ai.kind === 'server_error_fallback') {
+        return 'AI service is temporarily busy. Please try again in a moment, or include your destination clearly (e.g. 5 days in Rajasthan).';
+      }
       return UNPARSEABLE_MSG;
     }
     fieldSources.destination = 'stated';
+
+    if (!ctx.destinationType) {
+      ctx.destinationType = isKnownRegion(ctx.destination) ? 'region' : 'city';
+    }
 
     // Check profile if destination is outside the 4 detailed destinations
     let profileData: DestinationProfile | null = null;
@@ -477,6 +567,9 @@ export default function App() {
       fieldSources.origin = 'stated';
     } else if (lower.includes('hyderabad')) {
       ctx.origin = 'Hyderabad (HYD)';
+      fieldSources.origin = 'stated';
+    } else if (isFromGoa || (lower.includes('goa') && ctx.destination !== 'Goa')) {
+      ctx.origin = 'Goa (GOI)';
       fieldSources.origin = 'stated';
     } else if (lower.includes('bengaluru') || lower.includes('bangalore') || lower.includes('blr')) {
       ctx.origin = 'Bengaluru (BLR)';
@@ -572,8 +665,13 @@ export default function App() {
     } else if (groupMatch && childAges.length === 0 && seniorAges.length === 0) {
       adults = toNum(groupMatch[1]);
       travellersStated = true;
-    } else if (childAges.length === 0 && seniorAges.length === 0 && /\b(family|families|group|friends|gang)\b/.test(lower)) {
-      // "with my family" / "with friends" but no count: assume 2 adults and label it "assumed"
+    } else if (childAges.length === 0 && seniorAges.length === 0 && /\b(family|families)\b/.test(lower)) {
+      // "with my family" without count: travellers are unspecified, ask how many adults & kids
+      adults = 2; // sensible default in case skipped
+      travellersStated = false;
+      ctx.partyType = 'family';
+    } else if (childAges.length === 0 && seniorAges.length === 0 && /\b(group|friends|gang)\b/.test(lower)) {
+      // "with friends" but no count: assume 2 adults and label it "assumed"
       adults = Math.max(adults, 2);
     } else if (seniorAges.length > 0 || childAges.length > 0 || /\b(i|me|my)\b/.test(lower)) {
       adults = Math.max(adults, 1);
@@ -667,6 +765,29 @@ export default function App() {
       ctx.dates = formatDateRange(sat, sun);
       fieldSources.dates = 'assumed';
     }
+    // Free-text preferences like "offbeat, not touristy", "vegetarian" (Prompt 3 rule: store as preferences, not pace)
+    const freeTextPrefs: string[] = [];
+    if (/offbeat/i.test(promptText) || /not\s+touristy/i.test(promptText) || /less\s+crowded/i.test(promptText)) {
+      freeTextPrefs.push('offbeat, not touristy');
+    }
+    if (/vegetarian|pure\s+veg|veg\s+food/i.test(promptText)) {
+      ctx.dietaryPreference = 'Vegetarian';
+      freeTextPrefs.push('vegetarian');
+    }
+    if (/nature|scenic|quiet|peaceful/i.test(promptText) && !freeTextPrefs.includes('offbeat, not touristy')) {
+      freeTextPrefs.push('nature & quiet');
+    }
+    if (/heritage|culture|palaces|forts/i.test(promptText)) {
+      freeTextPrefs.push('heritage & palaces');
+    }
+    if (freeTextPrefs.length > 0) {
+      ctx.freeTextPreferences = freeTextPrefs.join(', ');
+      for (const p of freeTextPrefs) {
+        if (!ctx.notes.includes(p)) ctx.notes.push(p);
+      }
+      fieldSources.preferences = 'stated';
+    }
+
     ctx.fieldSources = fieldSources;
     setCurrentPrompt(promptText);
 
@@ -679,6 +800,12 @@ export default function App() {
       fieldSources.dates === 'stated';
 
     setTripContext(ctx);
+
+    // Prompt 3: A state or region is not a destination: ask, don't pick a city
+    if (ctx.destinationType === 'region') {
+      setCurrentStep('region_route');
+      return null;
+    }
     if (hasDates && hasStatedAll) {
       // All key details stated -> generate plan directly
       setIsLoadingPlan(true);
@@ -734,6 +861,41 @@ export default function App() {
       setCurrentStep('clarify');
     }
     return null;
+  };
+
+  const handleSelectRegionRoute = (route: RegionRouteOption) => {
+    setIsLoadingPlan(true);
+    try {
+      const plan = buildMultiBasePlanFromRoute(tripContext, route);
+      const prefs: TripPreferences = {
+        destination: plan.destination,
+        origin: plan.origin,
+        targetDates: plan.dates,
+        durationDays: plan.durationDays,
+        partySize: plan.travellers.total,
+        adultsCount: plan.travellers.adults,
+        childrenCount: plan.travellers.children,
+        childrenAges: plan.travellers.childAges,
+        budgetTotalINR: plan.budget.targetINR,
+        budgetTotalUSD: Math.round(plan.budget.targetINR / 84),
+        budgetTier: 'Comfortable',
+        travelStyle: 'Balanced',
+        priority: 'Family Friendly',
+        accommodationPreference: (tripContext.accommodationPreference as any) || 'Connecting Family Suite',
+        dietaryOrNotes: tripContext.freeTextPreferences || tripContext.notes.join('; '),
+        scope: plan.scope,
+        transportMode: 'Flight'
+      };
+      setActiveTripPlan(plan);
+      setTripPreferences(prefs);
+      setTimeout(() => {
+        setIsLoadingPlan(false);
+        setCurrentStep('plan');
+      }, 500);
+    } catch {
+      setIsLoadingPlan(false);
+      setCurrentStep('clarify');
+    }
   };
 
   // Save the current plan as a draft in My Trips (Supabase, or this browser in offline mode)
@@ -1019,7 +1181,40 @@ export default function App() {
           <DescribeScreen
             onStartPlan={handleStartPlan}
             onTryDemo={handleTryDemo}
+            onComparePlaces={handleComparePlaces}
             isAiAvailable={isAiAvailable}
+          />
+        )}
+
+        {/* SCREEN 1B: DESTINATION COMPARISON (Prompt 8) */}
+        {!isLoadingPlan && currentStep === 'compare' && comparisonResult && (
+          <DestinationComparisonView
+            comparison={comparisonResult}
+            onSelectPlacePlan={(plan) => {
+              setActiveTripPlan(plan);
+              const prefs: TripPreferences = {
+                destination: plan.destination,
+                origin: plan.origin,
+                targetDates: plan.dates,
+                durationDays: plan.durationDays,
+                partySize: plan.travellers.total,
+                adultsCount: plan.travellers.adults,
+                childrenCount: plan.travellers.children,
+                childrenAges: plan.travellers.childAges,
+                budgetTotalINR: plan.budget.targetINR,
+                budgetTotalUSD: Math.round(plan.budget.targetINR / 84),
+                budgetTier: 'Comfortable',
+                travelStyle: 'Balanced',
+                priority: 'Family Friendly',
+                accommodationPreference: 'Connecting Family Suite',
+                dietaryOrNotes: plan.itinerary[0]?.stayArea || '',
+                scope: plan.scope,
+                transportMode: (plan.flight ? 'Flight' : (plan.selectedTrain ? 'Train' : 'Cab')) as any
+              };
+              setTripPreferences(prefs);
+              setCurrentStep('plan');
+            }}
+            onBackToSearch={() => setCurrentStep('describe')}
           />
         )}
 
@@ -1033,11 +1228,22 @@ export default function App() {
           />
         )}
 
+        {/* SCREEN 2B: REGION ROUTE CHOICE (Prompt 3: A state or region is not a destination: ask, don't pick a city) */}
+        {!isLoadingPlan && currentStep === 'region_route' && (
+          <RegionRouteChoiceScreen
+            region={tripContext.destination || 'Rajasthan'}
+            tripContext={tripContext}
+            onSelectRoute={handleSelectRegionRoute}
+            onBack={() => setCurrentStep('describe')}
+          />
+        )}
+
         {/* SCREEN 3: PLAN */}
         {!isLoadingPlan && currentStep === 'plan' && activeTripPlan && tripPreferences && (
           <PlanScreen
             plan={activeTripPlan}
             preferences={tripPreferences}
+            tripContext={tripContext}
             onPlanChange={(updated) => setActiveTripPlan(updated)}
             onProceedToReview={() => setCurrentStep('review')}
             onDescribeAgain={() => setCurrentStep('describe')}

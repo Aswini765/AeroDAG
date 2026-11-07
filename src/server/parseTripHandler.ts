@@ -12,8 +12,20 @@ const childSchema = z.object({
   age: z.number().int().positive().nullable().optional()
 });
 
+export const KNOWN_REGIONS = [
+  'rajasthan', 'kerala', 'himachal', 'himachal pradesh', 'uttarakhand', 'uttaranchal',
+  'north-east', 'northeast', 'kashmir', 'ladakh', 'sikkim', 'meghalaya'
+];
+
+export function isKnownRegion(dest?: string | null): boolean {
+  if (!dest) return false;
+  const lower = dest.toLowerCase().trim();
+  return KNOWN_REGIONS.some((r) => lower === r || lower.startsWith(r + ' ') || lower.endsWith(' ' + r) || lower.includes(r));
+}
+
 const tripSchema = z.object({
   destination: z.string().nullable().optional(),
+  destinationType: z.enum(['city', 'region']).nullable().optional(),
   origin: z.string().nullable().optional(),
   durationDays: z.number().int().positive().nullable().optional(),
   dates: z.string().nullable().optional(),
@@ -22,11 +34,13 @@ const tripSchema = z.object({
   seniors: z.array(childSchema).nullable().optional(),
   budgetINR: z.number().int().nonnegative().nullable().optional(),
   pace: z.string().nullable().optional(),
+  freeTextPreferences: z.string().nullable().optional(),
   accommodationPreference: z.string().nullable().optional(),
   transportPreference: z.string().nullable().optional(),
   // source and quote for each field
   destinationSource: z.enum(['stated','assumed','missing']).nullable().optional(),
   destinationQuote: z.string().nullable().optional(),
+  destinationTypeSource: z.enum(['stated','assumed','missing']).nullable().optional(),
   originSource: z.enum(['stated','assumed','missing']).nullable().optional(),
   originQuote: z.string().nullable().optional(),
   durationDaysSource: z.enum(['stated','assumed','missing']).nullable().optional(),
@@ -43,6 +57,8 @@ const tripSchema = z.object({
   budgetINRQuote: z.string().nullable().optional(),
   paceSource: z.enum(['stated','assumed','missing']).nullable().optional(),
   paceQuote: z.string().nullable().optional(),
+  freeTextPreferencesSource: z.enum(['stated','assumed','missing']).nullable().optional(),
+  freeTextPreferencesQuote: z.string().nullable().optional(),
   accommodationPreferenceSource: z.enum(['stated','assumed','missing']).nullable().optional(),
   accommodationPreferenceQuote: z.string().nullable().optional(),
   transportPreferenceSource: z.enum(['stated','assumed','missing']).nullable().optional(),
@@ -82,8 +98,16 @@ export async function handleParseTrip(req: Request, res: Response) {
     // Lightweight model: reading a trip description doesn't need a big model, and it has its own free-tier quota.
     const ai = new GoogleGenAI({apiKey: apiKey.trim()});
     const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
-    const prompt = `Today is ${today} (India). Extract the fields from the user message and return JSON matching the schema. Include "<field>Source" (stated|assumed|missing) and, if stated, "<field>Quote" with the exact phrase from the message.\nFor "dates", convert relative phrases ("20th to 27th this month", "next weekend") to an exact range written like "20-27 Oct 2026" or "28 Oct - 2 Nov 2026"; the quote must still be the user's own words. Ages: "children" are under 18, "seniors" are 60 or older. The person writing is one of the travellers: "me, my wife and our son" is 2 adults + 1 child.\nUser: \"${userMessage}\"\nSchema: ${JSON.stringify(tripSchema.shape)}\n`;
-    const { text: raw } = await generateJsonWithFallback(ai, prompt, [process.env.MODEL_PARSE_TRIP]);
+    const prompt = `Today is ${today} (India). Extract the fields from the user message and return JSON matching the schema.
+Set "destinationType" to "region" for states or multi-city regions (e.g. Rajasthan, Kerala, Himachal, Uttarakhand, North-East, Kashmir, Ladakh), or "city" for a specific city/town (e.g. Jaipur, Udaipur, Munnar, Goa, Mysuru, Coorg).
+Store specific atmosphere/style phrases like "offbeat", "not touristy", "heritage" in "freeTextPreferences" (do not overwrite pace with them).
+Include "<field>Source" (stated|assumed|missing) and, if stated, "<field>Quote" with the exact phrase from the message.
+For "dates", convert relative phrases ("20th to 27th this month", "next weekend") to an exact range written like "20-27 Oct 2026" or "28 Oct - 2 Nov 2026"; the quote must still be the user's own words. Ages: "children" are under 18, "seniors" are 60 or older. The person writing is one of the travellers: "me, my wife and our son" is 2 adults + 1 child.
+User: "${userMessage}"
+Schema: ${JSON.stringify(tripSchema.shape)}
+`;
+    const modelToUse = process.env.MODEL_PARSE_TRIP;
+    const { text: raw, model: usedModel } = await generateJsonWithFallback(ai, prompt, [modelToUse]);
     let parsed;
     try { parsed = JSON.parse(raw); } catch { return res.status(502).json({error:'Invalid JSON from Gemini',code:'BAD_GEMINI_RESPONSE'}); }
     const result = tripSchema.safeParse(parsed);
@@ -91,7 +115,7 @@ export async function handleParseTrip(req: Request, res: Response) {
     const data = result.data;
     // Quote verification
     const lowerMsg = userMessage.toLowerCase();
-    const fields = ['destination','origin','durationDays','dates','adults','children','seniors','budgetINR','pace','accommodationPreference','transportPreference'];
+    const fields = ['destination','origin','durationDays','dates','adults','children','seniors','budgetINR','pace','freeTextPreferences','accommodationPreference','transportPreference'];
     for (const f of fields) {
       const srcKey = `${f}Source` as keyof typeof data;
       const quoteKey = `${f}Quote` as keyof typeof data;
@@ -112,6 +136,14 @@ export async function handleParseTrip(req: Request, res: Response) {
       adults = implied.total - childrenCount - seniorsCount;
       data.adultsSource = 'stated';
     }
+    // "with my family" without specific counts: parse as unspecified/missing
+    const hasUnspecifiedFamily = /\b(family|families)\b/i.test(userMessage) && !/\bfamily of\s*\d/i.test(userMessage) && !/\b\d+\s*(?:adults?|people|persons?|kids?|children)\b/i.test(userMessage);
+    if (hasUnspecifiedFamily && childrenCount === 0 && seniorsCount === 0) {
+      adults = 0;
+      data.adultsSource = 'missing';
+      data.childrenSource = 'missing';
+      data.seniorsSource = 'missing';
+    }
     const totalTravellers = adults + childrenCount + seniorsCount;
     // Destination must exist – otherwise unparseable
     if (!data.destination || data.destination.trim() === '') {
@@ -119,6 +151,8 @@ export async function handleParseTrip(req: Request, res: Response) {
     }
     // Use canonical catalog destination if matched, or fallback to parsed destination
     const canonicalDestination = matchSupportedDestination(data.destination) || data.destination.trim();
+    const destinationType = data.destinationType || (isKnownRegion(canonicalDestination) ? 'region' : 'city');
+
     // No traveller count given: report as missing (the UI assumes a default and labels it "assumed").
     if (totalTravellers === 0) {
       data.adultsSource = 'missing';
@@ -127,6 +161,7 @@ export async function handleParseTrip(req: Request, res: Response) {
     }
     const responseBody = {
       destination: canonicalDestination,
+      destinationType,
       origin: data.origin ?? null,
       durationDays: data.durationDays ?? null,
       dates: data.dates ?? null,
@@ -135,10 +170,12 @@ export async function handleParseTrip(req: Request, res: Response) {
       seniors: data.seniors ?? [],
       budgetINR: data.budgetINR ?? null,
       pace: data.pace ?? null,
+      freeTextPreferences: data.freeTextPreferences ?? null,
       accommodationPreference: data.accommodationPreference ?? null,
       transportPreference: data.transportPreference ?? null,
       sources: {
         destination: data.destinationSource ?? 'missing',
+        destinationType: data.destinationTypeSource ?? 'assumed',
         origin: data.originSource ?? 'missing',
         durationDays: data.durationDaysSource ?? 'missing',
         dates: data.datesSource ?? 'missing',
@@ -147,6 +184,7 @@ export async function handleParseTrip(req: Request, res: Response) {
         seniors: data.seniorsSource ?? 'missing',
         budgetINR: data.budgetINRSource ?? 'missing',
         pace: data.paceSource ?? 'missing',
+        freeTextPreferences: data.freeTextPreferencesSource ?? 'missing',
         accommodationPreference: data.accommodationPreferenceSource ?? 'missing',
         transportPreference: data.transportPreferenceSource ?? 'missing'
       },
@@ -158,12 +196,13 @@ export async function handleParseTrip(req: Request, res: Response) {
   } catch (err:any) {
     const status = Number(err?.status ?? err?.code ?? 0);
     const message = String(err?.message ?? err).slice(0, 300);
-    // Log the cause (never the API key) so failures are diagnosable from the terminal.
-    console.error(`[parse-trip] Gemini call failed (status ${status || 'n/a'}): ${message}`);
+    const modelName = process.env.MODEL_PARSE_TRIP || 'gemini-fallback';
+    // Log the actual exception for 500s (model name, status, message — never the API key)
+    console.error(`[parse-trip] Gemini call failed (model: ${modelName}, status: ${status || 500}): ${message}`);
     tracer.endSpan(rootSpan.spanId,'ERROR',{error:message});
     metrics.recordRequest(Date.now()-startedAt,false);
     if (status === 429 || /RESOURCE_EXHAUSTED|quota|rate.?limit/i.test(message)) {
-      return res.status(503).json({error:'AI parsing is busy (rate limit). Using basic mode.',code:'AI_RATE_LIMITED'});
+      return res.status(429).json({error:'AI is busy, try again in a minute',code:'RATE_LIMIT_EXCEEDED'});
     }
     return res.status(500).json({error:'Internal server error',code:'INTERNAL_ERROR'});
   }

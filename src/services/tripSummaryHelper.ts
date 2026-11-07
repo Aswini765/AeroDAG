@@ -186,7 +186,7 @@ export function getTripSummary(input: GetTripSummaryInput): TripSummary | null {
       subtitle: legBreakdownNote,
       amountINR: Math.round(flightAmt),
       source: flight.source || 'sample',
-      sourceLabel: flight.sourceLabel || (flight.source === 'live' ? 'Live Provider' : 'Sample data'),
+      sourceLabel: flight.sourceLabel || (flight.source === 'live' ? 'Sample data' : 'Sample data'),
       retrievedAt: flight.retrievedAt
     });
   }
@@ -200,7 +200,7 @@ export function getTripSummary(input: GetTripSummaryInput): TripSummary | null {
       subtitle: `${hotel.roomType || 'Standard Room'} · ${nights} night${nights > 1 ? 's' : ''}`,
       amountINR: Math.round(hotelAmt),
       source: hotel.source || 'sample',
-      sourceLabel: hotel.sourceLabel || (hotel.source === 'live' ? 'Live Provider' : 'Sample data'),
+      sourceLabel: hotel.sourceLabel || (hotel.source === 'live' ? 'Sample data' : 'Sample data'),
       retrievedAt: hotel.retrievedAt
     });
   }

@@ -8,7 +8,6 @@ export function impliedPartySize(text: string): { total: number; self: boolean }
   const s = ` ${text.toLowerCase()} `;
   if (EXPLICIT_COUNT.test(s)) return null; // the user gave a number; trust the parser
 
-  const self = /\b(me|i|i'm|myself|we|us|our)\b/.test(s) || /\bwith my\b/.test(s);
   let others = 0;
   if (/\b(wife|husband|spouse|partner|girlfriend|boyfriend|fianc[eé]e?)\b/.test(s)) others += 1;
   if (/\b(parents|in-?laws)\b/.test(s)) others += 2;
@@ -18,6 +17,10 @@ export function impliedPartySize(text: string): { total: number; self: boolean }
   others += kidWords.length;
   if (/\b(sons|daughters|kids|children)\b/.test(s) && kidWords.length === 0) others += 2;
 
+  // "with my family", "family trip" without explicit numbers or specific members named: counts are unspecified, ask the user
+  if (/\b(family|families)\b/i.test(s) && others === 0) return null;
+
+  const self = (/\b(me|i|i'm|myself|we|us|our)\b/.test(s) || /\bwith my\b/.test(s)) && !/\bwith\s+(?:my\s+)?fam(?:ily|ilies)\b/.test(s);
   if (!self && others === 0) return null;
   return { total: (self ? 1 : 0) + others, self };
 }
