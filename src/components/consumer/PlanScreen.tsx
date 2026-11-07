@@ -442,6 +442,7 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
               stayArea={currentStayArea}
               activePin={activePin}
               onSelectPin={(pin) => setActivePin(pin)}
+              itinerary={plan.itinerary}
               className="h-[36vh] min-h-[210px] max-h-[280px]"
             />
           </div>
@@ -467,6 +468,7 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                 <FullTripCostCard
                   plan={plan}
                   preferences={preferences}
+                  onApplyEstimate={onPlanChange}
                 />
               </div>
 
@@ -726,6 +728,7 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                 stayArea={currentStayArea}
                 activePin={activePin}
                 onSelectPin={(pin) => setActivePin(pin)}
+                itinerary={plan.itinerary}
                 className="h-[46vh] min-h-[300px]"
               />
 
@@ -733,6 +736,7 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
               <FullTripCostCard
                 plan={plan}
                 preferences={preferences}
+                onApplyEstimate={onPlanChange}
               />
             </div>
           </div>
