@@ -148,7 +148,10 @@ async function runTests() {
   const generousOptions = generatePlanOptions(mockPlan, generousBudgetPrefs);
   const balancedWithinBudget = generousOptions.find((o) => o.id === 'balanced');
   if (balancedWithinBudget && balancedWithinBudget.totalCostINR <= 80000) {
-    assert(balancedWithinBudget.badge === 'Recommended', `Within-budget Balanced option IS marked Recommended (badge: ${balancedWithinBudget.badge})`);
+    const comfortFits = generousOptions.find((o) => o.id === 'comfort' && o.totalCostINR <= 80000);
+    const expected = comfortFits ? 'comfort' : 'balanced';
+    const rec = generousOptions.find((o) => o.badge === 'Recommended');
+    assert(rec?.id === expected, `Recommended is the most comfortable option that fits (${expected}; got ${rec?.id})`);
   }
 
   // =========================================================================

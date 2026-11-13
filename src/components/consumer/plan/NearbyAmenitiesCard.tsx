@@ -25,7 +25,7 @@ export const NearbyAmenitiesCard: React.FC<NearbyAmenitiesCardProps> = ({
   const cleanDestination = (destination || 'Goa').replace(/,.*$/, '').trim();
   const cleanArea = (stayArea || cleanDestination).replace(/,.*$/, '').trim();
   const mapsSearchQuery = encodeURIComponent(`${cleanArea} ${cleanDestination}`);
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsSearchQuery}`;
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsSearchQuery}&hl=en`;
 
   const vegOptions = content.key === 'goa'
     ? [{ name: 'Kamat Pure Veg & South Indian', dist: '300m · 4 min walk' }, { name: 'Navtara Pure Veg & Thali', dist: '650m · 8 min walk' }]

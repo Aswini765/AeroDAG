@@ -282,9 +282,14 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
           <span>Back to plan</span>
         </button>
 
-        <span className="text-xs font-semibold uppercase tracking-wider text-[#0E6B59]">
-          Step 3 of 4 · Review details
+        <span className="text-xs font-semibold text-[#8A4307] bg-[#FCEFD9] px-2.5 py-1 rounded-full">
+          Demo · no payment
         </span>
+      </div>
+
+      <div id="checkout-demo-notice" className="mb-6 p-3 rounded-xl bg-[#FCEFD9] border border-[#8A4307]/30 text-sm text-[#8A4307] flex items-start gap-2">
+        <Info className="h-4 w-4 shrink-0 mt-0.5" />
+        <span>This is a practice booking. Nothing is booked and no money is charged. To book for real, use “Book on MakeMyTrip” on your plan — it opens MakeMyTrip with your dates filled in.</span>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -293,7 +298,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#15201D] font-heading">
-                Traveller Details
+                Who's travelling
               </h1>
               <p className="text-xs sm:text-sm text-[#55625E]">
                 Names must match government-issued photo IDs (Aadhaar or Voter ID).
@@ -454,7 +459,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
         <div className="lg:col-span-5 space-y-5 sticky top-24">
           <div className="card-consumer p-5 sm:p-6 space-y-4">
             <h2 className="text-base font-bold text-[#15201D] font-heading pb-2 border-b border-[#E2E6E1]">
-              Order Summary
+              What you'd pay
             </h2>
 
             {/* Line items identical to plan */}
@@ -465,31 +470,31 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
                 const estimateLabel = isAiEstimated ? 'AI estimate' : 'Estimate';
                 return (
                   <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
-                    <div className="truncate text-[#55625E]">
+                    <div className="min-w-0 text-[#55625E]">
                       <span className="font-semibold text-[#15201D]">{item.name}</span>
-                      {item.subtitle && <span className="text-[11px] text-[#55625E] block truncate">{item.subtitle}</span>}
+                      {item.subtitle && <span className="text-[11px] text-[#55625E] block">{item.subtitle}</span>}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className="font-bold text-[#15201D]">
                         ₹{item.amountINR.toLocaleString('en-IN')}
                       </span>
-                      <SourceTag kind={item.source || itemSource} label={item.sourceLabel || (item.isEstimate ? estimateLabel : 'Selected')} />
+                      <SourceTag kind={item.source || itemSource} label={item.sourceLabel || (item.isEstimate ? estimateLabel : (isAiEstimated ? 'AI estimate' : 'Sample price'))} />
                     </div>
                   </div>
                 );
               })}
               {fullCost.bufferAmountINR > 0 && (
                 <div className="flex items-center justify-between gap-2 text-xs">
-                  <div className="truncate text-[#55625E]">
-                    <span className="font-semibold text-[#15201D]">{fullCost.bufferPercent}% Buffer for surprises</span>
-                    <span className="text-[11px] text-[#55625E] block truncate">Reserved for unexpected delays and price changes</span>
+                  <div className="min-w-0 text-[#55625E]">
+                    <span className="font-semibold text-[#15201D]">Buffer for surprises ({fullCost.bufferPercent}%)</span>
+                    <span className="text-[11px] text-[#55625E] block">For price changes and delays</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="font-bold text-[#15201D]">
                       ₹{fullCost.bufferAmountINR.toLocaleString('en-IN')}
                     </span>
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F5EFE6] text-[#8A4307] border border-[#8A4307]/20">
-                      Reserved
+                      Buffer
                     </span>
                   </div>
                 </div>
@@ -498,7 +503,7 @@ export const CheckoutBookingFlow: React.FC<CheckoutBookingFlowProps> = ({
 
             {/* Total */}
             <div className="pt-3 border-t border-[#E2E6E1] flex items-baseline justify-between">
-              <span className="text-sm font-bold text-[#15201D]">Grand Total</span>
+              <span className="text-sm font-bold text-[#15201D]">Total (same as your plan)</span>
               <span className="text-2xl font-black text-[#15201D] font-heading">
                 ₹{finalTotalINR.toLocaleString('en-IN')}
               </span>

@@ -104,16 +104,16 @@ export const MOCK_TRAINS_GOA: TrainItem[] = [
     fromStation: 'Yesvantpur Jn (YPR)',
     toStation: 'Vasco Da Gama (VSG)',
     departureTime: '03:00 PM',
-    arrivalTime: '05:00 AM (+1 Day)',
-    duration: '14h 00m',
+    arrivalTime: '05:15 AM (+1 Day)',
+    duration: '14h 15m',
     classes: [
-      { code: '2A', name: '2-Tier AC Sleeper', fareINR: 1680, availability: 'Available (18)', isAvailable: true },
-      { code: '3A', name: '3-Tier AC Sleeper', fareINR: 1190, availability: 'Available (36)', isAvailable: true },
-      { code: 'SL', name: 'Sleeper Class', fareINR: 445, availability: 'Available (52)', isAvailable: true }
+      { code: '2A', name: '2-Tier AC Sleeper', fareINR: 1440, availability: 'Available (18)', isAvailable: true },
+      { code: '3A', name: '3-Tier AC Sleeper', fareINR: 1000, availability: 'Available (36)', isAvailable: true },
+      { code: 'SL', name: 'Sleeper Class', fareINR: 365, availability: 'Available (52)', isAvailable: true }
     ],
     selectedClass: '2A',
-    pricePerPersonINR: 1680,
-    totalPriceINR: 6720,
+    pricePerPersonINR: 1440,
+    totalPriceINR: 5760,
     foodIncluded: false,
     isVandeBharatOrRajdhani: false,
     source: 'sample',
@@ -214,7 +214,7 @@ export const MOCK_HOTELS_GOA: HotelItem[] = [
   {
     id: 'ht-goa-2',
     name: 'Casa Heritage Portuguese Villa',
-    area: 'Fontainhas, Panaji / Candolim',
+    area: 'Fontainhas, Panaji',
     city: 'Goa',
     starRating: 4,
     reviewScore: 4.7,

@@ -83,7 +83,7 @@ export function buildSeasonalRecommendation(
         'Aromatic arabica coffee harvest, mist rolling over Brahmagiri peaks, and full-volume Abbey & Iruppu waterfalls surrounded by pepper plantations.',
       crowdLevel: 'Pleasant; Bangalore weekenders visit Fri-Sun, quiet mid-week.',
       personaSubzoneNote:
-        'Stay in a verified heritage coffee estate homestay for traditional Kodava hospitality (Akki Rotti, bamboo shoot curry) and private nature walks.',
+        'Stay in a heritage coffee estate homestay for traditional Kodava hospitality (Akki Rotti, bamboo shoot curry) and private nature walks.',
       weatherNote: 'Daytime 23°C, misty nights dipping to 14°C.'
     };
   }
@@ -297,7 +297,7 @@ export function buildTrustVerificationDetails(
   transfer?: TransferItem
 ): TrustVerificationDetails {
   const mapsQuery = encodeURIComponent(`${hotel.name} ${hotel.area} ${destination}`);
-  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}&hl=en`;
 
   return {
     googleMapsVerified: true,

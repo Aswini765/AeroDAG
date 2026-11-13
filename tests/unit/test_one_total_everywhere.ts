@@ -49,7 +49,7 @@ export async function runTests() {
   // "5 days in Kerala with my wife and 4-year-old son from Bengaluru from 20 November, budget 60000, we are vegetarian"
   // =========================================================================
   console.log('[Scenario 1: Kerala Multi-Base Route (5 days, 3 travellers, budget ₹60,000)]');
-  const kerRoutes = getRegionRoutes('Kerala', 4, 'vegetarian', 60000, 3, 'Bengaluru (BLR)', '20–24 Nov 2026');
+  const kerRoutes = getRegionRoutes('Kerala', 4, 'vegetarian', 60000, 3, 'Bengaluru (BLR)', '20–24 Nov 2026', { adults: 2, children: 1, childAges: [4] });
   assert(kerRoutes.length >= 1, 'Generates Kerala route options');
 
   const kerRoute = kerRoutes[0];

@@ -35,9 +35,10 @@ export type ParseTripResult =
   | { kind: 'failed' };
 
 export async function callParseTrip(text: string, timeoutMs = 8000): Promise<ParseTripResult> {
-  const executeSingleCall = async (): Promise<{ status: number; body: any }> => {
+  // Keep the wait short: after ~8s our own rules answer instead (people leave after ~10s of nothing)
+  const executeSingleCall = async (ms: number = timeoutMs): Promise<{ status: number; body: any }> => {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), ms);
     try {
       const res = await fetch('/api/parse-trip', {
         method: 'POST',
@@ -92,11 +93,13 @@ export async function callParseTrip(text: string, timeoutMs = 8000): Promise<Par
     return firstEval;
   }
 
-  // 5xx or network error -> retry once automatically after 2 seconds
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  // Attempt 2
-  const second = await executeSingleCall();
+  // A timeout / dropped connection (status 0) is not worth waiting for again: use our rules now.
+  // A quick 5xx gets one short retry.
+  let second = { status: 0, body: null as any };
+  if (first.status >= 500) {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    second = await executeSingleCall(4000);
+  }
   const secondEval = evaluateAttempt(second);
   if (secondEval !== 'retry') {
     return secondEval;

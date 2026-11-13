@@ -42,19 +42,6 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10 space-y-8 animate-fade-in-slide">
-      {/* Demo-mode banner */}
-      <div className="card-consumer p-3 sm:px-4 bg-[#F5F6F3] border-[#E2E6E1] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[#55625E]">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold px-2 py-0.5 rounded-full bg-[#E2E6E1] text-[#15201D] text-[11px]">
-            DEMO MODE
-          </span>
-          <span>Sample prices · Demo booking — no real payment</span>
-        </div>
-        <span className="text-[#4A5753] hidden sm:inline">
-          Simulation mode active
-        </span>
-      </div>
-
       {/* Print only banner for downloaded itinerary */}
       <div className="hidden print:block text-center font-mono text-xs text-[#55625E] pb-2 border-b border-[#E2E6E1]">
         Demo booking — not a ticket • AeroDAG demo
@@ -74,23 +61,23 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
           </span>
 
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#15201D] font-heading mt-3">
-            Your {destination} trip is booked
+            Practice booking done — nothing was booked
           </h1>
 
           <p className="text-xs sm:text-sm text-[#55625E] max-w-lg mx-auto mt-2 leading-relaxed">
-            This was a demo booking — no tickets were issued and nothing was charged. In a production version, confirmations would come directly from the airline and hotel.
+            This was practice: no tickets were issued and nothing was charged. To book your {destination} trip for real, go back to your plan and tap “Book on MakeMyTrip” — it opens MakeMyTrip with your dates filled in.
           </p>
         </div>
 
         {/* Trip ID */}
         <div className="p-3 rounded-xl bg-[#F5F6F3] border border-[#E2E6E1] text-xs font-semibold text-[#15201D] inline-block">
-          Trip ID: {tripId}
+          Practice ID: {tripId}
         </div>
 
         {/* Trip Total & Per Person Cost */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto p-4 rounded-2xl bg-[#F5F6F3] border border-[#E2E6E1] text-left">
           <div>
-            <div className="text-xs font-medium text-[#55625E]">Trip Total (with 15% buffer)</div>
+            <div className="text-xs font-medium text-[#55625E]">Total, same as your plan (includes 15% buffer)</div>
             <div className="text-xl font-extrabold text-[#15201D] font-heading">
               ₹{(confirmedBooking.totalPaidINR || 0).toLocaleString('en-IN')}
             </div>
@@ -146,7 +133,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
           <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#F5F6F3]/60 border border-[#E2E6E1]">
             <div className="flex items-center gap-3">
               <div className="h-8 w-8 rounded-lg bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center shrink-0">
-                <Plane className="h-4 w-4" />
+                {flight ? <Plane className="h-4 w-4" /> : <Car className="h-4 w-4" />}
               </div>
               <div>
                 <div className="font-bold text-[#15201D]">
@@ -162,7 +149,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
               </div>
             </div>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
-              Demo
+              Not booked
             </span>
           </div>
 
@@ -182,7 +169,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
               </div>
             </div>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
-              Demo
+              Not booked
             </span>
           </div>
 
@@ -196,13 +183,14 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
                 <div className="font-bold text-[#15201D]">
                   {transfer ? transfer.title : 'Local transfers'}
                 </div>
-                <div className="text-xs text-[#55625E]">
-                  {flight ? 'Direct round-trip airport chauffeur transfer' : `Round-trip cab from ${confirmedBooking.origin.replace(/\s*\(.*\)/, '').trim()}`}
-                </div>
+                {(() => {
+                  const sub = flight ? 'Airport cab, both ways' : `Round-trip cab from ${confirmedBooking.origin.replace(/\s*\(.*\)/, '').trim()}`;
+                  return transfer && transfer.title === sub ? null : <div className="text-xs text-[#55625E]">{sub}</div>;
+                })()}
               </div>
             </div>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
-              Demo
+              Not booked
             </span>
           </div>
 
@@ -214,15 +202,15 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
               </div>
               <div>
                 <div className="font-bold text-[#15201D]">
-                  Curated Daily Activities & Dining Stops
+                  Your day-by-day plan
                 </div>
                 <div className="text-xs text-[#55625E]">
-                  Paced with light walking and afternoon rest buffers
+                  Activities and food stops from your plan
                 </div>
               </div>
             </div>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-[#E2E6E1] text-[#55625E] shrink-0">
-              Demo
+              Not booked
             </span>
           </div>
         </div>

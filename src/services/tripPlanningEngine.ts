@@ -11,6 +11,7 @@
  * - Strict Integer Rupee Arithmetic (no LLM arithmetic hallucination)
  */
 
+import { curatedDays, curatedDayItem } from './dayPlaces';
 import {
   TripPlan,
   TripPlanBudget,
@@ -512,7 +513,8 @@ export class TripPlanningEngine {
       const fewerNightsTotal = fewerNightsSubtotal + fewerNightsBuffer;
       const fewerNightsSavings = Math.max(1000, chosen.grandTotalINR - fewerNightsTotal);
 
-      concreteFixes.push({
+      // Only suggest a shorter trip when it is actually shorter
+      if (reducedDays < durationDays) concreteFixes.push({
         id: 'fix-fewer-nights',
         title: `Reduce trip duration to ${reducedDays} days (${reducedNights} nights)`,
         description: `Shortening the stay by ${durationDays - reducedDays} days saves ₹${fewerNightsSavings.toLocaleString()} on accommodation, dining, and local cabs.`,
@@ -538,8 +540,8 @@ export class TripPlanningEngine {
         const budgetHotelSavings = Math.round(nights * (chosen.hotel.pricePerNightINR - budgetNightlyRate));
         concreteFixes.push({
           id: 'fix-budget-hotel',
-          title: 'Switch to verified budget hotel or boutique homestay',
-          description: `Selecting a verified 3-star budget property at ₹${budgetNightlyRate.toLocaleString()}/night saves ₹${budgetHotelSavings.toLocaleString()}.`,
+          title: 'Switch to a budget hotel or homestay',
+          description: `A 3-star budget property at ₹${budgetNightlyRate.toLocaleString()}/night saves ₹${budgetHotelSavings.toLocaleString()}.`,
           rupeeImpactINR: budgetHotelSavings,
           actionType: 'budget_hotel'
         });
@@ -812,6 +814,8 @@ export class TripPlanningEngine {
     const isHeritage = /\b(mysuru|mysore|jaipur|udaipur|agra|hampi)\b/.test(destLower);
 
     const days: ActivityDayItem[] = [];
+    // Real places grouped by area, nearest to the stay first (Goa, Coorg, Munnar, Mysuru)
+    const curated = curatedDays(destination, `${selectedHotel.area || ''} ${selectedHotel.name || ''}`, Math.max(0, durationDays - 2));
 
     for (let dayNum = 1; dayNum <= durationDays; dayNum++) {
       if (dayNum === 1) {
@@ -836,7 +840,11 @@ export class TripPlanningEngine {
           walkingLevel: 'very light',
           stopDriveTimes: [
             { from: destinationCity, to: selectedHotel.name, driveMinutes: airportDriveMinutes, note: selectedFlight ? `${airportDriveMinutes}-min drive from airport` : `Road transit` }
-          ]
+          ],
+          // Evening walk near the stay
+          stops: selectedHotel.area
+            ? [{ name: selectedHotel.area.split(',')[0].trim(), slot: 'Evening' as const, mapQuery: new RegExp(destination.replace(/,.*$/, '').trim(), 'i').test(selectedHotel.area) ? selectedHotel.area : `${selectedHotel.area}, ${destination.replace(/,.*$/, '').trim()}` }]
+            : undefined
         });
       } else if (dayNum === durationDays) {
         // LAST DAY: DEPARTURE
@@ -857,6 +865,11 @@ export class TripPlanningEngine {
             { from: selectedHotel.name, to: destinationCity, driveMinutes: airportDriveMinutes, note: selectedFlight ? `${airportDriveMinutes}-min drive to airport` : `Road transit` }
           ]
         });
+      } else if (curated && curated[dayNum - 2]) {
+        // INTERMEDIATE DAYS from real places near the stay (names Google Maps finds exactly)
+        const dining1 = diningSuggestions[(dayNum - 1) % diningSuggestions.length]?.name || 'a local restaurant';
+        const dining2 = diningSuggestions[dayNum % diningSuggestions.length]?.name || 'a local café';
+        days.push(curatedDayItem(curated[dayNum - 2], dayNum, { name: selectedHotel.name, area: selectedHotel.area }, [dining1, dining2], isGentlePacing));
       } else {
         // INTERMEDIATE DAYS: Each activity used at most once. If sights < days, use free/rest day.
         const isMunnarStay = (selectedHotel.area || '').toLowerCase().includes('munnar') ||

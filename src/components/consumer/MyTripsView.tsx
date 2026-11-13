@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { FullTripCostCard } from './plan/FullTripCostCard';
+import { cleanDayText } from '../../services/itineraryText';
 import {
   Luggage,
   Calendar,
@@ -240,7 +242,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
         {isOffline && (
           <div className="p-3 rounded-xl bg-[#FBF3E8] border border-[#E6D4B8] text-[#8C5D23] text-xs flex items-center justify-center gap-2" data-testid="offline-mode-banner">
             <span className="h-2 w-2 rounded-full bg-[#D97706]" />
-            <span>Offline mode — trips are saved on this device only.</span>
+            <span>Saved on this device only — sign in to see them on your phone too.</span>
           </div>
         )}
         <div className="p-8 text-center card-consumer space-y-4">
@@ -272,7 +274,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
       {isOffline && (
         <div className="p-3 rounded-xl bg-[#FBF3E8] border border-[#E6D4B8] text-[#8C5D23] text-xs flex items-center gap-2" data-testid="offline-mode-banner">
           <span className="h-2 w-2 rounded-full bg-[#D97706]" />
-          <span>Offline mode — trips are saved on this device only.</span>
+          <span>Saved on this device only — sign in to see them on your phone too.</span>
         </div>
       )}
 
@@ -299,7 +301,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
       {/* Tabs: Booked trips vs Saved plans */}
       <div role="tablist" aria-label="Trip type" className="flex flex-wrap gap-2">
         {([
-          ['booked', `Booked trips (${bookedTrips.length})`],
+          ['booked', `Demo bookings (${bookedTrips.length})`],
           ['saved', `Saved plans (${savedPlans.length})`]
         ] as const).map(([key, label]) => (
           <button
@@ -323,12 +325,12 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
       {visibleTrips.length === 0 && (
         <div className="card-consumer p-6 text-center space-y-2" data-testid="mytrips-tab-empty">
           <p className="text-sm font-semibold text-[#15201D]">
-            {tab === 'booked' ? 'No booked trips yet' : 'No saved plans yet'}
+            {tab === 'booked' ? 'No demo bookings yet' : 'No saved plans yet'}
           </p>
           <p className="text-xs text-[#55625E]">
             {tab === 'booked'
-              ? 'Trips you book appear here.'
-              : 'Click "Save trip" on any plan to keep it here for later.'}
+              ? 'Practice bookings you make appear here. Nothing here is a real booking.'
+              : 'Tap "Save" on any plan to keep it here.'}
           </p>
         </div>
       )}
@@ -351,7 +353,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#E3F1EC] text-[#0E6B59]">
-                  {isSavedPlan(trip) ? 'Saved plan' : trip.status === 'CANCELLED' ? 'Cancelled' : 'Booked'}
+                  {isSavedPlan(trip) ? 'Saved plan' : trip.status === 'CANCELLED' ? 'Cancelled' : 'Demo booking'}
                 </span>
                 <span className="text-xs text-[#55625E] font-mono">
                   {isSavedPlan(trip) ? trip.createdAt : trip.pnr}
@@ -374,7 +376,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
 
               <div className="pt-2 border-t border-[#E2E6E1] flex items-center justify-between">
                 <div className="text-sm font-bold text-[#15201D]">
-                  {trip.bookingId?.startsWith('draft_') && <span className="text-xs font-medium text-[#55625E] mr-1">Est.</span>}
+                  {trip.bookingId?.startsWith('draft_') && <span className="text-xs font-medium text-[#55625E] mr-1">Estimate</span>}
                   ₹{trip.totalPaidINR.toLocaleString('en-IN')}
                 </div>
                 <button
@@ -401,8 +403,8 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
           <div className="lg:col-span-7 card-consumer p-6 space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-[#E2E6E1]">
               <div className="space-y-0.5">
-                <div className="text-xs uppercase font-bold text-[#0E6B59]">
-                  Trip Details · Read-only
+                <div className="text-xs font-semibold text-[#0E6B59]">
+                  {activeIsSavedPlan ? 'Saved plan · not booked' : 'Demo booking · nothing was charged'}
                 </div>
                 <h3 className="text-xl font-bold text-[#15201D] font-heading">
                   {activeTrip.tripTitle}
@@ -428,7 +430,7 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                   <div>
                     <div className="font-bold text-[#15201D]">
                       {activeTrip.selectedFlight
-                        ? `${activeTrip.selectedFlight.airline} (${activeTrip.selectedFlight.flightNumber})`
+                        ? `${activeTrip.selectedFlight.airline}${activeTrip.selectedFlight.flightNumber ? ` ${activeTrip.selectedFlight.flightNumber}` : ''}`
                         : activeTrip.selectedTrain
                         ? `${activeTrip.selectedTrain.trainName}${activeTrip.selectedTrain.trainNumber ? ` (${activeTrip.selectedTrain.trainNumber})` : ''}`
                         : 'By road'}
@@ -479,6 +481,14 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
                 </span>
               </div>
             </div>
+
+            {/* Same cost breakdown as the plan screen, when we have the saved plan */}
+            {activeTrip.savedPlan && (
+              <FullTripCostCard
+                plan={activeTrip.savedPlan}
+                preferences={(activeTrip as any).savedPreferences || ({ budgetTotalINR: activeTrip.budgetTotalINR, adultsCount: activeTrip.savedPlan.travellers.adults, childrenCount: activeTrip.savedPlan.travellers.children } as any)}
+              />
+            )}
 
             {/* Total Paid */}
             <div className="pt-3 border-t border-[#E2E6E1] flex items-center justify-between text-sm">
@@ -547,35 +557,27 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
             {activeTrip.itinerary && activeTrip.itinerary.length > 0 && (
               <div className="space-y-3 pt-4 border-t border-[#E2E6E1]">
                 <h4 className="text-sm font-bold text-[#15201D] font-heading">
-                  Day-by-Day Itinerary ({activeTrip.itinerary.length} days)
+                  Day by day ({activeTrip.itinerary.length} days)
                 </h4>
                 <div className="space-y-2.5">
                   {activeTrip.itinerary.map((dayItem) => (
                     <div key={dayItem.day} className="p-3.5 rounded-xl bg-[#F5F6F3] border border-[#E2E6E1] space-y-1.5 text-xs text-left">
                       <div className="font-bold text-[#15201D] flex items-center justify-between">
                         <span>Day {dayItem.day} · {(dayItem.title || '').replace(/^Day\s*\d+\s*[:·\-–—]\s*/i, '').trim()}</span>
-                        {dayItem.estimatedCostINR ? (
-                          <span className="text-[11px] font-semibold text-[#0E6B59] bg-[#E3F1EC] px-2 py-0.5 rounded-full">
-                            ₹{dayItem.estimatedCostINR.toLocaleString('en-IN')}
-                          </span>
-                        ) : null}
                       </div>
-                      {dayItem.theme && (
-                        <div className="text-[11px] text-[#55625E] font-medium">{dayItem.theme}</div>
-                      )}
                       {dayItem.morning && (
                         <div className="text-[#55625E]">
-                          <strong className="text-[#15201D]">Morning:</strong> {dayItem.morning}
+                          <strong className="text-[#15201D]">Morning:</strong> {cleanDayText(dayItem.morning)}
                         </div>
                       )}
                       {dayItem.afternoon && (
                         <div className="text-[#55625E]">
-                          <strong className="text-[#15201D]">Afternoon:</strong> {dayItem.afternoon}
+                          <strong className="text-[#15201D]">Afternoon:</strong> {cleanDayText(dayItem.afternoon)}
                         </div>
                       )}
                       {dayItem.evening && (
                         <div className="text-[#55625E]">
-                          <strong className="text-[#15201D]">Evening:</strong> {dayItem.evening}
+                          <strong className="text-[#15201D]">Evening:</strong> {cleanDayText(dayItem.evening)}
                         </div>
                       )}
                     </div>

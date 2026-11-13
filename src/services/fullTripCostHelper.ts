@@ -22,6 +22,7 @@ import {
   calculateShoppingMiscEstimateINR,
   calculateSurpriseBufferINR
 } from '../config/estimateRates';
+import { roomsNeeded } from './travelRealism';
 
 export const SURPRISE_BUFFER_PERCENT = 15;
 
@@ -30,6 +31,8 @@ export interface CostLineItem {
   name: string;
   amountINR: number;
   isEstimate: boolean;
+  /** a fare we looked up (e.g. a train's class fare), not a demo price */
+  checked?: boolean;
   subtitle?: string;
 }
 
@@ -110,7 +113,8 @@ export function computeFullTripCost(
   }
 ): FullTripCostCalculation {
   const durationDays = Math.max(1, plan.durationDays || 3);
-  const nights = Math.max(1, durationDays - 1);
+  // + nights before Day 1 when the train gets in a day early (picked on the plan page)
+  const nights = Math.max(1, durationDays - 1) + Math.max(0, (plan as any).userChoices?.extraNights || 0);
 
   // Travellers breakdown (children count as people)
   const adults = plan.travellers?.adults ?? preferences?.adultsCount ?? 2;
@@ -123,28 +127,40 @@ export function computeFullTripCost(
   const seniors = plan.travellers?.seniors ?? 0;
   const totalTravellers = Math.max(1, adults + children + seniors);
 
-  // 1. Stay
+  // 1. Stay — priced per room, and a group books as many rooms as it really needs
+  const fmtINR = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+  const people = `${totalTravellers} ${totalTravellers === 1 ? 'person' : 'people'}`;
   const hasMultipleStays = Array.isArray(plan.stays) && plan.stays.length > 1;
+  const isDorm = (h?: HotelItem | null) => Boolean(h && /dorm|hostel bed/i.test(`${h.roomType} ${h.name}`));
+  const roomsFor = (h?: HotelItem | null) => isDorm(h) ? totalTravellers : roomsNeeded(adults, children, seniors, h?.maxCapacity);
+  const perNightOf = (h: HotelItem, n: number) => h.pricePerNightINR > 0 ? h.pricePerNightINR : Math.round((h.totalPriceINR || 0) / Math.max(1, n));
+  const rooms = roomsFor(plan.hotel);
   const multiStayCost = hasMultipleStays
-    ? plan.stays!.reduce((sum, s) => sum + (s.hotel.totalPriceINR || s.hotel.pricePerNightINR * s.nights), 0)
+    ? plan.stays!.reduce((sum, st) => sum + perNightOf(st.hotel, st.nights) * st.nights * roomsFor(st.hotel), 0)
     : 0;
   const hotelNightsCost = hasMultipleStays
     ? multiStayCost
     : plan.hotel
-    ? (plan.hotel.totalPriceINR || plan.hotel.pricePerNightINR * nights)
+    ? perNightOf(plan.hotel, nights) * nights * rooms
     : (plan.budget?.hotelCostINR || 0);
 
+  const roomWord = (h?: HotelItem | null, r: number = rooms) => isDorm(h) ? `${r} bed${r > 1 ? 's' : ''}` : `${r} room${r > 1 ? 's' : ''}`;
   const staySubtitle = hasMultipleStays
-    ? `${plan.stays!.map((s) => `${s.nights}N in ${s.baseName}`).join(' + ')}`
+    ? `${plan.stays!.map((st) => `${st.nights} night${st.nights > 1 ? 's' : ''} in ${st.baseName}`).join(' + ')}${roomsFor(plan.stays![0].hotel) > 1 ? ` · ${roomWord(plan.stays![0].hotel, roomsFor(plan.stays![0].hotel))}` : ''}`
     : plan.hotel
-    ? `${plan.hotel.name} · ${nights} night${nights > 1 ? 's' : ''}`
+    ? (hotelNightsCost > 0
+        ? `${plan.hotel.name} · ${rooms > 1 || isDorm(plan.hotel) ? `${roomWord(plan.hotel)} × ` : ''}${fmtINR(perNightOf(plan.hotel, nights))}/night × ${nights} night${nights > 1 ? 's' : ''}`
+        : `${plan.hotel.name} · ${nights} night${nights > 1 ? 's' : ''}`)
     : `${nights} night${nights > 1 ? 's' : ''}`;
 
+  const stayIsEstimate = hasMultipleStays
+    ? plan.stays!.every((st) => st.hotel.source === 'estimate')
+    : plan.hotel?.source === 'estimate';
   const stayLine: CostLineItem = {
     id: 'cost-stay',
-    name: hasMultipleStays ? `Stays (${plan.stays!.length} bases)` : 'Stay',
+    name: hasMultipleStays ? `Stays (${plan.stays!.length} places)` : 'Stay',
     amountINR: Math.round(hotelNightsCost),
-    isEstimate: false,
+    isEstimate: stayIsEstimate,
     subtitle: staySubtitle
   };
 
@@ -167,30 +183,44 @@ export function computeFullTripCost(
     const flightCost = plan.flight.totalPriceINR || (plan.flight.pricePerPersonINR * totalTravellers) || 0;
     travelCost = flightCost + transferCost;
     const isRound = plan.flight.isRoundTrip !== false;
+    const flightWhat = plan.flight.returnFromCode && plan.flight.returnFromCode !== plan.flight.destinationCode
+      ? `Flights ${plan.flight.originCode}→${plan.flight.destinationCode}, ${plan.flight.returnFromCode}→${plan.flight.originCode}`
+      : `${isRound ? 'Return' : 'One-way'} flights`;
     travelSubtitle = transferCost > 0
-      ? `${plan.flight.airline} (${isRound ? 'Return' : 'One-way'}) + ${transferItem?.vehicleType || 'Private AC Sedan'} · ${totalTravellers} traveller${totalTravellers > 1 ? 's' : ''}`
-      : `${plan.flight.airline} (${isRound ? 'Return' : 'One-way'}) · ${totalTravellers} traveller${totalTravellers > 1 ? 's' : ''}`;
+      ? `${flightWhat} for ${people} (${fmtINR(flightCost)}) + ${transferItem?.vehicleType || 'Private AC Sedan'} to and from the airport (${fmtINR(transferCost)})`
+      : `${flightWhat} for ${people} (${fmtINR(flightCost)})`;
   } else if (plan.selectedTrain) {
-    const trainCost = plan.selectedTrain.totalPriceINR || (plan.selectedTrain.pricePerPersonINR * totalTravellers) || 0;
-    travelCost = trainCost + transferCost;
-    travelSubtitle = transferCost > 0
-      ? `${plan.selectedTrain.trainName} + ${transferItem?.vehicleType || 'Private AC Sedan'} · ${totalTravellers} traveller${totalTravellers > 1 ? 's' : ''}`
-      : `${plan.selectedTrain.trainName} · ${totalTravellers} traveller${totalTravellers > 1 ? 's' : ''}`;
+    // Listed train fares (IRCTC-style) are one way: count there and back.
+    // Our own bus/train estimates are already return totals.
+    const oneWayListed = plan.selectedTrain.source !== 'estimate';
+    const trainOnce = plan.selectedTrain.totalPriceINR || (plan.selectedTrain.pricePerPersonINR * totalTravellers) || 0;
+    const trainCost = oneWayListed ? trainOnce * 2 : trainOnce;
+    const isBus = plan.selectedTrain.mode === 'bus';
+    // Getting to and from a station or bus stand is an auto / local cab, not an airport sedan
+    const stationTransfer = Math.min(transferCost || 0, 300 * 2 * Math.max(1, Math.ceil(totalTravellers / 3)));
+    travelCost = trainCost + stationTransfer;
+    const what = isBus ? `${plan.selectedTrain.trainName} for ${people}` : `Train both ways for ${people}${plan.selectedTrain.selectedClass ? ` (${plan.selectedTrain.selectedClass})` : ''}`;
+    travelSubtitle = stationTransfer > 0
+      ? `${what} (${fmtINR(trainCost)}) + autos to and from the ${isBus ? 'bus stand' : 'station'} (${fmtINR(stationTransfer)})`
+      : `${what} (${fmtINR(trainCost)})`;
   } else if (plan.transfer) {
     travelCost = plan.transfer.priceINR || transferCost || 0;
-    travelSubtitle = `${plan.transfer.vehicleType || 'Private Cab Transfer'}`;
+    travelSubtitle = `${plan.transfer.vehicleType || 'Private cab'} there and back`;
   } else if (plan.budget?.flightsCostINR) {
     travelCost = plan.budget.flightsCostINR + transferCost;
-    travelSubtitle = `Transit to destination · ${totalTravellers} travellers`;
+    travelSubtitle = `Getting there and back for ${people}`;
   } else if (transferCost > 0) {
     travelCost = transferCost;
-    travelSubtitle = `${transferItem?.vehicleType || 'Private Cab Transfer'}`;
+    travelSubtitle = `${transferItem?.vehicleType || 'Private cab'} there and back`;
   }
+  // A fare we estimated (not a listed sample) is labelled "Estimate"
+  const travelSource = plan.flight?.source || plan.selectedTrain?.source || transferItem?.source;
   const travelLine: CostLineItem = {
     id: 'cost-travel',
     name: 'Travel to destination',
     amountINR: Math.round(travelCost),
-    isEstimate: false,
+    isEstimate: travelSource === 'estimate',
+    checked: travelSource !== 'estimate' && /^Checked/.test(plan.selectedTrain?.sourceLabel || plan.flight?.sourceLabel || ''),
     subtitle: travelSubtitle
   };
 
@@ -203,18 +233,28 @@ export function computeFullTripCost(
       itinerary: plan.itinerary
     });
   }
+  if (plan.costTier === 'budget') {
+    // Budget travellers use autos, shared jeeps and rented scooters, not a cab for the day
+    localTransportCost = Math.round(localTransportCost * 0.6);
+  }
   const localTransportLine: CostLineItem = {
     id: 'cost-local-transport',
     name: 'Local transport',
     amountINR: Math.round(localTransportCost),
     isEstimate: true,
-    subtitle: 'Local sightseeing cabs & on-ground transit'
+    subtitle: `Cabs and autos while you're there · about ${fmtINR(localTransportCost / durationDays)} a day`
   };
 
   // 4. Food (Estimate)
   let foodCost = plan.budget?.foodCostINR || plan.budget?.diningEstimateINR;
+  if (foodCost && plan.costTier === 'budget') {
+    // The Budget option eats at local dhabas and canteens: about 35% less
+    foodCost = Math.round(foodCost * 0.65);
+  }
   if (!foodCost || foodCost <= 0) {
-    const foodTier = (preferences?.budgetTier === 'Frugal')
+    const foodTier = plan.costTier
+      ? plan.costTier
+      : (preferences?.budgetTier === 'Frugal')
       ? 'budget'
       : (preferences?.budgetTier === 'Luxury' ? 'comfort' : 'mid');
     foodCost = calculateFoodEstimateINR({
@@ -229,7 +269,7 @@ export function computeFullTripCost(
     name: 'Food',
     amountINR: Math.round(foodCost),
     isEstimate: true,
-    subtitle: `Daily meals & refreshments across ${durationDays} days`
+    subtitle: `About ${fmtINR(foodCost / (totalTravellers * durationDays))} per person a day × ${people} × ${durationDays} days`
   };
 
   // 5. Activities (Estimate)
@@ -240,22 +280,28 @@ export function computeFullTripCost(
       ? actTotal
       : calculateActivitiesEstimateINR({ totalTravellers, durationDays });
   }
+  // Keep activities believable: ₹250–₹2,500 per person per day (tickets, boat rides, guides)
+  const actMin = 250 * totalTravellers * durationDays;
+  const actMax = 2500 * totalTravellers * durationDays;
+  activitiesCost = Math.min(actMax, Math.max(actMin, activitiesCost || 0));
+  if (plan.costTier === 'budget') activitiesCost = Math.max(actMin, Math.round(activitiesCost * 0.7));
   const activitiesLine: CostLineItem = {
     id: 'cost-activities',
     name: 'Activities',
     amountINR: Math.round(activitiesCost),
     isEstimate: true,
-    subtitle: 'Curated sightseeing entries & excursions'
+    subtitle: 'Entry tickets and outings in your day plan'
   };
 
   // 6. Shopping/misc (Estimate)
-  const shoppingCost = calculateShoppingMiscEstimateINR({ totalTravellers, durationDays });
+  const shoppingBase = calculateShoppingMiscEstimateINR({ totalTravellers, durationDays });
+  const shoppingCost = plan.costTier === 'budget' ? Math.round(shoppingBase * 0.6) : shoppingBase;
   const shoppingLine: CostLineItem = {
     id: 'cost-shopping',
     name: 'Shopping/misc',
     amountINR: Math.round(shoppingCost),
     isEstimate: true,
-    subtitle: 'Personal shopping, souvenirs & incidental needs'
+    subtitle: 'Small buys, tips and souvenirs'
   };
 
   // Subtotal before buffer
@@ -267,7 +313,7 @@ export function computeFullTripCost(
   if (plan.interCityTravel) {
     lines.push({
       id: 'cost-intercity-travel',
-      name: 'Inter-city travel',
+      name: 'Travel between stops',
       amountINR: Math.round(plan.interCityTravel.priceINR || 6500),
       isEstimate: false,
       subtitle: plan.interCityTravel.title || 'Private AC Cab between bases'

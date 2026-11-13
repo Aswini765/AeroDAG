@@ -48,6 +48,8 @@ export interface TrainItem {
   totalPriceINR: number;
   foodIncluded: boolean;
   isVandeBharatOrRajdhani: boolean;
+  /** 'bus' when this is an overnight / AC bus rather than a train (same booking shape) */
+  mode?: 'train' | 'bus';
   source?: ProvenanceSource;
   sourceLabel?: string;
   retrievedAt?: string;
@@ -79,6 +81,8 @@ export interface FlightItem {
   adjacentFamilySeatsGuaranteed?: boolean;
   adjacentFamilySeatsRequested?: boolean;
   isRoundTrip?: boolean;
+  /** Open-jaw: fly home from a different airport than you landed at (e.g. in JSA, out of JDH) */
+  returnFromCode?: string;
   returnFlightNumber?: string;
   returnDepartureTime?: string;
   returnArrivalTime?: string;
@@ -172,6 +176,10 @@ export interface ActivityDayItem {
   walkingLevel?: 'very light' | 'light' | 'moderate';
   walkingFlag?: string;
   stopDriveTimes?: Array<{ from: string; to: string; driveMinutes: number; note: string }>;
+  /** The day's real places, in order, with the exact name Google Maps should search */
+  stops?: Array<{ name: string; slot: 'Morning' | 'Afternoon' | 'Evening'; mapQuery: string }>;
+  /** Things to know for this day (closed days, seasons) */
+  dayNote?: string;
   source?: ProvenanceSource;
   sourceLabel?: string;
   retrievedAt?: string;
@@ -442,6 +450,29 @@ export interface TripPlan {
   budgetBuffer?: RealisticBudgetBuffer;
   trustVerification?: TrustVerificationDetails;
   isAiEstimatedDestination?: boolean;
+  /** Every price is a typical-rate estimate (no sample listings), e.g. region routes */
+  allPricesEstimated?: boolean;
+  /** Spend level used for food / extras: the Budget option eats and shops cheaper */
+  costTier?: 'budget' | 'mid' | 'comfort';
+  /** Needs the group asked for after planning (e.g. "Pure veg") */
+  groupNeeds?: string[];
+  /**
+   * What the traveller picked, step by step on the plan page. Until a step is picked,
+   * the later steps stay closed and the total is not shown as final.
+   */
+  userChoices?: {
+    /** e.g. 'train-18047-3A', 'flight-6E634', 'selfdrive', 'cab', 'bus' */
+    travelKey?: string;
+    /** Self-drive settings, when travelKey = 'selfdrive' */
+    selfDrive?: { fuel: 'petrol' | 'diesel'; kmpl: number; cars: number; fuelPriceINR: number };
+    hotelId?: string;
+    /** Extra hotel nights because the train / bus gets in before Day 1 */
+    extraNights?: number;
+    /** Places the traveller added to a day: { day: 2, place: 'Spice farm' } */
+    addedStops?: { day: number; place: string }[];
+  };
+  /** true = the number of days includes the journey; false/undefined = days at the destination only */
+  daysIncludeTravel?: boolean;
   monthWorthiness?: {
     month: string;
     verdict: 'Yes' | 'Mixed' | 'Off-season';

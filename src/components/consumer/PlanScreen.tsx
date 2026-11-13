@@ -18,23 +18,23 @@ import { BookedItems } from './plan/BookedItems';
 import { FeasibilityNote } from './plan/FeasibilityNote';
 import { DayByDay } from './plan/DayByDay';
 import { RefineBar } from './plan/RefineBar';
+import { ForYourTripCard } from './plan/ForYourTripCard';
+import { PlacePhoto } from './plan/PlacePhoto';
+import { alignItineraryToPlan } from '../../services/itineraryText';
 import { BudgetCard } from './plan/BudgetCard';
 import { StaySelector } from './plan/StaySelector';
-import { InfeasiblePlanCard } from './plan/InfeasiblePlanCard';
 import { MoreOptionsModal } from './plan/MoreOptionsModal';
-import { RouteTradeOffComparison } from './plan/RouteTradeOffComparison';
+import { StepCard, TravelStep, StayStep, AddPlaceToDay, TotalStep } from './plan/StepPlanner';
+import { gettingThereOptions } from '../../services/gettingThere';
 import { SeasonalAndPersonaCard } from './plan/SeasonalAndPersonaCard';
 import { BudgetBufferAndQuirksCard } from './plan/BudgetBufferAndQuirksCard';
 import { TrustAndVerificationCard } from './plan/TrustAndVerificationCard';
-import { FullTripCostCard } from './plan/FullTripCostCard';
 import { AlertTriangle, ArrowRight, Sparkles, MapPin, ChevronDown, ChevronUp, Plane, ShieldCheck, Calendar, Info, Clock } from 'lucide-react';
 import { computeFullTripCost } from '../../services/fullTripCostHelper';
 import { generatePlanOptions } from '../../services/planOptionsGenerator';
-import { PlanOptionsSelector } from './plan/PlanOptionsSelector';
 import { NearbyAmenitiesCard } from './plan/NearbyAmenitiesCard';
 import { StayAreaMapCard } from './plan/StayAreaMapCard';
 import { UnifiedPlanMap } from './plan/UnifiedPlanMap';
-import { WhatWeUnderstoodPanel } from './WhatWeUnderstoodPanel';
 import { TripContext } from '../../services/requirementEngine';
 import { trackPlanShown } from '../../services/telemetry/posthog';
 
@@ -49,6 +49,8 @@ interface PlanScreenProps {
   onSaveDraft?: () => Promise<boolean>;
   isGuest?: boolean;
   onContinueWithEmail?: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+  /** Plan a different place with the same group, days and budget */
+  onStartNewPlan?: (prompt: string) => void;
 }
 
 export const PlanScreen: React.FC<PlanScreenProps> = ({
@@ -61,13 +63,28 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
   onUpdateItineraryDay,
   onSaveDraft,
   isGuest = false,
-  onContinueWithEmail
+  onContinueWithEmail,
+  onStartNewPlan
 }) => {
   const [emailCardDismissed, setEmailCardDismissed] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [isRefining, setIsRefining] = useState(false);
   const [moreOptionsView, setMoreOptionsView] = useState<'flights' | 'hotels' | 'dining' | 'map' | null>(null);
   const [activePin, setActivePin] = useState<number>(1);
+  // The map follows the day open in "Your days"
+  const [mapDay, setMapDay] = useState<number | undefined>(undefined);
+  // Step-by-step plan: travel → stay → days → total. Nothing is picked for the traveller.
+  const travelChosen = Boolean(plan.userChoices?.travelKey);
+  const stayChosen = travelChosen && Boolean(plan.userChoices?.hotelId);
+  const daysIncludeTravel = Boolean(plan.daysIncludeTravel ?? (tripContext as any)?.daysIncludeTravel);
+  const [openStep, setOpenStep] = useState<number | null>(() => (!plan.userChoices?.travelKey ? 1 : !plan.userChoices?.hotelId ? 2 : 3));
+  // One-line summaries of what was chosen, always read from the plan itself
+  const travelSummary = !travelChosen ? null : plan.flight
+    ? `✈️ Flight · ${plan.flight.flightNumber || plan.flight.airline}`
+    : plan.selectedTrain
+    ? (plan.selectedTrain.mode === 'bus' ? `🚌 ${plan.selectedTrain.trainName}` : `🚆 ${plan.selectedTrain.trainName}${plan.selectedTrain.trainNumber ? ` (${plan.selectedTrain.trainNumber})` : ''} · ${plan.selectedTrain.selectedClass}`)
+    : `🚗 ${plan.transfer?.vehicleType || 'By road'}`;
+  const staySummary = stayChosen ? `🛏 ${(plan.hotel?.name || '').replace(/,\s*~₹.*$/, '')} · ₹${(plan.hotel?.pricePerNightINR || 0).toLocaleString('en-IN')}/night` : null;
 
   // Prompt 7: Collapse rest into 4 tap-to-open sections (collapsed by default)
   const [collapsedSections, setCollapsedSections] = useState<{
@@ -199,57 +216,71 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
     }
   };
 
+  // "Change the plan": change THIS plan (never rebuild a different destination) and always say what happened
+  const [refineMsg, setRefineMsg] = useState<string | null>(null);
+  const showRefineMsg = (msg: string) => {
+    setRefineMsg(msg);
+    window.setTimeout(() => setRefineMsg((m) => (m === msg ? null : m)), 6000);
+  };
+  const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+
   const handleRefinePlan = async (userChangeRequest: string) => {
     setIsRefining(true);
     const lower = userChangeRequest.toLowerCase();
+    const before = computeFullTripCost(plan, preferences).totalWithBufferINR;
+    const commit = (next: TripPlan, what: string) => {
+      const after = computeFullTripCost(next, preferences).totalWithBufferINR;
+      onPlanChange(next);
+      showRefineMsg(after !== before ? `${what}: ${inr(before)} → ${inr(after)}` : what);
+    };
 
-    if (lower.includes('train') || lower.includes('rail')) {
-      const updatedContext = {
-        ...preferences,
-        transportMode: 'Train',
-        budgetTotalINR: targetBudget
-      };
-      const newPlan = await TripPlanningEngine.buildDeterministicPlan(updatedContext as any);
-      onPlanChange(newPlan);
-    } else if (lower.includes('flight') || lower.includes('fly')) {
-      const updatedContext = {
-        ...preferences,
-        transportMode: 'Flight',
-        budgetTotalINR: targetBudget
-      };
-      const newPlan = await TripPlanningEngine.buildDeterministicPlan(updatedContext as any);
-      onPlanChange(newPlan);
-    } else if (lower.includes('cheaper') || lower.includes('budget') || lower.includes('save money')) {
-      const updatedContext = {
-        ...preferences,
-        budgetTier: 'Frugal',
-        budgetTotalINR: targetBudget
-      };
-      const newPlan = await TripPlanningEngine.buildDeterministicPlan(updatedContext as any);
-      onPlanChange(newPlan);
-    } else if (lower.includes('less driving') || lower.includes('relaxed')) {
-      const updatedContext = {
-        ...preferences,
-        travelStyle: 'Relaxed',
-        walkingIntensity: 'Low',
-        budgetTotalINR: targetBudget
-      };
-      const newPlan = await TripPlanningEngine.buildDeterministicPlan(updatedContext as any);
-      onPlanChange(newPlan);
-    } else if (lower.includes('veg') || lower.includes('vegetarian')) {
-      const updatedContext = {
-        ...preferences,
-        dietaryPreference: 'Vegetarian',
-        tripNeeds: [...(preferences.tripNeeds || []), 'Vegetarian food nearby'],
-        budgetTotalINR: targetBudget
-      };
-      const newPlan = await TripPlanningEngine.buildDeterministicPlan(updatedContext as any);
-      onPlanChange(newPlan);
+    try {
+      if (lower.includes('train') || lower.includes('rail') || lower.includes('bus')) {
+        const ground = [...(plan.availableTrains || [])].sort((x, y) => x.totalPriceINR - y.totalPriceINR)[0];
+        if (plan.selectedTrain && !plan.flight) {
+          showRefineMsg(`You're already going by ${plan.selectedTrain.mode === 'bus' ? 'bus' : 'train'}.`);
+        } else if (ground) {
+          commit(TripPlanningEngine.swapComponent(plan, { flight: null, train: ground }), `Switched to ${ground.mode === 'bus' ? ground.trainName.toLowerCase() : 'the train'}`);
+        } else {
+          showRefineMsg('No sensible train or bus for this route — it is a short drive or needs a flight.');
+        }
+      } else if (lower.includes('flight') || lower.includes('fly')) {
+        const fl = (plan.availableFlights || [])[0];
+        if (plan.flight) showRefineMsg('You are already flying.');
+        else if (fl) commit(TripPlanningEngine.swapComponent(plan, { flight: fl, train: null }), 'Switched to flights');
+        else showRefineMsg('Flying doesn\'t make sense for this trip — it is a short road journey.');
+      } else if (/\b(road|drive|driving|cab|car)\b/.test(lower) && !lower.includes('less driving')) {
+        const road = gettingThereOptions(plan, preferences).find((o) => o.key === 'road');
+        if (!road) showRefineMsg('Driving doesn\'t make sense for this trip — it is too far by road.');
+        else if (road.isCurrent) showRefineMsg('You\'re already going by road.');
+        else commit(road.plan, `Switched to road (${road.detail})`);
+      } else if (lower.includes('cheaper') || lower.includes('budget') || lower.includes('save money')) {
+        const opts = generatePlanOptions(plan, preferences);
+        const cheapest = opts.reduce((m, o) => (o.totalCostINR < m.totalCostINR ? o : m), opts[0]);
+        if (cheapest && cheapest.totalCostINR < before - 500) {
+          commit(cheapest.plan, `Cheapest way: ${cheapest.stayName.replace(/,.*$/, '')} + ${cheapest.travelMode.toLowerCase()}`);
+        } else {
+          showRefineMsg('This is already the cheapest sensible way. Fewer days is the next lever.');
+        }
+      } else if (lower.includes('less driving') || lower.includes('relaxed')) {
+        const lighter: TripPlan = {
+          ...plan,
+          itinerary: plan.itinerary.map((d, i, all) =>
+            i === 0 || i === all.length - 1
+              ? d
+              : { ...d, afternoon: `Rest at your stay or a café nearby — no long drives today.`, walkingLevel: 'light' as any }
+          )
+        };
+        commit(lighter, 'Days made lighter: one main stop a day, no long afternoon drives');
+      } else if (lower.includes('veg') || lower.includes('vegetarian')) {
+        const needs = Array.from(new Set([...(plan.groupNeeds || []), 'Pure veg']));
+        commit({ ...plan, groupNeeds: needs }, 'Marked pure veg — veg places are listed for your group');
+      } else {
+        showRefineMsg('Tip: try "cheaper", "take the train", "less driving" or "pure veg".');
+      }
+    } finally {
+      setTimeout(() => setIsRefining(false), 300);
     }
-
-    setTimeout(() => {
-      setIsRefining(false);
-    }, 500);
   };
 
   const currentStayArea = plan.hotel.area || plan.hotelZone || plan.destination;
@@ -292,14 +323,7 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 animate-fade-in-slide space-y-4">
-      {/* "What we understood" panel collapsed above the plan (Prompt 2 requirement) */}
-      <WhatWeUnderstoodPanel
-        context={effectiveContext}
-        onEdit={onDescribeAgain}
-        initiallyCollapsed={true}
-      />
-
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 pb-24 sm:py-6 animate-fade-in-slide space-y-4">
       {/* 1. Header (Eyebrow, title, meta line, action buttons) */}
       <PlanHeader
         plan={plan}
@@ -307,60 +331,16 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
         onSaveTrip={handleSaveTrip}
         onProceedToReview={onProceedToReview}
         saveState={saveState}
+        onBack={onDescribeAgain}
+        bookingReady={stayChosen}
       />
 
-      {/* Prompt 9: "Worth it in {month}?" banner */}
-      {plan.monthWorthiness && (
-        <div
-          id="plan-month-worthiness-banner"
-          className="p-3.5 sm:px-4 rounded-2xl border border-[#E2E6E1] bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shadow-2xs"
-        >
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold text-[#15201D]">
-              Worth it in {plan.monthWorthiness.month}?
-            </span>
-            <span
-              className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
-                plan.monthWorthiness.verdict === 'Yes'
-                  ? 'bg-[#E3F1EC] text-[#0E6B59]'
-                  : plan.monthWorthiness.verdict === 'Mixed'
-                  ? 'bg-[#FCEFD9] text-[#8A4307]'
-                  : 'bg-[#FEE2E2] text-[#991B1B]'
-              }`}
-            >
-              {plan.monthWorthiness.verdict}
-            </span>
-            <span className="text-[#55625E]">{plan.monthWorthiness.reason}</span>
-          </div>
-          <span className="text-[10px] text-[#55625E]/70 shrink-0">
-            Source: {plan.monthWorthiness.sourceLabel}
-          </span>
-        </div>
-      )}
-
-      {/* Prompt 9: "Leaning offbeat" badge */}
-      {plan.isOffbeatLeaning && (
-        <div
-          id="plan-offbeat-leaning-badge"
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#E3F1EC] border border-[#0E6B59]/30 text-xs font-semibold text-[#0E6B59]"
-        >
-          <Sparkles className="h-3.5 w-3.5 shrink-0" />
-          <span>Leaning offbeat · Avoids peak crowds & crowded tourist corridors</span>
-        </div>
-      )}
-
-      {/* Prompt 9: Stay area choice reason */}
-      {plan.stayAreaReason && (
-        <div
-          id="plan-stay-area-reason-pill"
-          className="p-2.5 rounded-xl bg-[#F6F8F6] border border-[#E2E6E1] text-xs text-[#55625E] flex items-center gap-2"
-        >
-          <MapPin className="h-3.5 w-3.5 text-[#0E6B59] shrink-0" />
-          <span>
-            <strong className="text-[#15201D]">Staying in {currentStayArea}:</strong> {plan.stayAreaReason}
-          </span>
-        </div>
-      )}
+      {/* A real photo of the place (Wikipedia), so the plan feels like a trip, not a spreadsheet */}
+      <PlacePhoto
+        place={(plan.stays && plan.stays.length > 1 ? plan.stays[0].baseName : plan.destination).replace(/,.*$/, '')}
+        className="h-32 sm:h-40 w-full rounded-2xl"
+        showCredit
+      />
 
       {saveState === 'saved' && isGuest && onContinueWithEmail && !emailCardDismissed && (
         <div className="mb-4">
@@ -374,130 +354,185 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
         </div>
       )}
 
-      {/* 2. Infeasible Blocking Check (Only when > 10% over budget) */}
-      {isBlockingInfeasible && plan.concreteFixes && plan.concreteFixes.length > 0 ? (
-        <InfeasiblePlanCard
-          destination={plan.destination}
-          targetBudgetINR={targetBudget}
-          calculatedCostINR={cost.totalWithBufferINR}
-          shortfallINR={overAmountINR}
-          concreteFixes={plan.concreteFixes}
-          onApplyFix={handleApplyConcreteFix}
-          onModifyPrompt={onDescribeAgain}
-        />
-      ) : (
+      {/* 2. Over budget never blocks the plan: the options list shows the cheapest way,
+             exact one-tap fixes, or places that fit (see PlanOptionsSelector) */}
+      {(
         <>
-          {/* Over-budget banner when <= 10% over budget */}
-          {isSlightlyOverBudget && (
-            <div className="card-consumer p-3.5 sm:p-4 mb-4 border-[#8A4307]/40 bg-[#FFFDF7] space-y-2 text-left rounded-2xl shadow-xs">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="p-1 rounded-lg bg-[#FCEFD9] text-[#8A4307]">
-                    <AlertTriangle className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <h3 className="text-xs sm:text-sm font-bold text-[#15201D]">
-                      Trip is slightly over budget by ₹{overAmountINR.toLocaleString('en-IN')} ({percentOver.toFixed(1)}%)
-                    </h3>
-                    <p className="text-[11px] text-[#55625E]">
-                      {generatePlanOptions(plan, preferences).some((o) => o.id === 'budget')
-                        ? `Pick the Budget tier option to stay within your ₹${targetBudget.toLocaleString('en-IN')} target.`
-                        : `Adjust trip duration or transit to stay within your ₹${targetBudget.toLocaleString('en-IN')} target.`}
-                    </p>
-                  </div>
-                </div>
-                {generatePlanOptions(plan, preferences).some((o) => o.id === 'budget') && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const options = generatePlanOptions(plan, preferences);
-                      const budgetOpt = options.find((o) => o.id === 'budget');
-                      if (budgetOpt) {
-                        onPlanChange(budgetOpt.plan);
-                      }
-                    }}
-                    className="btn-primary text-xs py-2 px-3.5 shrink-0 min-h-[44px] flex items-center gap-1.5 shadow-xs"
-                  >
-                    <span>Choose Budget option</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* AI Destination Honest Estimate Banner */}
-          {plan.isAiEstimatedDestination && (
-            <div
-              id="ai-destination-estimate-banner"
-              className="bg-[#EFF8F5] border border-[#0E6B59]/30 rounded-2xl p-3.5 flex items-start gap-2.5 shadow-xs text-left"
-            >
-              <Sparkles className="h-4 w-4 text-[#0E6B59] shrink-0 mt-0.5" />
-              <div className="text-xs text-[#15201D] leading-relaxed">
-                <span className="font-bold text-[#0E6B59]">New destination</span> — details are AI estimates. Check on Google Maps and official booking sites before you book.
-              </div>
-            </div>
-          )}
-
-          {/* MOBILE: Collapsible Map (collapsed by default at 375px per Prompt 6) */}
-          <div className="block lg:hidden mb-3">
-            <details className="card-consumer p-0 overflow-hidden border border-[#E2E6E1] bg-white rounded-2xl shadow-xs group">
-              <summary className="p-3.5 flex items-center justify-between text-xs font-bold text-[#15201D] cursor-pointer hover:bg-[#F9FAF9] select-none">
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-[#0E6B59]" />
-                  <span>Map & Route Visualizer</span>
-                </div>
-                <span className="text-[11px] font-semibold text-[#0E6B59]">Tap to view map</span>
-              </summary>
-              <div className="p-2 border-t border-[#E2E6E1]">
-                <UnifiedPlanMap
-                  destination={plan.destination}
-                  stayArea={currentStayArea}
-                  activePin={activePin}
-                  onSelectPin={(pin) => setActivePin(pin)}
-                  itinerary={plan.itinerary}
-                  className="h-[36vh] min-h-[210px] max-h-[280px]"
-                />
-              </div>
-            </details>
-          </div>
-
           {/* TWO PANES ON DESKTOP (Left = Chat & Plan Cards; Right = Sticky Map) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* LEFT PANE (Chat & Plan Cards - 7 columns) */}
             <div className="lg:col-span-7 space-y-5">
-              {/* VISIBLE BY DEFAULT 1: Top Summary Bar & 3 Option Cards (Budget / Balanced / Comfort) */}
-              <PlanOptionsSelector
-                currentPlan={plan}
-                preferences={preferences}
-                onSelectOptionPlan={onPlanChange}
-                onCardFocus={(id) => {
-                  if (id === 'budget') setActivePin(1);
-                  else if (id === 'balanced') setActivePin(2);
-                  else setActivePin(3);
-                }}
-              />
+              {/* THE PLAN, STEP BY STEP: nothing is picked for you. Each step opens after the one before. */}
+              <StepCard
+                n={1}
+                id="step-travel"
+                title="How do you want to get there?"
+                summary={travelSummary}
+                open={openStep === 1}
+                onToggle={() => setOpenStep(openStep === 1 ? null : 1)}
+              >
+                <TravelStep
+                  plan={plan}
+                  daysIncludeTravel={daysIncludeTravel}
+                  onDaysIncludeTravel={(v) => onPlanChange({ ...plan, daysIncludeTravel: v })}
+                  budgetINR={targetBudget}
+                  onChoose={(next, summary) => {
+                    onPlanChange(next);
+                    setOpenStep(2);
+                    showRefineMsg(`Travel: ${summary}`);
+                  }}
+                />
+              </StepCard>
 
-              {/* VISIBLE BY DEFAULT 2 (Mobile): Full Trip Cost Card */}
-              <div className="block lg:hidden">
-                <FullTripCostCard
+              <StepCard
+                n={2}
+                id="step-stay"
+                title="Where do you want to stay?"
+                summary={staySummary}
+                open={openStep === 2}
+                locked={!travelChosen}
+                lockedText="Choose how you'll travel first"
+                onToggle={() => setOpenStep(openStep === 2 ? null : 2)}
+              >
+                <StayStep
                   plan={plan}
                   preferences={preferences}
+                  onChoose={(next, summary) => {
+                    onPlanChange(next);
+                    setOpenStep(3);
+                    showRefineMsg(`Stay: ${summary}`);
+                  }}
                 />
+              </StepCard>
+
+              <StepCard
+                n={3}
+                id="step-days"
+                title="Your days"
+                summary={stayChosen && openStep !== 3 ? `${plan.durationDays} days planned${plan.userChoices?.addedStops?.length ? ` · ${plan.userChoices.addedStops.length} place${plan.userChoices.addedStops.length > 1 ? 's' : ''} you added` : ''}` : null}
+                open={openStep === 3}
+                locked={!stayChosen}
+                lockedText="Choose where you'll stay first"
+                onToggle={() => setOpenStep(openStep === 3 ? null : 3)}
+              >
+                {/* Permits and notes for this group (kids, seniors, pure veg, solo, big group) */}
+                <ForYourTripCard plan={plan} preferences={preferences} />
+                <AddPlaceToDay plan={plan} onAdd={(next, msg) => { onPlanChange(next); showRefineMsg(msg); }} />
+                <DayByDay
+                  itinerary={alignItineraryToPlan(plan)}
+                  destination={plan.destination}
+                  stayArea={currentStayArea}
+                  onAdjustDay={onUpdateItineraryDay}
+                  onCardFocus={(pinNum) => setActivePin(pinNum)}
+                  onDayChange={setMapDay}
+                />
+              </StepCard>
+
+              <StepCard
+                n={4}
+                id="step-total"
+                title="Your total & where to book"
+                summary={null}
+                open={openStep === 4 || (stayChosen && openStep === 3)}
+                locked={!stayChosen}
+                lockedText="Your exact total appears once travel and stay are chosen"
+                onToggle={() => setOpenStep(openStep === 4 ? 3 : 4)}
+              >
+                <TotalStep
+                  plan={plan}
+                  preferences={preferences}
+                  budgetINR={targetBudget}
+                  onApply={(next, msg) => { onPlanChange(next); showRefineMsg(msg); }}
+                  onTryPlace={onStartNewPlan ? (place) => {
+                    const t = plan.travellers;
+                    const who = t.children > 0 ? `${t.adults} adults and ${t.children} kids` : `${t.total} ${t.total === 1 ? 'person' : 'people'}`;
+                    onStartNewPlan(`${plan.durationDays} days in ${place} for ${who} from ${plan.origin.replace(/\s*\([^)]*\)/, '')}, budget ${targetBudget}`);
+                  } : undefined}
+                />
+              </StepCard>
+
+              {/* MOBILE: Collapsible Map (collapsed by default at 375px per Prompt 6) */}
+              <div className="block lg:hidden">
+                <details className="card-consumer p-0 overflow-hidden border border-[#E2E6E1] bg-white rounded-2xl shadow-xs group">
+                  <summary className="p-3.5 flex items-center justify-between text-xs font-bold text-[#15201D] cursor-pointer hover:bg-[#F9FAF9] select-none">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-[#0E6B59]" />
+                      <span className="flex flex-col">
+                        <span className="text-sm">Map of your days</span>
+                        <span className="text-xs font-normal text-[#55625E]">Your stay and each day's places, with photos</span>
+                      </span>
+                    </div>
+                    <span className="text-xs font-semibold text-[#0E6B59]">Show</span>
+                  </summary>
+                  <div className="p-2 border-t border-[#E2E6E1]">
+                    <UnifiedPlanMap
+                      destination={plan.destination}
+                      stayArea={currentStayArea}
+                      itinerary={alignItineraryToPlan(plan)}
+                      className="h-[36vh] min-h-[210px] max-h-[280px]"
+                      dayIndex={mapDay}
+                      onDayChange={setMapDay}
+                    />
+                  </div>
+                </details>
               </div>
 
-              {/* VISIBLE BY DEFAULT 3: Day-by-day Itinerary */}
-              <DayByDay
-                itinerary={plan.itinerary}
-                destination={plan.destination}
-                stayArea={currentStayArea}
-                onAdjustDay={onUpdateItineraryDay}
-                onCardFocus={(pinNum) => setActivePin(pinNum)}
-              />
 
+              {stayChosen && (<>
               {/* ======================================================== */}
               {/* 4 TAP-TO-OPEN SECTIONS (Prompt 7 requirement)            */}
               {/* ======================================================== */}
+
+              {/* Section 2: What's near your stay */}
+              <div className="card-consumer p-0 overflow-hidden border border-[#E2E6E1] bg-white rounded-2xl shadow-2xs">
+                <button
+                  type="button"
+                  id="section-toggle-near-stay"
+                  aria-expanded={collapsedSections.nearStay}
+                  aria-controls="section-content-near-stay"
+                  onClick={() => toggleSection('nearStay')}
+                  className="w-full p-4 flex items-center justify-between text-left hover:bg-[#F9FAF9] transition cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <MapPin className="h-4 w-4 text-[#0E6B59]" />
+                    <div>
+                      <h3 className="text-sm font-bold text-[#15201D]">What's near your stay</h3>
+                      <p className="text-xs text-[#55625E]">Food, pharmacy, hospital</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold text-[#0E6B59]">
+                      {collapsedSections.nearStay ? 'Hide' : 'Show'}
+                    </span>
+                    {collapsedSections.nearStay ? (
+                      <ChevronUp className="h-4 w-4 text-[#55625E]" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-[#55625E]" />
+                    )}
+                  </div>
+                </button>
+                {collapsedSections.nearStay && (
+                  <div id="section-content-near-stay" className="p-4 pt-2 border-t border-[#E2E6E1] space-y-4 animate-fade-in">
+                    {plan.stayAreaReason && (
+                      <p id="plan-stay-area-reason-pill" className="text-xs text-[#55625E]">
+                        <strong className="text-[#15201D]">Why {currentStayArea}:</strong> {plan.stayAreaReason}
+                      </p>
+                    )}
+                    <StayAreaMapCard
+                      destination={plan.destination}
+                      tripNeeds={preferences.tripNeeds}
+                      currentStayArea={currentStayArea}
+                      onSelectArea={(areaName) => handleRefinePlan(`stay in ${areaName}`)}
+                      onPinHover={(pinId) => setActivePin(pinId)}
+                    />
+                    <NearbyAmenitiesCard
+                      destination={plan.destination}
+                      stayArea={currentStayArea}
+                      tripNeeds={preferences.tripNeeds}
+                    />
+                  </div>
+                )}
+              </div>
 
               {/* Section 1: Travel & stay details */}
               <div className="card-consumer p-0 overflow-hidden border border-[#E2E6E1] bg-white rounded-2xl shadow-2xs">
@@ -512,13 +547,13 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                   <div className="flex items-center gap-2.5">
                     <Plane className="h-4 w-4 text-[#0E6B59]" />
                     <div>
-                      <h3 className="text-sm font-bold text-[#15201D]">Travel & stay details</h3>
-                      <p className="text-[11px] text-[#55625E]">Flights, stays per base, transfers, and direct booking links</p>
+                      <h3 className="text-sm font-bold text-[#15201D]">Travel and stay details</h3>
+                      <p className="text-xs text-[#55625E]">Flight, cab, hotels — and links to book them</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-semibold text-[#0E6B59]">
-                      {collapsedSections.travelStay ? 'Tap to close' : 'Tap to open'}
+                      {collapsedSections.travelStay ? 'Hide' : 'Show'}
                     </span>
                     {collapsedSections.travelStay ? (
                       <ChevronUp className="h-4 w-4 text-[#55625E]" />
@@ -539,56 +574,12 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                       interCityTravel={plan.interCityTravel}
                       onOpenFlightsModal={() => setMoreOptionsView('flights')}
                       onOpenStaysModal={() => setMoreOptionsView('hotels')}
+                      dates={plan.dates}
+                      party={{ adults: plan.travellers.adults, children: plan.travellers.children, childAges: plan.travellers.childAges }}
                     />
                     <FeasibilityNote
                       airportSelectionReason={plan.airportSelectionReason}
                       verificationChecks={plan.verificationChecks || []}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Section 2: What's near your stay */}
-              <div className="card-consumer p-0 overflow-hidden border border-[#E2E6E1] bg-white rounded-2xl shadow-2xs">
-                <button
-                  type="button"
-                  id="section-toggle-near-stay"
-                  aria-expanded={collapsedSections.nearStay}
-                  aria-controls="section-content-near-stay"
-                  onClick={() => toggleSection('nearStay')}
-                  className="w-full p-4 flex items-center justify-between text-left hover:bg-[#F9FAF9] transition cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <MapPin className="h-4 w-4 text-[#0E6B59]" />
-                    <div>
-                      <h3 className="text-sm font-bold text-[#15201D]">What's near your stay</h3>
-                      <p className="text-[11px] text-[#55625E]">Stay area highlights, local amenities, and neighborhood pins</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-semibold text-[#0E6B59]">
-                      {collapsedSections.nearStay ? 'Tap to close' : 'Tap to open'}
-                    </span>
-                    {collapsedSections.nearStay ? (
-                      <ChevronUp className="h-4 w-4 text-[#55625E]" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-[#55625E]" />
-                    )}
-                  </div>
-                </button>
-                {collapsedSections.nearStay && (
-                  <div id="section-content-near-stay" className="p-4 pt-2 border-t border-[#E2E6E1] space-y-4 animate-fade-in">
-                    <StayAreaMapCard
-                      destination={plan.destination}
-                      tripNeeds={preferences.tripNeeds}
-                      currentStayArea={currentStayArea}
-                      onSelectArea={(areaName) => handleRefinePlan(`stay in ${areaName}`)}
-                      onPinHover={(pinId) => setActivePin(pinId)}
-                    />
-                    <NearbyAmenitiesCard
-                      destination={plan.destination}
-                      stayArea={currentStayArea}
-                      tripNeeds={preferences.tripNeeds}
                     />
                   </div>
                 )}
@@ -607,13 +598,13 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                   <div className="flex items-center gap-2.5">
                     <ShieldCheck className="h-4 w-4 text-[#0E6B59]" />
                     <div>
-                      <h3 className="text-sm font-bold text-[#15201D]">Before you book</h3>
-                      <p className="text-[11px] text-[#55625E]">Trust checks, driver vetting, real buffers & local quirks</p>
+                      <h3 className="text-sm font-bold text-[#15201D]">Before you book, check</h3>
+                      <p className="text-xs text-[#55625E]">Real reviews, cancellation, local tips</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-semibold text-[#0E6B59]">
-                      {collapsedSections.beforeBooking ? 'Tap to close' : 'Tap to open'}
+                      {collapsedSections.beforeBooking ? 'Hide' : 'Show'}
                     </span>
                     {collapsedSections.beforeBooking ? (
                       <ChevronUp className="h-4 w-4 text-[#55625E]" />
@@ -650,13 +641,13 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                   <div className="flex items-center gap-2.5">
                     <Calendar className="h-4 w-4 text-[#0E6B59]" />
                     <div>
-                      <h3 className="text-sm font-bold text-[#15201D]">Best time to go & transit</h3>
-                      <p className="text-[11px] text-[#55625E]">Seasonal crowds, weather advisory, and multi-modal transit comparison</p>
+                      <h3 className="text-sm font-bold text-[#15201D]">{plan.monthWorthiness ? `Is ${plan.monthWorthiness.month} a good time?` : 'Best time to go'}</h3>
+                      <p className="text-xs text-[#55625E]">{plan.monthWorthiness ? `${plan.monthWorthiness.verdict} · ${plan.monthWorthiness.reason}` : 'Weather and crowds'}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-semibold text-[#0E6B59]">
-                      {collapsedSections.bestTime ? 'Tap to close' : 'Tap to open'}
+                      {collapsedSections.bestTime ? 'Hide' : 'Show'}
                     </span>
                     {collapsedSections.bestTime ? (
                       <ChevronUp className="h-4 w-4 text-[#55625E]" />
@@ -674,83 +665,41 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                       />
                     )}
 
-                    {/* Prompt 9: "How to get there" multi-mode comparison */}
-                    {plan.transitModeComparison && plan.transitModeComparison.length > 0 && (
-                      <div className="space-y-2 pt-2 border-t border-[#E2E6E1]">
-                        <h4 className="text-xs font-bold text-[#15201D] uppercase tracking-wider">
-                          How to get there · Door-to-door comparison
-                        </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          {plan.transitModeComparison.map((m) => (
-                            <div
-                              key={m.mode}
-                              className={`p-3 rounded-xl border text-xs space-y-1.5 ${
-                                m.isRecommended
-                                  ? 'border-[#0E6B59] bg-[#E3F1EC]/30 ring-1 ring-[#0E6B59]/40'
-                                  : 'border-[#E2E6E1] bg-white'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="font-bold text-[#15201D]">{m.mode}</span>
-                                {m.isRecommended && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#E3F1EC] text-[#0E6B59]">
-                                    Recommended
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[11px] text-[#55625E] font-medium">
-                                ⏱️ {m.doorToDoorHoursText}
-                              </div>
-                              <div className="text-xs font-bold text-[#15201D]">
-                                ₹{m.costForGroupINR.toLocaleString('en-IN')} <span className="text-[10px] font-normal text-[#55625E]">for party</span>
-                              </div>
-                              <div className="text-[11px] text-[#55625E] italic">
-                                "{m.scenicNote}"
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Route Trade-offs */}
-                    <RouteTradeOffComparison
-                      comparison={plan.routeComparison}
-                      selectedMode={preferences.transportMode || (plan.flight ? 'Flight' : 'Train')}
-                      onSelectMode={(mode) => {
-                        if (mode === 'Train') handleRefinePlan('switch to train');
-                        else if (mode === 'Flight') handleRefinePlan('switch to flight');
-                        else handleRefinePlan('switch to road trip');
-                      }}
-                    />
                   </div>
                 )}
               </div>
 
-              {/* Sticky Bottom Chat Box (Edits cards, never walls of text) */}
+              {/* Change something (no longer pinned, so the Share / Save / Book bar stays visible) */}
               <RefineBar
                 onRefinePlan={handleRefinePlan}
                 isUpdating={isRefining}
               />
+              </>)}
+              {refineMsg && (
+                <div
+                  id="refine-status"
+                  role="status"
+                  className="fixed left-3 right-3 bottom-[132px] sm:static sm:left-auto sm:right-auto z-40 rounded-xl bg-[#15201D] text-white text-sm px-4 py-3 shadow-lg sm:shadow-none"
+                >
+                  {refineMsg}
+                </div>
+              )}
             </div>
 
             {/* RIGHT PANE: DESKTOP STICKY MAP & SUMMARY (5 columns) */}
             <div className="hidden lg:block lg:col-span-5 space-y-4 sticky top-20">
               {/* Sticky Map Component */}
-              <UnifiedPlanMap
-                destination={plan.destination}
-                stayArea={currentStayArea}
-                activePin={activePin}
-                onSelectPin={(pin) => setActivePin(pin)}
-                itinerary={plan.itinerary}
-                className="h-[46vh] min-h-[300px]"
-              />
+              <div className="card-consumer p-4 border border-[#E2E6E1] bg-white rounded-2xl">
+                <UnifiedPlanMap
+                  destination={plan.destination}
+                  stayArea={currentStayArea}
+                  itinerary={alignItineraryToPlan(plan)}
+                  className="h-[34vh] min-h-[240px]"
+                  dayIndex={mapDay}
+                  onDayChange={setMapDay}
+                />
+              </div>
 
-              {/* Full Trip Cost Card (stacked buffer breakdown & share button) */}
-              <FullTripCostCard
-                plan={plan}
-                preferences={preferences}
-              />
             </div>
           </div>
         </>

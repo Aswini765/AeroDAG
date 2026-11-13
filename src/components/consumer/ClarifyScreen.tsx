@@ -18,10 +18,12 @@ import { TripContext } from '../../services/requirementEngine';
 import { TripPlanningEngine } from '../../services/tripPlanningEngine';
 import { getSeasonOptionsForDestination, isDetailedDestination } from '../../services/destinationsData';
 import { resolveTravelDates, formatDateRange } from '../../services/dateResolver';
+import { ORIGIN_CITIES } from '../../services/originCities';
 import { findLongWeekends } from '../../services/longWeekendFinder';
 import { fetchDestinationProfile } from '../../services/destinationProfileClient';
 import { buildPlanFromDestinationProfile } from '../../services/aiDestinationPlanBuilder';
 import { DESTINATIONS } from './WhereShouldWeGo';
+import { buildFallbackProfile } from '../../services/indiaPlaces';
 
 interface ClarifyScreenProps {
   initialPrompt: string;
@@ -129,6 +131,9 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     initialContext.tripNeeds.length > 0
   );
 
+  // Where you start changes every price (flight vs overnight bus), so never silently assume it
+  const originAlreadyStated = initialContext.fieldSources?.origin === 'stated';
+
   const budgetAlreadyStated = Boolean(
     initialContext.fieldSources?.budget === 'stated' &&
     initialContext.budgetTotalINR &&
@@ -139,13 +144,13 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
   const activeSteps = useMemo<StepKey[]>(() => {
     const list: StepKey[] = [];
     // Prompt 4 rule: When budget or traveller count is missing from the prompt, show ONE short question step
-    if (!travellersAlreadyStated || !budgetAlreadyStated) {
+    if (!travellersAlreadyStated || !budgetAlreadyStated || !originAlreadyStated) {
       list.push('basics');
     }
     // Dates, pace and needs have sensible defaults shown as editable chips on the plan,
     // so they are not extra steps before the answer.
     return list;
-  }, [datesAlreadyStated, travellersAlreadyStated, timeAlreadyStated, needsAlreadyStated, budgetAlreadyStated]);
+  }, [datesAlreadyStated, travellersAlreadyStated, timeAlreadyStated, needsAlreadyStated, budgetAlreadyStated, originAlreadyStated]);
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
@@ -209,6 +214,12 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     roundTo(typicalTotalINR * 1.5, 5000)
   ]));
   const selectedBudgetINR = pickedBudgetINR ?? roundTo(typicalTotalINR, 5000);
+  const [pickedOrigin, setPickedOrigin] = useState<string>(
+    originAlreadyStated ? '' : ''
+  );
+  const [customOriginInput, setCustomOriginInput] = useState('');
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [originError, setOriginError] = useState<string | null>(null);
   const [customTravellersInput, setCustomTravellersInput] = useState('');
   const [customBudgetInput, setCustomBudgetInput] = useState('');
   const [isCustomTravellersOpen, setIsCustomTravellersOpen] = useState(false);
@@ -222,15 +233,36 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
       ? parseInt(customBudgetInput.replace(/[^\d]/g, ''), 10)
       : selectedBudgetINR;
 
+    let originValue = tripContext.origin;
+    let originSource = tripContext.fieldSources?.origin;
+    if (!originAlreadyStated && !(tripContext.fieldSources?.origin === 'stated' && !pickedOrigin && !customOriginInput.trim())) {
+      const typed = customOriginInput.trim().toLowerCase();
+      const fromTyped = typed ? ORIGIN_CITIES.find((c) => c.name.toLowerCase() === typed || c.aliases.includes(typed) || c.name.toLowerCase().startsWith(typed)) : null;
+      const chosen = fromTyped || ORIGIN_CITIES.find((c) => c.name === pickedOrigin);
+      if (!chosen && typed) {
+        originValue = customOriginInput.trim();
+        originSource = 'stated';
+      } else if (!chosen) {
+        setOriginError('Pick the city you are starting from — it changes how you travel and the price.');
+        return;
+      } else {
+        originValue = `${chosen.name} (${chosen.code})`;
+        originSource = 'stated';
+      }
+    }
+    setOriginError(null);
+
     const updated = {
       ...tripContext,
+      origin: originValue,
       adultsCount: finalTravellers,
       totalTravellers: finalTravellers,
       budgetTotalINR: finalBudget,
       fieldSources: {
         ...tripContext.fieldSources,
         travellers: 'stated' as const,
-        budget: 'stated' as const
+        budget: 'stated' as const,
+        origin: (originSource || 'assumed') as any
       }
     };
     setTripContext(updated);
@@ -491,11 +523,9 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
         generatedPlan = await TripPlanningEngine.buildDeterministicPlan(ctxToBuild);
       } else {
         const profile = await fetchDestinationProfile(ctxToBuild.destination || '', ctxToBuild.origin || 'Bengaluru');
-        if (profile && !('unsupported' in profile)) {
-          generatedPlan = buildPlanFromDestinationProfile(ctxToBuild, profile);
-        } else {
-          generatedPlan = await TripPlanningEngine.buildDeterministicPlan(ctxToBuild);
-        }
+        // If the AI profile is unavailable, use the offline India reference — never a different place's plan.
+        const usableProfile = profile && !('unsupported' in profile) ? profile : buildFallbackProfile(ctxToBuild.destination || '');
+        generatedPlan = buildPlanFromDestinationProfile(ctxToBuild, usableProfile);
       }
 
       const preferences: TripPreferences = {
@@ -563,7 +593,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
               <span className="h-4.5 w-4.5 rounded-full bg-[#0E6B59] flex items-center justify-center shrink-0">
                 <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
               </span>
-              <span className="text-xs text-[#15201D] font-medium">Matching stays tailored to your party within budget cap...</span>
+              <span className="text-xs text-[#15201D] font-medium">Building your plan…</span>
             </div>
             <div className="flex items-center gap-3">
               <span className="h-4.5 w-4.5 rounded-full bg-[#E2E6E1] shrink-0" />
@@ -585,151 +615,223 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
 
   return (
     <div className="max-w-xl mx-auto px-4 sm:px-6 py-6 sm:py-10 animate-fade-in-slide space-y-4 text-left">
-      {/* Top Bar: Progress Indicator & Back */}
-      <div className="flex items-center justify-between gap-2 pb-2">
+      {/* Header: back + plain title */}
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={handlePrevStep}
-          className="text-xs font-semibold text-[#55625E] hover:text-[#0E6B59] flex items-center gap-1 min-h-[44px] px-2 py-1"
+          aria-label="Back"
+          className="h-11 w-11 rounded-xl flex items-center justify-center text-[#15201D] hover:bg-[#E3F1EC] cursor-pointer"
         >
-          <ArrowLeft className="h-4 w-4" />
-          <span>Back</span>
+          <ArrowLeft className="h-5 w-5" />
         </button>
-
-        {totalSteps > 1 && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-[#0E6B59]">
-              {Math.min(currentStepIndex + 1, totalSteps)} of {totalSteps}
-            </span>
-            <div className="flex gap-1">
-              {activeSteps.map((_, idx) => (
-                <span
-                  key={idx}
-                  className={`h-1.5 rounded-full transition-all ${
-                    idx <= currentStepIndex ? 'w-5 bg-[#0E6B59]' : 'w-2 bg-[#E2E6E1]'
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        <h1 className="text-base font-bold text-[#15201D]">Check what we understood</h1>
       </div>
 
-      {/* "What we understood" as small removable chips, NOT a table */}
-      <div id="clarify-what-we-understood" className="p-3 rounded-2xl bg-[#F6F8F6] border border-[#E2E6E1] space-y-1.5">
-        <div className="flex items-center justify-between text-[11px] text-[#55625E]">
-          <div className="flex items-center gap-2">
-            <span className="font-bold uppercase tracking-wider text-[#15201D]">What we understood:</span>
-            {tripContext.parseMode === 'basic' ? (
-              <span id="clarify-basic-mode-badge" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FCEFD9] text-[#8A4307] border border-[#8A4307]/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#8A4307]" />
-                Basic mode
-              </span>
-            ) : (
-              <span id="clarify-ai-mode-badge" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#E3F1EC] text-[#0E6B59] border border-[#0E6B59]/30">
-                AI parsed
-              </span>
+      {/* What the user typed, word for word */}
+      <div id="clarify-you-wrote" className="rounded-2xl bg-white border border-[#E2E6E1] px-3.5 py-3 text-sm text-[#55625E]">
+        You wrote: <span className="text-[#15201D] font-semibold">“{initialPrompt}”</span>
+      </div>
+
+      {/* Got it: each field with "You said" or "Assumed" */}
+      <section id="clarify-what-we-understood" aria-labelledby="clarify-got-it" className="space-y-2">
+        <h2 id="clarify-got-it" className="text-xs font-semibold uppercase tracking-wider text-[#55625E]">Got it</h2>
+        {[
+          { key: 'destination', label: 'Where', value: cleanDest, stated: tripContext.fieldSources?.destination !== 'assumed' },
+          { key: 'duration', label: 'How long', value: `${Math.max(1, tripContext.durationDays || 4)} days · ${Math.max(1, (tripContext.durationDays || 4) - 1)} night${(tripContext.durationDays || 4) - 1 === 1 ? '' : 's'}`, stated: tripContext.fieldSources?.duration === 'stated' },
+          { key: 'dates', label: 'When', value: tripContext.dates || 'Next free weekend', stated: tripContext.fieldSources?.dates === 'stated' },
+          { key: 'origin', label: 'From', value: (tripContext.origin || 'Bengaluru').replace(/\s*\([^)]*\)/, '').trim(), stated: tripContext.fieldSources?.origin === 'stated' }
+        ].map((f) => (
+          <div key={f.key} className="rounded-xl bg-white border border-[#E2E6E1] px-3 py-2.5 min-h-[48px]">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-xs text-[#55625E]">{f.label}</div>
+                <div className="text-[15px] font-semibold text-[#15201D] break-words">{f.value}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`text-[11px] font-bold rounded-full px-2 py-1 ${f.stated ? 'bg-[#E3F1EC] text-[#0A5546]' : 'bg-[#FCEFD9] text-[#8A4307]'}`}>
+                  {f.stated ? 'You said' : 'Assumed'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Where changes the whole trip, so edit the sentence; everything else is changed right here
+                    if (f.key === 'destination') { onBackToDescribe(); return; }
+                    setEditingField(editingField === f.key ? null : f.key);
+                  }}
+                  aria-label={`Change ${f.label}`}
+                  aria-expanded={editingField === f.key}
+                  className="h-9 px-2.5 rounded-lg border border-[#D5D3CA] bg-white text-[13px] font-semibold text-[#0E6B59] hover:bg-[#E3F1EC] cursor-pointer"
+                >
+                  {editingField === f.key ? 'Close' : 'Change'}
+                </button>
+              </div>
+            </div>
+
+            {/* Inline editors: change it here, no going back */}
+            {editingField === 'dates' && f.key === 'dates' && (() => {
+              const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              const parse = (v: string) => { const [y, m, d] = v.split('-').map(Number); return new Date(y, m - 1, d); };
+              const r = tripContext.dates ? resolveTravelDates(tripContext.dates) : null;
+              const startIso = r && r.ok ? iso(r.start) : '';
+              const endIso = r && r.ok ? iso(r.end) : '';
+              const todayIso = iso(new Date());
+              // Start + end set both the dates and the number of days
+              const setRange = (start: Date, end: Date) => {
+                const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+                if (days < 1 || days > 30) return;
+                setTripContext((prev) => ({
+                  ...prev,
+                  dates: formatDateRange(start, end),
+                  durationDays: days,
+                  fieldSources: { ...prev.fieldSources, dates: 'stated' as const, duration: 'stated' as const }
+                }));
+              };
+              return (
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
+                  <label className="text-xs text-[#55625E] space-y-1">
+                    <span className="block">Start date</span>
+                    <input
+                      id="clarify-start-date"
+                      type="date"
+                      min={todayIso}
+                      value={startIso}
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        const start = parse(e.target.value);
+                        const days = Math.max(1, tripContext.durationDays || 4);
+                        // Keep the trip length when only the start moves
+                        setRange(start, new Date(start.getFullYear(), start.getMonth(), start.getDate() + days - 1));
+                      }}
+                      className="h-10 w-full rounded-lg border border-[#D5D3CA] px-2 text-sm text-[#15201D] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none"
+                    />
+                  </label>
+                  <label className="text-xs text-[#55625E] space-y-1">
+                    <span className="block">End date</span>
+                    <input
+                      id="clarify-end-date"
+                      type="date"
+                      min={startIso || todayIso}
+                      value={endIso}
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        const end = parse(e.target.value);
+                        const start = r && r.ok ? r.start : end;
+                        setRange(start, end < start ? start : end);
+                      }}
+                      className="h-10 w-full rounded-lg border border-[#D5D3CA] px-2 text-sm text-[#15201D] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none"
+                    />
+                  </label>
+                  {r && r.ok && (
+                    <p className="col-span-2 text-xs text-[#55625E]">
+                      {r.days} days · {Math.max(0, r.days - 1)} night{r.days - 1 === 1 ? '' : 's'}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+            {editingField === 'duration' && f.key === 'duration' && (
+              <div className="mt-2.5 flex items-center gap-3">
+                {[-1, 1].map((delta) => (
+                  <button
+                    key={delta}
+                    type="button"
+                    aria-label={delta < 0 ? 'One day fewer' : 'One day more'}
+                    disabled={delta < 0 ? (tripContext.durationDays || 4) <= 1 : (tripContext.durationDays || 4) >= 21}
+                    onClick={() => setTripContext((prev) => {
+                      const days = Math.min(21, Math.max(1, (prev.durationDays || 4) + delta));
+                      const r = prev.dates ? resolveTravelDates(prev.dates) : null;
+                      const dates = r && r.ok
+                        ? formatDateRange(r.start, new Date(r.start.getFullYear(), r.start.getMonth(), r.start.getDate() + days - 1))
+                        : prev.dates;
+                      return { ...prev, durationDays: days, dates, fieldSources: { ...prev.fieldSources, duration: 'stated' as const } };
+                    })}
+                    className="h-10 w-10 rounded-lg border border-[#D5D3CA] bg-white text-lg font-bold text-[#0E6B59] disabled:opacity-40 cursor-pointer"
+                  >
+                    {delta < 0 ? '−' : '+'}
+                  </button>
+                ))}
+                <span className="text-sm text-[#55625E]">Dates move with it.</span>
+              </div>
+            )}
+            {f.key === 'duration' && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label="Do these days include travel?">
+                <span className="text-[#55625E]">Do these {tripContext.durationDays || ''} days include travel?</span>
+                {[false, true].map((withTravel) => {
+                  const on = Boolean(tripContext.daysIncludeTravel) === withTravel;
+                  return (
+                    <button
+                      key={String(withTravel)}
+                      type="button"
+                      id={withTravel ? 'days-include-travel' : 'days-without-travel'}
+                      aria-pressed={on}
+                      onClick={() => setTripContext((prev) => ({ ...prev, daysIncludeTravel: withTravel }))}
+                      className={`h-8 px-3 rounded-full border font-semibold cursor-pointer ${on ? 'bg-[#0E6B59] text-white border-[#0E6B59]' : 'bg-white text-[#15201D] border-[#D5D3CA]'}`}
+                    >
+                      {withTravel ? 'Yes, door to door' : `No, ${tripContext.durationDays || ''} days at ${(tripContext.destination || 'the place').replace(/,.*$/, '')}`}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {editingField === 'origin' && f.key === 'origin' && (
+              <div className="mt-2.5 space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {['Bengaluru', 'New Delhi', 'Mumbai', 'Chennai', 'Hyderabad', 'Kolkata', 'Pune'].map((city) => {
+                    const c = ORIGIN_CITIES.find((x) => x.name === city);
+                    return (
+                      <button
+                        key={city}
+                        type="button"
+                        onClick={() => {
+                          setTripContext((prev) => ({ ...prev, origin: c ? `${c.name} (${c.code})` : city, fieldSources: { ...prev.fieldSources, origin: 'stated' as const } }));
+                          setPickedOrigin(city);
+                          setEditingField(null);
+                        }}
+                        className="h-9 px-3 rounded-lg border border-[#D5D3CA] bg-white text-sm text-[#15201D] hover:border-[#0E6B59] cursor-pointer"
+                      >
+                        {city === 'New Delhi' ? 'Delhi' : city}
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Or type your city and press Enter"
+                  aria-label="Your starting city"
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    const typed = (e.target as HTMLInputElement).value.trim();
+                    if (!typed) return;
+                    const low = typed.toLowerCase();
+                    const c = ORIGIN_CITIES.find((x) => x.name.toLowerCase() === low || x.aliases.includes(low) || x.name.toLowerCase().startsWith(low));
+                    setTripContext((prev) => ({ ...prev, origin: c ? `${c.name} (${c.code})` : typed, fieldSources: { ...prev.fieldSources, origin: 'stated' as const } }));
+                    setEditingField(null);
+                  }}
+                  className="w-full h-10 rounded-lg border border-[#D5D3CA] px-3 text-sm focus:ring-2 focus:ring-[#0E6B59] focus:outline-none"
+                />
+              </div>
             )}
           </div>
-          <span>Tap ✕ to change</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {/* Destination Chip */}
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-[#CBD5E1] text-xs font-semibold text-[#15201D] shadow-2xs">
-            <span>📍 {cleanDest}</span>
-            <span className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-[#E3F1EC] text-[#0E6B59]">
-              {tripContext.fieldSources?.destination === 'assumed' ? 'assumed' : 'stated'}
-            </span>
-          </span>
+        ))}
+        {tripContext.parseMode === 'basic' && (
+          <p id="clarify-basic-mode-badge" className="text-[11px] text-[#55625E]">Read with simple rules (AI was not used).</p>
+        )}
+      </section>
 
-          {/* Dates Chip if known */}
-          {tripContext.dates && (
-            <button
-              type="button"
-              onClick={() => handleRemoveUnderstoodChip('dates')}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-[#CBD5E1] text-xs font-semibold text-[#15201D] hover:border-[#DC2626] hover:text-[#DC2626] transition shadow-2xs cursor-pointer"
-              title="Click to change dates"
-            >
-              <span>📅 {tripContext.dates}</span>
-              <span className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded ${tripContext.fieldSources?.dates === 'stated' ? 'bg-[#E3F1EC] text-[#0E6B59]' : 'bg-[#F1F5F9] text-[#64748B]'}`}>
-                {tripContext.fieldSources?.dates === 'stated' ? 'stated' : 'assumed'}
-              </span>
-              <X className="h-3 w-3" />
-            </button>
-          )}
-
-          {/* Travellers Chip if known */}
-          {tripContext.adultsCount && (
-            <button
-              type="button"
-              onClick={() => handleRemoveUnderstoodChip('travellers')}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-[#CBD5E1] text-xs font-semibold text-[#15201D] hover:border-[#DC2626] hover:text-[#DC2626] transition shadow-2xs cursor-pointer"
-              title="Click to change travellers"
-            >
-              <span>👥 {formatTravellers(tripContext)}</span>
-              <span className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded ${tripContext.fieldSources?.travellers === 'stated' ? 'bg-[#E3F1EC] text-[#0E6B59]' : 'bg-[#F1F5F9] text-[#64748B]'}`}>
-                {tripContext.fieldSources?.travellers === 'stated' ? 'stated' : 'assumed'}
-              </span>
-              <X className="h-3 w-3" />
-            </button>
-          )}
-
-          {/* Budget Chip only once the user has given a budget (never show a silent default) */}
-          {tripContext.budgetTotalINR && tripContext.fieldSources?.budget === 'stated' && (
-            <button
-              type="button"
-              onClick={() => handleRemoveUnderstoodChip('budget')}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-[#CBD5E1] text-xs font-semibold text-[#15201D] hover:border-[#DC2626] hover:text-[#DC2626] transition shadow-2xs cursor-pointer"
-              title="Click to change budget"
-            >
-              <span>💰 ₹{tripContext.budgetTotalINR.toLocaleString('en-IN')}</span>
-              <span className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded ${tripContext.fieldSources?.budget === 'stated' ? 'bg-[#E3F1EC] text-[#0E6B59]' : 'bg-[#F1F5F9] text-[#64748B]'}`}>
-                {tripContext.fieldSources?.budget === 'stated' ? 'stated' : 'assumed'}
-              </span>
-              <X className="h-3 w-3" />
-            </button>
-          )}
-
-          {/* Needs / Preferences Chips */}
-          {selectedNeeds.map((need) => (
-            <button
-              key={need}
-              type="button"
-              onClick={() => handleRemoveUnderstoodChip('need', need)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#E3F1EC] border border-[#0E6B59]/30 text-xs font-semibold text-[#0E6B59] hover:border-[#DC2626] hover:text-[#DC2626] transition shadow-2xs cursor-pointer"
-              title={`Remove ${need}`}
-            >
-              <span>✓ {need}</span>
-              <span className="text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded bg-white text-[#0E6B59]">
-                stated
-              </span>
-              <X className="h-3 w-3" />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ONE QUESTION PER STEP AS A CHAT BUBBLE */}
-      <div className="card-consumer p-5 sm:p-6 space-y-5 border border-[#E2E6E1] bg-white rounded-2xl shadow-xs">
-        {/* User Prompt Context Bubble */}
-        <div className="flex justify-end">
-          <div className="max-w-[85%] bg-[#E3F1EC] text-[#15201D] text-xs sm:text-sm rounded-2xl rounded-tr-sm p-3.5 border border-[#0E6B59]/20 shadow-2xs leading-relaxed">
-            {initialPrompt}
-          </div>
-        </div>
-
+      <div className="space-y-5">
         {/* STEP 1: DATES */}
         {currentStep === 'dates' && (
           <div className="space-y-4 animate-fade-in-slide">
             {/* AI Chat Bubble */}
             <div className="flex items-start gap-2.5">
               <span className="w-8 h-8 rounded-full bg-[#0E6B59] text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                AI
+                ?
               </span>
               <div className="bg-[#F6F8F6] rounded-2xl rounded-tl-sm p-4 text-xs sm:text-sm text-[#15201D] space-y-1 border border-[#E2E6E1]">
                 <div className="font-bold">{conversationalAck}When would you like to travel to {cleanDest}?</div>
-                <div className="text-[11px] text-[#55625E]">
-                  Long weekends with fewest leave days first:
+                <div className="text-xs text-[#55625E]">
+                  Long weekends first — fewest leave days needed:
                 </div>
               </div>
             </div>
@@ -801,139 +903,141 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
           </div>
         )}
 
-        {/* STEP: BASICS (Prompt 4 rule: "How many of you, and roughly what budget?") */}
+        {/* STEP: BASICS — "Two things change the total" */}
         {currentStep === 'basics' && (
           <div className="space-y-4 animate-fade-in-slide">
-            <div className="flex items-start gap-2.5">
-              <span className="w-8 h-8 rounded-full bg-[#0E6B59] text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                AI
-              </span>
-              <div className="bg-[#F6F8F6] rounded-2xl rounded-tl-sm p-4 text-xs sm:text-sm text-[#15201D] space-y-1 border border-[#E2E6E1]">
-                <div className="font-bold">How many of you, and roughly what budget?</div>
-                <div className="text-[11px] text-[#55625E]">
-                  Quick picks to tailor your options and stay within a realistic cap:
-                </div>
-              </div>
-            </div>
+            <section aria-labelledby="clarify-two-things" className="rounded-2xl bg-white border-2 border-[#0E6B59] p-4 space-y-4">
+              <h2 id="clarify-two-things" className="text-[17px] font-bold text-[#15201D]">{(() => {
+                const n = [!originAlreadyStated, !travellersAlreadyStated, !budgetAlreadyStated].filter(Boolean).length;
+                return n === 1 ? 'One thing changes the total' : n === 2 ? 'Two things change the total' : 'Three things change the total';
+              })()}</h2>
 
-            <div className="space-y-4 pl-10">
-              {/* 1. Travellers Quick Picks */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-[#15201D] flex items-center gap-1.5">
-                  <Users className="h-4 w-4 text-[#0E6B59]" />
-                  <span>Number of travellers:</span>
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {[1, 2, 3, 4].map((num) => (
-                    <button
-                      key={num}
-                      type="button"
-                      onClick={() => {
-                        setSelectedTravellersCount(num);
-                        setIsCustomTravellersOpen(false);
-                      }}
-                      className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                        !isCustomTravellersOpen && selectedTravellersCount === num
-                          ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0E6B59] shadow-xs'
-                          : 'border-[#E2E6E1] bg-white text-[#15201D] hover:border-[#0E6B59]/40'
-                      }`}
-                    >
-                      {num} {num === 1 ? 'person' : 'people'}
-                    </button>
-                  ))}
+              {!originAlreadyStated && (
+                <fieldset className="space-y-2" id="clarify-origin">
+                  <legend className="text-sm font-semibold text-[#15201D] mb-2">Where are you starting from?</legend>
+                  <div className="flex flex-wrap gap-2">
+                    {['Bengaluru', 'New Delhi', 'Mumbai', 'Chennai', 'Hyderabad', 'Kolkata', 'Pune'].map((city) => {
+                      const on = pickedOrigin === city && !customOriginInput.trim();
+                      return (
+                        <button
+                          key={city}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => { setPickedOrigin(city); setCustomOriginInput(''); setOriginError(null); }}
+                          className={`h-10 px-3 rounded-xl border text-sm transition cursor-pointer ${
+                            on ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0A5546] font-bold' : 'border-[#D5D3CA] bg-white text-[#15201D]'
+                          }`}
+                        >
+                          {city === 'New Delhi' ? 'Delhi' : city}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <input
+                    type="text"
+                    value={customOriginInput}
+                    onChange={(e) => { setCustomOriginInput(e.target.value); setOriginError(null); }}
+                    placeholder="Or type your city, e.g. Guwahati"
+                    aria-label="Your starting city"
+                    className="w-full h-11 rounded-xl border border-[#D5D3CA] px-3 text-[15px] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none"
+                  />
+                  {originError && <p className="text-xs font-semibold text-[#9A4A00]" role="alert">{originError}</p>}
+                </fieldset>
+              )}
+
+              {!travellersAlreadyStated && (
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-semibold text-[#15201D] mb-2">How many of you?</legend>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4].map((num) => {
+                    const on = !isCustomTravellersOpen && selectedTravellersCount === num;
+                    return (
+                      <button
+                        key={num}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => { setSelectedTravellersCount(num); setIsCustomTravellersOpen(false); }}
+                        className={`flex-1 h-11 rounded-xl border text-[15px] transition cursor-pointer ${
+                          on ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0A5546] font-bold' : 'border-[#D5D3CA] bg-white text-[#15201D]'
+                        }`}
+                      >
+                        {num}
+                      </button>
+                    );
+                  })}
                   <button
                     type="button"
+                    aria-pressed={isCustomTravellersOpen}
                     onClick={() => setIsCustomTravellersOpen(true)}
-                    className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                      isCustomTravellersOpen
-                        ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0E6B59] shadow-xs'
-                        : 'border-[#E2E6E1] bg-white text-[#15201D] hover:border-[#0E6B59]/40'
+                    className={`flex-1 h-11 rounded-xl border text-[15px] transition cursor-pointer ${
+                      isCustomTravellersOpen ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0A5546] font-bold' : 'border-[#D5D3CA] bg-white text-[#15201D]'
                     }`}
                   >
-                    More / custom
+                    5+
                   </button>
                 </div>
                 {isCustomTravellersOpen && (
-                  <div className="pt-1 flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={customTravellersInput}
-                      onChange={(e) => setCustomTravellersInput(e.target.value)}
-                      placeholder="e.g. 5"
-                      className="w-32 bg-white border border-[#CBD5E1] rounded-xl px-3 py-2 text-xs font-bold text-[#15201D] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none min-h-[44px]"
-                    />
-                    <span className="text-xs text-[#55625E]">travellers</span>
-                  </div>
+                  <input
+                    type="number"
+                    min={5}
+                    max={30}
+                    inputMode="numeric"
+                    value={customTravellersInput}
+                    onChange={(e) => setCustomTravellersInput(e.target.value)}
+                    placeholder="How many? e.g. 6"
+                    aria-label="Number of travellers"
+                    className="w-full h-11 rounded-xl border border-[#D5D3CA] px-3 text-[15px] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none"
+                  />
                 )}
-              </div>
+              </fieldset>
+              )}
 
-              {/* 2. Budget Quick Picks */}
-              <div className="space-y-2 pt-2 border-t border-[#E2E6E1]/70">
-                <label className="text-xs font-bold text-[#15201D] flex items-center gap-1.5">
-                  <Wallet className="h-4 w-4 text-[#0E6B59]" />
-                  <span>Rough total trip budget:</span>
-                </label>
-                <p className="text-[11px] text-[#55625E]">
-                  Typical for {selectedTravellersCount} {selectedTravellersCount === 1 ? 'person' : 'people'}: about ₹{typicalTotalINR.toLocaleString('en-IN')}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {budgetQuickPicks.map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => {
-                        setSelectedBudgetINR(amt);
-                        setIsCustomBudgetOpen(false);
-                      }}
-                      className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                        !isCustomBudgetOpen && selectedBudgetINR === amt
-                          ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0E6B59] shadow-xs'
-                          : 'border-[#E2E6E1] bg-white text-[#15201D] hover:border-[#0E6B59]/40'
-                      }`}
-                    >
-                      ₹{amt.toLocaleString('en-IN')}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setIsCustomBudgetOpen(true)}
-                    className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                      isCustomBudgetOpen
-                        ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0E6B59] shadow-xs'
-                        : 'border-[#E2E6E1] bg-white text-[#15201D] hover:border-[#0E6B59]/40'
-                    }`}
-                  >
-                    Type own
-                  </button>
+              {!budgetAlreadyStated && (
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-semibold text-[#15201D] mb-2">Roughly what budget, in total?</legend>
+                <div className="grid grid-cols-3 gap-2">
+                  {budgetQuickPicks.map((amt) => {
+                    const on = !isCustomBudgetOpen && selectedBudgetINR === amt;
+                    return (
+                      <button
+                        key={amt}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => { setSelectedBudgetINR(amt); setIsCustomBudgetOpen(false); setCustomBudgetInput(''); }}
+                        className={`h-11 rounded-xl border text-sm transition cursor-pointer ${
+                          on ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0A5546] font-bold' : 'border-[#D5D3CA] bg-white text-[#15201D]'
+                        }`}
+                      >
+                        ₹{amt >= 1000 ? `${Math.round(amt / 1000)}k` : amt}
+                      </button>
+                    );
+                  })}
                 </div>
-                {isCustomBudgetOpen && (
-                  <div className="pt-1 flex items-center gap-2">
-                    <span className="text-xs font-bold text-[#15201D]">₹</span>
-                    <input
-                      type="text"
-                      value={customBudgetInput}
-                      onChange={(e) => setCustomBudgetInput(e.target.value)}
-                      placeholder="e.g. 75000"
-                      className="w-40 bg-white border border-[#CBD5E1] rounded-xl px-3 py-2 text-xs font-bold text-[#15201D] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none min-h-[44px]"
-                    />
-                  </div>
-                )}
-              </div>
+                <label htmlFor="clarify-own-budget" className="block text-xs text-[#55625E]">Or type your own</label>
+                <input
+                  id="clarify-own-budget"
+                  type="text"
+                  inputMode="numeric"
+                  value={customBudgetInput}
+                  onChange={(e) => { setCustomBudgetInput(e.target.value); setIsCustomBudgetOpen(e.target.value.trim().length > 0); }}
+                  placeholder="₹ amount"
+                  className="w-full h-11 rounded-xl border border-[#D5D3CA] px-3 text-[15px] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none"
+                />
+                <p className="text-xs text-[#55625E]">
+                  Typical {cleanDest} trip of {Math.max(1, tripContext.durationDays || 4)} days for {isCustomTravellersOpen && parseInt(customTravellersInput, 10) > 0 ? parseInt(customTravellersInput, 10) : selectedTravellersCount}: about ₹{typicalTotalINR.toLocaleString('en-IN')}
+                </p>
+              </fieldset>
+              )}
+            </section>
 
-              {/* Continue Button */}
-              <div className="pt-3">
-                <button
-                  type="button"
-                  onClick={handleApplyBasics}
-                  className="btn-primary w-full min-h-[44px] py-2.5 px-4 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-                >
-                  <span>Continue</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
+            <button
+              type="button"
+              id="clarify-show-my-plan"
+              onClick={handleApplyBasics}
+              className="w-full h-[52px] rounded-xl bg-[#0E6B59] hover:bg-[#0A5546] text-white text-base font-semibold flex items-center justify-center gap-2 cursor-pointer"
+            >
+              Show my plan
+            </button>
           </div>
         )}
 
@@ -943,12 +1047,12 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
             {/* AI Chat Bubble */}
             <div className="flex items-start gap-2.5">
               <span className="w-8 h-8 rounded-full bg-[#0E6B59] text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                AI
+                ?
               </span>
               <div className="bg-[#F6F8F6] rounded-2xl rounded-tl-sm p-4 text-xs sm:text-sm text-[#15201D] space-y-1 border border-[#E2E6E1]">
                 <div className="font-bold">{conversationalAck}Who is travelling with you?</div>
-                <div className="text-[11px] text-[#55625E]">
-                  Pick your party type to set room configuration and pacing:
+                <div className="text-xs text-[#55625E]">
+                  This decides rooms and how relaxed the days are.
                 </div>
               </div>
             </div>
@@ -1095,12 +1199,12 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
             {/* AI Chat Bubble */}
             <div className="flex items-start gap-2.5">
               <span className="w-8 h-8 rounded-full bg-[#0E6B59] text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                AI
+                ?
               </span>
               <div className="bg-[#F6F8F6] rounded-2xl rounded-tl-sm p-4 text-xs sm:text-sm text-[#15201D] space-y-1 border border-[#E2E6E1]">
                 <div className="font-bold">{conversationalAck}How much time do you have to spare?</div>
-                <div className="text-[11px] text-[#55625E]">
-                  Choose scenic drive vs fastest travel to set itinerary pacing:
+                <div className="text-xs text-[#55625E]">
+                  Scenic drive or fastest route?
                 </div>
               </div>
             </div>
@@ -1135,12 +1239,12 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
             {/* AI Chat Bubble */}
             <div className="flex items-start gap-2.5">
               <span className="w-8 h-8 rounded-full bg-[#0E6B59] text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                AI
+                ?
               </span>
               <div className="bg-[#F6F8F6] rounded-2xl rounded-tl-sm p-4 text-xs sm:text-sm text-[#15201D] space-y-1 border border-[#E2E6E1]">
                 <div className="font-bold">{conversationalAck}Any specific needs for your stay in {cleanDest}?</div>
-                <div className="text-[11px] text-[#55625E]">
-                  Select all that apply. We filter hotels and areas to match:
+                <div className="text-xs text-[#55625E]">
+                  Pick any that matter. We only show hotels and areas that match.
                 </div>
               </div>
             </div>
@@ -1199,12 +1303,12 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
             {/* AI Chat Bubble */}
             <div className="flex items-start gap-2.5">
               <span className="w-8 h-8 rounded-full bg-[#0E6B59] text-white flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                AI
+                ?
               </span>
               <div className="bg-[#F6F8F6] rounded-2xl rounded-tl-sm p-4 text-xs sm:text-sm text-[#15201D] space-y-1 border border-[#E2E6E1]">
                 <div className="font-bold">{conversationalAck}What is your budget per person?</div>
-                <div className="text-[11px] text-[#55625E]">
-                  All options include stay, transit, food and an extra surprise buffer:
+                <div className="text-xs text-[#55625E]">
+                  Your budget covers stay, travel, food and a 15% buffer for surprises.
                 </div>
               </div>
             </div>

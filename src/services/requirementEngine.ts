@@ -25,6 +25,8 @@ export type RequirementStatus =
 export type UserFacingTag = 'stated' | 'assumed' | 'needed';
 
 export interface TripContext {
+  /** true = the days include the journey; false/undefined = days at the destination (travel on top) */
+  daysIncludeTravel?: boolean;
   destination: string | null;
   destinationType?: 'city' | 'region' | null;
   freeTextPreferences?: string | null;

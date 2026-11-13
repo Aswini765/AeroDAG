@@ -1,3 +1,4 @@
+import { REGION_ALIASES, regionKeyFor } from '../services/regionRoutesData';
 // src/server/parseTripHandler.ts
 import { Request, Response } from 'express';
 import { GoogleGenAI } from '@google/genai';
@@ -12,15 +13,15 @@ const childSchema = z.object({
   age: z.number().int().positive().nullable().optional()
 });
 
-export const KNOWN_REGIONS = [
-  'rajasthan', 'kerala', 'himachal', 'himachal pradesh', 'uttarakhand', 'uttaranchal',
-  'north-east', 'northeast', 'kashmir', 'ladakh', 'sikkim', 'meghalaya'
-];
+/** States/regions that get the "Which part of …?" route step. Derived from the route data so they never drift apart. */
+export const KNOWN_REGIONS = Object.values(REGION_ALIASES).flat();
 
+/**
+ * True only when the whole place name is a state/region ("Rajasthan", "Himachal Pradesh",
+ * "Kashmir valley") — never for a town that merely sits in one ("Coorg, Karnataka", "Leh Ladakh").
+ */
 export function isKnownRegion(dest?: string | null): boolean {
-  if (!dest) return false;
-  const lower = dest.toLowerCase().trim();
-  return KNOWN_REGIONS.some((r) => lower === r || lower.startsWith(r + ' ') || lower.endsWith(' ' + r) || lower.includes(r));
+  return regionKeyFor(dest) !== null;
 }
 
 const tripSchema = z.object({
@@ -110,9 +111,24 @@ Schema: ${JSON.stringify(tripSchema.shape)}
     const { text: raw, model: usedModel } = await generateJsonWithFallback(ai, prompt, [modelToUse]);
     let parsed;
     try { parsed = JSON.parse(raw); } catch { return res.status(502).json({error:'Invalid JSON from Gemini',code:'BAD_GEMINI_RESPONSE'}); }
-    const result = tripSchema.safeParse(parsed);
-    if (!result.success) return res.status(502).json({error:'Schema mismatch',details:result.error.format(),code:'BAD_GEMINI_RESPONSE'});
-    const data = result.data;
+    let data = tripSchema.safeParse(parsed).success ? tripSchema.parse(parsed) : null;
+    if (!data) {
+      // One bad field (e.g. "children": "none") shouldn't throw away the whole answer:
+      // keep every field that is valid on its own and drop the rest.
+      const salvaged: Record<string, unknown> = {};
+      const shape = tripSchema.shape as Record<string, z.ZodTypeAny>;
+      if (parsed && typeof parsed === 'object') {
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+          const fieldSchema = shape[key];
+          if (fieldSchema && fieldSchema.safeParse(value).success) salvaged[key] = value;
+        }
+      }
+      const retry = tripSchema.safeParse(salvaged);
+      if (!retry.success || !retry.data.destination) {
+        return res.status(502).json({error:'Schema mismatch',code:'BAD_GEMINI_RESPONSE'});
+      }
+      data = retry.data;
+    }
     // Quote verification
     const lowerMsg = userMessage.toLowerCase();
     const fields = ['destination','origin','durationDays','dates','adults','children','seniors','budgetINR','pace','freeTextPreferences','accommodationPreference','transportPreference'];

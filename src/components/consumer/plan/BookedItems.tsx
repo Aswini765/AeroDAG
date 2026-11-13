@@ -1,3 +1,5 @@
+import { buildFlightSearchUrl, buildHotelSearchUrl, BookingParty } from '../../../services/bookingLinks';
+import { PlacePhoto } from './PlacePhoto';
 import React from 'react';
 import { Plane, Building, Car, ChevronRight, ExternalLink } from 'lucide-react';
 import { FlightItem, HotelItem, TransferItem } from '../../../types/travelBooking';
@@ -14,6 +16,9 @@ interface BookedItemsProps {
   interCityTravel?: TransferItem;
   onOpenFlightsModal?: () => void;
   onOpenStaysModal?: () => void;
+  /** Trip dates and party, so booking links open with them filled in */
+  dates?: string;
+  party?: BookingParty;
 }
 
 export const BookedItems: React.FC<BookedItemsProps> = ({
@@ -25,8 +30,14 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
   stays,
   interCityTravel,
   onOpenFlightsModal,
-  onOpenStaysModal
+  onOpenStaysModal,
+  dates = '',
+  party = { adults: 2 },
 }) => {
+  const flightUrl = (flight && buildFlightSearchUrl(flight.originCode, flight.destinationCode, dates, party, flight.returnFromCode))
+    || 'https://www.makemytrip.com/flights/';
+  const hotelUrl = buildHotelSearchUrl(hotel.city || hotel.area || '', dates, party);
+
   const hasMultipleStays = Array.isArray(stays) && stays.length > 1;
 
   return (
@@ -63,10 +74,10 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
             <div className="flex flex-col sm:items-end gap-1.5">
               <div className="flex items-center gap-2">
                 <a
-                  href={`https://www.makemytrip.com/flights/?itinerary=${flight.originCode || 'BLR'}-${flight.destinationCode || 'GOI'}`}
+                  href={flightUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => trackBookOnClicked({ provider: 'MakeMyTrip', itemType: 'flight', url: `https://www.makemytrip.com/flights/?itinerary=${flight.originCode || 'BLR'}-${flight.destinationCode || 'GOI'}` })}
+                  onClick={() => trackBookOnClicked({ provider: 'MakeMyTrip', itemType: 'flight', url: flightUrl })}
                   className="text-xs text-[#0E6B59] font-bold hover:underline inline-flex items-center gap-1 min-h-[32px] sm:min-h-0 bg-[#E3F1EC]/50 px-2 py-0.5 rounded-md"
                 >
                   <span>Book on MakeMyTrip</span>
@@ -147,9 +158,11 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
         stays!.map((s, idx) => (
           <div key={idx} className="card-consumer p-4 transition-all hover:border-[#0E6B59]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-xl bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center shrink-0 mt-0.5">
-                <Building className="h-4.5 w-4.5" />
-              </div>
+              <HotelThumb
+                name={isAiEstimated ? '' : s.hotel.name}
+                area={s.hotel.area || s.baseName}
+                destination={s.baseName}
+              />
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wider text-[#55625E]">
@@ -173,7 +186,7 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
                 ₹{((s.hotel.totalPriceINR || s.hotel.pricePerNightINR * s.nights)).toLocaleString('en-IN')}
               </div>
               <a
-                href={`https://www.google.com/search?q=${encodeURIComponent(s.baseName + ' ' + (s.hotel.area || '') + ' verified hotel booking')}`}
+                href={`https://www.google.com/search?q=${encodeURIComponent(s.baseName + ' ' + (s.hotel.area || '') + ' hotel reviews')}&hl=en&lr=lang_en&gl=in`}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => trackBookOnClicked({ provider: 'Google Search', itemType: 'stay', url: `https://www.google.com/search?q=${encodeURIComponent(s.baseName + ' hotel booking')}` })}
@@ -188,9 +201,11 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
       ) : (
         <div className="card-consumer p-4 transition-all hover:border-[#0E6B59]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start gap-3">
-            <div className="h-9 w-9 rounded-xl bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center shrink-0 mt-0.5">
-              <Building className="h-4.5 w-4.5" />
-            </div>
+            <HotelThumb
+              name={isAiEstimated ? '' : hotel.name}
+              area={hotel.area || hotel.city || ''}
+              destination={hotel.city || hotel.area || ''}
+            />
             <div className="space-y-0.5">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-[#55625E]">
@@ -216,17 +231,17 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
             <div className="flex flex-col sm:items-end gap-1.5">
               <div className="flex flex-wrap items-center gap-2">
                 <a
-                  href={`https://www.makemytrip.com/hotels/hotel-listing/?city=${encodeURIComponent(hotel.city || hotel.area || 'Goa')}`}
+                  href={hotelUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => trackBookOnClicked({ provider: 'MakeMyTrip', itemType: 'hotel', url: `https://www.makemytrip.com/hotels/hotel-listing/?city=${encodeURIComponent(hotel.city || hotel.area || 'Goa')}` })}
+                  onClick={() => trackBookOnClicked({ provider: 'MakeMyTrip', itemType: 'hotel', url: hotelUrl })}
                   className="text-xs text-[#0E6B59] font-bold hover:underline inline-flex items-center gap-1 min-h-[32px] sm:min-h-0 bg-[#E3F1EC]/50 px-2 py-0.5 rounded-md"
                 >
                   <span>Book on MakeMyTrip</span>
                   <ExternalLink className="h-3 w-3" />
                 </a>
                 <a
-                  href={`https://www.google.com/search?q=${encodeURIComponent(hotel.name + ' ' + (hotel.area || '') + ' official site booking')}`}
+                  href={`https://www.google.com/search?q=${encodeURIComponent(hotel.name + ' ' + (hotel.area || '') + ' official site booking')}&hl=en&gl=in`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => trackBookOnClicked({ provider: 'Official Hotel Site', itemType: 'hotel', url: `https://www.google.com/search?q=${encodeURIComponent(hotel.name)}` })}
@@ -352,3 +367,21 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
     </div>
   );
 };
+
+/** Photo beside the stay: the exact hotel when we can find it, else its area (labelled as the area). */
+const HotelThumb: React.FC<{ name: string; area: string; destination: string }> = ({ name, area, destination }) => (
+  <PlacePhoto
+    place={name || area}
+    destination={destination}
+    kind={name ? 'hotel' : 'place'}
+    area={area}
+    label={name ? undefined : `Area: ${area.replace(/,.*$/, '')}`}
+    showCredit
+    className="h-24 w-28 sm:h-24 sm:w-32 shrink-0 rounded-xl"
+    fallback={
+      <div className="h-9 w-9 rounded-xl bg-[#E3F1EC] text-[#0E6B59] flex items-center justify-center shrink-0 mt-0.5">
+        <Building className="h-4.5 w-4.5" />
+      </div>
+    }
+  />
+);

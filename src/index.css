@@ -149,5 +149,7 @@
 }
 
 .animate-fade-in-slide {
-  animation: fadeInSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  /* "backwards", not "forwards": once the animation ends no transform is left behind,
+     so position:fixed children (the phone action bar, the share screen) stick to the screen */
+  animation: fadeInSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }

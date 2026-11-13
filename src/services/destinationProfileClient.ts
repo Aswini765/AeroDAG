@@ -49,7 +49,7 @@ export async function fetchDestinationProfile(
 
   // 3. Network fetch with 10s timeout
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   try {
     const res = await fetch('/api/destination-profile', {

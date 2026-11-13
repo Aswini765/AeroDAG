@@ -35,10 +35,26 @@ import { KeepTripsCard } from './components/consumer/KeepTripsCard';
 import { computeFullTripCost } from './services/fullTripCostHelper';
 import { RegionRouteChoiceScreen } from './components/consumer/RegionRouteChoiceScreen';
 import { RegionRouteOption, buildMultiBasePlanFromRoute } from './services/regionRoutesService';
+import { buildFallbackProfile, INDIA_PLACES } from './services/indiaPlaces';
+import { findOriginInText } from './services/originCities';
 import { isKnownRegion } from './server/parseTripHandler';
 import { DestinationComparisonView } from './components/consumer/DestinationComparisonView';
 import { detectComparisonIntent, buildDestinationComparison, DestinationComparisonResult } from './services/destinationComparisonService';
 
+// Words that describe a trip, not a place ("solo trip next month")
+const TRIP_WORDS = new Set([
+  'trip', 'trips', 'holiday', 'holidays', 'vacation', 'getaway', 'tour', 'travel', 'plan', 'next', 'this', 'coming', 'month',
+  'week', 'weekend', 'long', 'short', 'solo', 'family', 'friends', 'couple', 'honeymoon', 'road', 'a', 'an', 'the', 'for', 'in',
+  'to', 'me', 'us', 'our', 'my', 'cheap', 'budget', 'quick', 'day', 'days', 'night', 'nights', 'somewhere', 'anywhere', 'some', 'place'
+]);
+function findPlaceMentioned(text: string): string | null {
+  const t = ` ${text.toLowerCase().replace(/[^a-z\s]/g, ' ')} `;
+  // Longest names first so "mount abu" wins over "abu"
+  const candidates = INDIA_PLACES.flatMap((p) => [p.name, ...(p.aliases || [])].map((n) => ({ n: n.toLowerCase(), name: p.name })))
+    .sort((a, b) => b.n.length - a.n.length);
+  const hit = candidates.find((c) => t.includes(` ${c.n} `));
+  return hit ? hit.name : null;
+}
 const APP_NOT_PLACES = new Set([
   'the', 'a', 'an', 'my', 'our', 'weekend', 'week', 'days', 'day', 'budget', 'summer', 'winter', 'monsoon',
   'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
@@ -300,7 +316,7 @@ export default function App() {
             {
               id: 'fix_hotel',
               actionType: 'budget_hotel',
-              title: 'Switch to verified 3-star resort',
+              title: 'Switch to a 3-star resort',
               description: 'Stay in beachfront standard resort with family amenities.',
               rupeeImpactINR: 8800
             }
@@ -431,20 +447,26 @@ export default function App() {
       }
     }
 
-    const SUPPORTED_MSG = 'AeroDAG currently covers: Goa, Coorg, Kerala, Mysuru, Araku, Himachal, Rajasthan, Vietnam, Singapore, Thailand.';
+    const SUPPORTED_MSG = 'AeroDAG plans trips anywhere in India — try a city, town or state, like Hampi, Rishikesh or Meghalaya.';
     const UNPARSEABLE_MSG = "I couldn't understand that. Try something like: 3 days in Coorg for 2, budget ₹20,000.";
+    // A real trip request without a place ("trip next month", "weekend getaway for 4") is not an error:
+    // ask where, and point at the place cards that show what a trip costs.
+    const hasTripIntent = /\b(trip|holiday|vacation|getaway|weekend|travel|tour|honeymoon|outing|days?|nights?|week|budget|₹|\d+k)\b/i.test(promptText);
+    const WHERE_TO_MSG = `Where would you like to go? Add a place, like "${promptText.trim().replace(/[.!?]+$/, '')} to Coorg". Not sure yet? Tap a place below — each card shows a typical price.`;
+    const noPlaceMsg = () => (hasTripIntent && !looksLikeGibberish(promptText) ? WHERE_TO_MSG : UNPARSEABLE_MSG);
     const lower = promptText.toLowerCase();
 
     // 1. Try the AI parser first (server-side Gemini), when it is configured.
     const ai: ParseTripResult = isAiAvailable ? await callParseTrip(promptText) : { kind: 'failed' };
-    if (ai.kind === 'rate_limited') {
-      return 'AI is busy, try again in a minute';
-    }
+    // AI busy (rate limit): carry on with our own parser instead of stopping the user.
     if (ai.kind === 'unsupported') {
       return `We can't plan ${ai.place} yet. ${SUPPORTED_MSG}`;
     }
-    if (ai.kind === 'unparseable' || looksLikeGibberish(promptText)) {
+    if (looksLikeGibberish(promptText)) {
       return UNPARSEABLE_MSG;
+    }
+    if (ai.kind === 'unparseable') {
+      return noPlaceMsg();
     }
 
     // 2. Rule-based parse (always runs: it is the Basic-mode fallback and fills gaps)
@@ -483,23 +505,27 @@ export default function App() {
       ctx.destination = 'Bengaluru';
     } else if (ai.kind === 'ok' && ai.data.destination) {
       ctx.destination = ai.data.destination.replace(/,\s*India$/i, '').trim();
+    } else if (findPlaceMentioned(promptText)) {
+      // Any place we know in India, wherever it appears ("solo trip to Rishikesh", "Manali with 8 friends")
+      ctx.destination = findPlaceMentioned(promptText)!;
     } else {
       const placeTripMatch = promptText.match(/(?:^|\b)([A-Z][a-zA-Z\s]+?)\s+trip\b/i);
       const destMatch = promptText.match(/(?:trip\s+to|going\s+to|holiday\s+in|vacation\s+in|visit(?:ing)?|travel\s+to|explore|in|to)\s+([A-Za-z\s]+?)(?:\s+(?:with|for|under|from|starting|on|in|budget|\d|$))/i);
-      if (placeTripMatch && placeTripMatch[1] && !APP_NOT_PLACES.has(placeTripMatch[1].toLowerCase().trim())) {
+      if (placeTripMatch && placeTripMatch[1] && !APP_NOT_PLACES.has(placeTripMatch[1].toLowerCase().trim()) && !TRIP_WORDS.has(placeTripMatch[1].toLowerCase().trim())) {
         ctx.destination = placeTripMatch[1].trim();
       } else if (destMatch && destMatch[1] && !APP_NOT_PLACES.has(destMatch[1].toLowerCase().trim())) {
         ctx.destination = destMatch[1].trim();
       } else {
         const words = promptText.trim().split(/\s+/);
-        if (words.length <= 4 && !APP_NOT_PLACES.has(words[0].toLowerCase()) && !looksLikeGibberish(words[0])) {
+        const onlyTripWords = words.every((w) => TRIP_WORDS.has(w.toLowerCase().replace(/[^a-z0-9₹]/g, '')) || /^\d+k?$/.test(w));
+        if (words.length <= 4 && !onlyTripWords && !APP_NOT_PLACES.has(words[0].toLowerCase()) && !looksLikeGibberish(words[0])) {
           ctx.destination = promptText.trim();
         } else {
           // Never blame user with UNPARSEABLE_MSG on a 5xx / server error fallback
           if (ai.kind === 'server_error_fallback') {
             return 'AI service is temporarily busy. Please try again in a moment, or include your destination clearly (e.g. 5 days in Rajasthan).';
           }
-          return UNPARSEABLE_MSG;
+          return noPlaceMsg();
         }
       }
     }
@@ -508,7 +534,7 @@ export default function App() {
       if (ai.kind === 'server_error_fallback') {
         return 'AI service is temporarily busy. Please try again in a moment, or include your destination clearly (e.g. 5 days in Rajasthan).';
       }
-      return UNPARSEABLE_MSG;
+      return noPlaceMsg();
     }
     fieldSources.destination = 'stated';
 
@@ -522,11 +548,11 @@ export default function App() {
       const profileResult = await fetchDestinationProfile(ctx.destination || '', 'Bengaluru');
       setIsLoadingPlan(false);
 
-      if (!profileResult) {
-        return 'AI planning is busy right now — try again in a minute, or plan one of our detailed destinations.';
-      }
+      // AI profile unavailable (busy, timeout, odd reply): use our offline India reference
+      // so the user still gets a plan, clearly labelled as a rough estimate.
+      const resolvedProfile = profileResult || buildFallbackProfile(ctx.destination || '');
 
-      if ('unsupported' in profileResult && profileResult.unsupported) {
+      if ('unsupported' in resolvedProfile && resolvedProfile.unsupported) {
         const place = ctx.destination || '';
         const suggestion = suggestAlternative(place);
         if (suggestion) {
@@ -546,31 +572,17 @@ export default function App() {
         return UNPARSEABLE_MSG;
       }
 
-      profileData = profileResult as DestinationProfile;
+      profileData = resolvedProfile as DestinationProfile;
       ctx.destination = profileData.name;
     }
 
-    // Origin
-    if (lower.includes('delhi')) {
-      ctx.origin = 'New Delhi (DEL)';
+    // Origin: any major Indian city in "from <city>" (Goa handled separately because it is also a destination)
+    const fromCity = findOriginInText(promptText);
+    if (fromCity && !(fromCity.code === 'GOI' && ctx.destination === 'Goa')) {
+      ctx.origin = `${fromCity.name} (${fromCity.code})`;
       fieldSources.origin = 'stated';
-    } else if (lower.includes('mumbai')) {
-      ctx.origin = 'Mumbai (BOM)';
-      fieldSources.origin = 'stated';
-    } else if (lower.includes('kochi') || lower.includes('cochin')) {
-      ctx.origin = 'Kochi (COK)';
-      fieldSources.origin = 'stated';
-    } else if (lower.includes('chennai')) {
-      ctx.origin = 'Chennai (MAA)';
-      fieldSources.origin = 'stated';
-    } else if (lower.includes('hyderabad')) {
-      ctx.origin = 'Hyderabad (HYD)';
-      fieldSources.origin = 'stated';
-    } else if (isFromGoa || (lower.includes('goa') && ctx.destination !== 'Goa')) {
+    } else if (isFromGoa || (lower.includes('goa') && ctx.destination !== 'Goa' && /\bfrom\s+goa\b/.test(lower))) {
       ctx.origin = 'Goa (GOI)';
-      fieldSources.origin = 'stated';
-    } else if (lower.includes('bengaluru') || lower.includes('bangalore') || lower.includes('blr')) {
-      ctx.origin = 'Bengaluru (BLR)';
       fieldSources.origin = 'stated';
     } else {
       ctx.origin = 'Bengaluru (BLR)';
@@ -587,7 +599,7 @@ export default function App() {
       ctx.durationDays = 1;
       fieldSources.duration = 'stated';
     } else if (isWeekend) {
-      ctx.durationDays = 2;
+      ctx.durationDays = 3;
       fieldSources.duration = 'assumed';
     } else if (lower.includes('long weekend')) {
       ctx.durationDays = 3;
@@ -627,9 +639,15 @@ export default function App() {
       travellersStated = true;
     }
     // "10-year-old", "10 year old", "aged 7"
-    const ageRe = /(\d{1,2})\s*[- ]?(?:year|yr)s?[- ]?old|aged?\s+(\d{1,2})\b/g;
+    const ageRe = /(\d{1,2})\s*[- ]?(?:year|yr)s?[- ]?old|aged?\s+(\d{1,2})((?:\s*(?:,|and|&)\s*\d{1,2}\b)*)/g;
     let m: RegExpExecArray | null;
     while ((m = ageRe.exec(lower)) !== null) {
+      // "kids aged 5 and 8": every age in the list is a person
+      const more = (m[3] || '').match(/\d{1,2}/g) || [];
+      for (const extra of more) {
+        const a = parseInt(extra, 10);
+        if (a < 18) childAges.push(a); else if (a >= 60) seniorAges.push(a); else adults += 1;
+      }
       const age = parseInt(m[1] || m[2], 10);
       const idx = m.index;
       // skip ages already consumed by the "parents ... NN" phrase
@@ -639,6 +657,12 @@ export default function App() {
       else adults += 1;
       travellersStated = true;
     }
+    // "2 kids aged 5": more kids than ages given — the rest are children too
+    const kidCountAll = lower.match(/\b(\d|one|two|three|four)\s+(?:kids|children|sons|daughters)\b/);
+    if (kidCountAll && childAges.length > 0) {
+      const want = toNum(kidCountAll[1]);
+      while (childAges.length < want) childAges.push(8);
+    }
     // children mentioned without an age
     if (childAges.length === 0 && /\b(daughter|son|child|kid)\b/.test(lower)) {
       const kidCount = lower.match(/\b(\d|one|two|three|four)\s+(?:kids|children)\b/);
@@ -647,9 +671,14 @@ export default function App() {
       travellersStated = true;
     }
     const adultsMatch = lower.match(/\b(\d|one|two|three|four|five|six)\s+adults?\b/);
+    // "with 8 friends" = 8 friends + me
+    const friendsMatch = lower.match(/\bwith\s+(\d{1,2}|two|three|four|five|six)\s+(?:friends|buddies|colleagues|people)\b/);
     const groupMatch = lower.match(/\bfor\s+(\d|two|three|four|five|six)\b(?!\s*(?:day|night|week))/);
     if (adultsMatch) {
       adults = toNum(adultsMatch[1]);
+      travellersStated = true;
+    } else if (friendsMatch) {
+      adults = toNum(friendsMatch[1]) + 1;
       travellersStated = true;
     } else if (/\b(wife|husband|partner|spouse)\b/.test(lower)) {
       adults = Math.max(adults, 2);
@@ -751,17 +780,17 @@ export default function App() {
       fieldSources.duration = 'stated';
     }
 
-    // A "weekend" = Sat–Sun (2 days); the plan title must match the dates' day count.
+    // A "weekend" trip = leave Friday evening, back Sunday night: Fri–Sun, 2 nights.
     if (isWeekend) {
-      ctx.durationDays = 2;
+      ctx.durationDays = 3;
       fieldSources.duration = 'assumed';
       const now = new Date();
       const dow = now.getDay(); // 0 Sun, 1 Mon ... 6 Sat
-      // On a Saturday or Sunday, "weekend" means next weekend, not today.
-      const toSat = dow === 6 ? 7 : (6 - dow + 7) % 7;
-      const sat = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toSat);
-      const sun = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toSat + 1);
-      ctx.dates = formatDateRange(sat, sun);
+      // From Friday evening on, "weekend" means next weekend.
+      const toFri = dow >= 5 || dow === 0 ? (5 - dow + 7) % 7 || 7 : 5 - dow;
+      const fri = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toFri);
+      const sun = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toFri + 2);
+      ctx.dates = formatDateRange(fri, sun);
       fieldSources.dates = 'assumed';
     }
     // No dates given: assume the next sensible window that matches the trip length
@@ -819,7 +848,7 @@ export default function App() {
 
     // Prompt 3: A state or region is not a destination: ask, don't pick a city
     if (ctx.destinationType === 'region') {
-      if (!hasStatedAll && (fieldSources.budget !== 'stated' || fieldSources.travellers !== 'stated')) {
+      if (!hasStatedAll && (fieldSources.budget !== 'stated' || fieldSources.travellers !== 'stated' || fieldSources.origin !== 'stated')) {
         setCurrentStep('clarify');
         return null;
       }
@@ -1130,10 +1159,12 @@ export default function App() {
         childrenAges: prefs.childrenAges || [],
         dates: prefs.targetDates,
         durationDays: prefs.durationDays,
+        origin: prefs.origin || prev.origin,
         fieldSources: {
           ...prev.fieldSources,
           budget: 'stated',
           travellers: 'stated',
+          origin: builtContext?.fieldSources?.origin || prev.fieldSources?.origin || 'assumed',
           dates: 'stated',
           duration: 'stated'
         }
@@ -1325,6 +1356,7 @@ export default function App() {
             onPlanChange={(updated) => setActiveTripPlan(updated)}
             onProceedToReview={() => setCurrentStep('review')}
             onDescribeAgain={() => setCurrentStep('describe')}
+            onStartNewPlan={(prompt) => { setCurrentStep('describe'); void handleStartPlan(prompt); }}
             onSaveDraft={handleSaveDraft}
             isGuest={isAuthAnonymous && !isOfflineMode}
             onContinueWithEmail={handleLinkEmail}

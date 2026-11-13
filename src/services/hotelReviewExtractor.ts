@@ -64,7 +64,7 @@ export function extractHotelReviews(hotel: HotelItem, destinationName?: string):
   const encodedCity = encodeURIComponent(destClean);
 
   // 4 Outbound search links under "Read real reviews" (Prompt 2 requirement)
-  const googleMapsReviewsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedQuery}`;
+  const googleMapsReviewsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedQuery}&hl=en`;
   const tripAdvisorUrl = `https://www.tripadvisor.in/Search?q=${encodedQuery}`;
   const bookingComUrl = `https://www.booking.com/searchresults.html?ss=${encodedQuery}`;
   const makeMyTripUrl = `https://www.makemytrip.com/hotels/hotel-listing/?city=${encodedCity}`;

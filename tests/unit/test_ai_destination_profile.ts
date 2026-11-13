@@ -226,10 +226,14 @@ async function runTests() {
   assert(!planSerialized.includes('dabolim'), 'Ooty plan contains ZERO mentions of "dabolim"');
   assert(!planSerialized.includes('mopa'), 'Ooty plan contains ZERO mentions of "mopa"');
 
-  // Check airport transfer
-  assert(ootyPlan.transfer.pickupLocation === 'CJB Airport', 'Transfer pickup is CJB Airport');
-  assert(ootyPlan.transfer.duration === 'approx. 2.5 hours', 'Transfer duration matches profile drive hours (approx. 2.5 hours)');
-  assert(ootyPlan.flight !== null && ootyPlan.flight.destinationCode === 'CJB', 'Flight destination code is CJB');
+  // Bengaluru → Ooty is a ~7h road trip: people take the bus or drive, they don't fly to CJB
+  assert(ootyPlan.flight === null, 'Bengaluru → Ooty is planned by road, not a flight');
+  assert(ootyPlan.selectedTrain?.mode === 'bus', `Balanced goes by AC bus for 2 people (got ${ootyPlan.selectedTrain?.trainName})`);
+  assert(ootyPlan.availableFlights.length === 0, 'No flight offered for a ~370 km road trip');
+  // A long trip from Delhi does get a realistic CJB fare
+  const ootyFromDelhi = buildPlanFromDestinationProfile({ ...mockOotyContext, origin: 'New Delhi (DEL)' }, validProfile);
+  assert(ootyFromDelhi.flight?.destinationCode === 'CJB', 'From Delhi, Ooty is a flight to CJB');
+  assert((ootyFromDelhi.flight?.pricePerPersonINR || 0) >= 10000, `Delhi → CJB fare is realistic, not ₹3,500 (₹${ootyFromDelhi.flight?.pricePerPersonINR})`);
 
   // Check hotel stay derivation
   assert(ootyPlan.availableHotels.length === 3, 'Provides 3 sample hotels at distinct price levels');
@@ -254,7 +258,10 @@ async function runTests() {
 
   // Itinerary sights grouping
   assert(ootyPlan.itinerary.length === 4, 'Itinerary has 4 days');
-  assert(ootyPlan.itinerary[0].morning.includes('Government Botanical Gardens'), 'Day 1 morning features Botanical Gardens');
+  assert(/Bengaluru|Ooty/.test(ootyPlan.itinerary[0].morning) && /bus|Drive|Fly/i.test(ootyPlan.itinerary[0].morning), `Day 1 morning is the journey there (${ootyPlan.itinerary[0].morning})`);
+  assert(/Check in/.test(ootyPlan.itinerary[0].afternoon), 'Day 1 afternoon is check-in and one short sight');
+  assert(ootyPlan.itinerary.some((d) => /Government Botanical Gardens/.test(`${d.morning} ${d.afternoon}`)), 'Real sights (Botanical Gardens) are in the day plan');
+  assert(/home/i.test(ootyPlan.itinerary[3].title), 'Last day is the trip home');
 
   // =========================================================================
   // TEST SUITE 3: Plan Options Differ (Budget <= Balanced <= Comfort)

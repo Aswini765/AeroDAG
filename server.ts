@@ -16,6 +16,7 @@ const __dirname = path.dirname(__filename);
 import { handleGeminiChat } from './src/server/geminiHandler.ts';
 import { handleParseTrip } from './src/server/parseTripHandler.ts';
 import { handleDestinationProfile } from './src/server/destinationProfileHandler.ts';
+import { handlePhoto } from './src/server/photoHandler.ts';
 import {
   getTelemetryTracer,
   getTelemetryMetricsCollector,
@@ -36,7 +37,11 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://generativelanguage.googleapis.com https://*.supabase.co wss://*.supabase.co" +
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; " +
+      // Embedded Google Maps on the plan ("Map of your days")
+      "frame-src https://maps.google.com https://www.google.com; " +
+      // Wikipedia: real photos of the places in the plan
+      "connect-src 'self' https://en.wikipedia.org https://generativelanguage.googleapis.com https://*.supabase.co wss://*.supabase.co" +
       (process.env.NODE_ENV !== 'production' ? ' ws://localhost:* ws://127.0.0.1:*' : '') +
       "; img-src 'self' data: https:;"
   );
@@ -162,6 +167,9 @@ app.post('/api/parse-trip', handleParseTrip);
 
 // POST /api/destination-profile – AI destination profile for any location in India
 app.post('/api/destination-profile', handleDestinationProfile);
+
+// GET /api/photo – real photos of hotels and places (Google Places → Wikipedia → Pexels)
+app.get('/api/photo', handlePhoto);
 
 // 5. User Resource Ownership Verification Endpoints
 const mockUserTrips: Record<string, { id: string; ownerId: string; destination: string }> = {

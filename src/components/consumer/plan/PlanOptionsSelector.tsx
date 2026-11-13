@@ -1,3 +1,4 @@
+import { PlacePhoto } from './PlacePhoto';
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Check,
@@ -18,6 +19,8 @@ import {
 import { TripPlan, TripPreferences } from '../../../types/travelBooking';
 import { PlanTierOption, generatePlanOptions } from '../../../services/planOptionsGenerator';
 import { computeFullTripCost } from '../../../services/fullTripCostHelper';
+import { placesThatFit } from '../../../services/budgetFixes';
+import { FullTripCostCard } from './FullTripCostCard';
 import { trackOptionSwitched } from '../../../services/telemetry/posthog';
 
 interface PlanOptionsSelectorProps {
@@ -25,6 +28,8 @@ interface PlanOptionsSelectorProps {
   preferences?: TripPreferences | null;
   onSelectOptionPlan: (plan: TripPlan) => void;
   onCardFocus?: (cardId: string) => void;
+  /** Start a new plan for a place that fits the budget ("3 days in Gokarna …") */
+  onTryPlace?: (place: string) => void;
 }
 
 const TIER_PHOTOS: Record<string, string> = {
@@ -34,34 +39,12 @@ const TIER_PHOTOS: Record<string, string> = {
 };
 
 // Max 12 words trade-off line per tier using real area type (Prompt 5: no beachfront for backwaters or hills)
-function getTradeOff(tier: string, destination?: string, stayArea?: string): string {
-  const d = (destination || '').toLowerCase();
-  const a = (stayArea || '').toLowerCase();
-  const isBackwaters = d.includes('kerala') || d.includes('alleppey') || a.includes('punnamada') || a.includes('backwater');
-  const isHills = d.includes('coorg') || d.includes('ooty') || d.includes('munnar') || d.includes('araku') || a.includes('tea') || a.includes('estate');
-  const isHeritage = d.includes('rajasthan') || d.includes('jaipur') || d.includes('udaipur') || d.includes('mysuru');
-
-  if (tier === 'budget') {
-    return 'Comfortable central stay that saves money for local dining and activities.';
-  }
-  if (tier === 'balanced') {
-    if (isBackwaters) return 'Scenic lakefront backwater stay with optimal travel pacing.';
-    if (isHills) return 'Peaceful plantation retreat with optimal travel pacing.';
-    if (isHeritage) return 'Authentic heritage haveli stay with optimal travel pacing.';
-    return 'Ideal mix of scenic location, direct flights, and relaxed pacing.';
-  }
-  // comfort
-  if (isBackwaters) return 'Premium backwater resort stay with luxury amenities and private transfers.';
-  if (isHills) return 'Luxury hill estate stay with panoramic views and fastest private transfers.';
-  if (isHeritage) return 'Grand palace heritage stay with royal amenities and private transfers.';
-  return 'Premium resort stay with luxury amenities and fastest private cab transfers.';
-}
-
 export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
   currentPlan,
   preferences,
   onSelectOptionPlan,
-  onCardFocus
+  onCardFocus,
+  onTryPlace
 }) => {
   // Build the 3 options from the ORIGINAL plan
   const baseRef = useRef<TripPlan>(currentPlan);
@@ -109,56 +92,28 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
   }, [isOverBudget, fittingOptions, options]);
 
   // Computed concrete levers when none fits (Prompt 4 rule)
-  const computedLevers = useMemo(() => {
-    if (!noneFits) return [];
-    const levers: Array<{ title: string; description: string; savingsINR: number; newTotalINR: number }> = [];
-    const lowestTotal = Math.min(...options.map((o) => o.totalCostINR));
-    const nights = Math.max(2, basePlan.durationDays - 1);
+  // Real fixes, priced by the same cost engine: shorter versions of the cheapest way
+  const cheapestOption = useMemo(
+    () => options.reduce((m, o) => (o.totalCostINR < m.totalCostINR ? o : m), options[0]),
+    [options]
+  );
+  const otherPlaces = useMemo(
+    () => (noneFits
+      ? placesThatFit({
+          origin: basePlan.origin,
+          days: basePlan.durationDays,
+          adults: basePlan.travellers.adults + (basePlan.travellers.seniors || 0),
+          children: basePlan.travellers.children || 0,
+          childAges: basePlan.travellers.childAges,
+          budgetINR: targetBudget,
+          excludeName: basePlan.destination.replace(/,.*$/, '').trim()
+        })
+      : []),
+    [noneFits, basePlan, targetBudget]
+  );
 
-    // Lever 1: Fewer nights
-    if (basePlan.durationDays > 3) {
-      const reducedDays = Math.max(3, basePlan.durationDays - 2);
-      const daysDiff = basePlan.durationDays - reducedDays;
-      const nightlyStay = basePlan.hotel?.pricePerNightINR || 3500;
-      const dailyFood = 1500;
-      const savings = Math.round((nightlyStay * daysDiff + dailyFood * daysDiff) * 1.25);
-      levers.push({
-        title: `Fewer nights (${reducedDays} days instead of ${basePlan.durationDays})`,
-        description: `Shorten trip by ${daysDiff} nights`,
-        savingsINR: savings,
-        newTotalINR: Math.max(0, lowestTotal - savings)
-      });
-    }
-
-    // Lever 2: Switch to train
-    if (basePlan.flight) {
-      const flightCost = fullCost.lines.find((l) => l.id === 'cost-travel')?.amountINR || 16000;
-      const trainCostEst = Math.round(1800 * travellersCount);
-      const savings = Math.max(0, Math.round((flightCost - trainCostEst) * 1.25));
-      if (savings > 2000) {
-        levers.push({
-          title: 'Switch to train transport',
-          description: 'Comfortable sleeper/chair car instead of flight',
-          savingsINR: savings,
-          newTotalINR: Math.max(0, lowestTotal - savings)
-        });
-      }
-    }
-
-    // Lever 3: Fewer bases / Standard budget stay
-    const stayCost = fullCost.lines.find((l) => l.id === 'cost-stay')?.amountINR || 25000;
-    const budgetStaySavings = Math.round(stayCost * 0.28);
-    if (budgetStaySavings > 1500) {
-      levers.push({
-        title: 'Choose standard 3★ stay / single base',
-        description: 'A simpler stay with breakfast included',
-        savingsINR: budgetStaySavings,
-        newTotalINR: Math.max(0, lowestTotal - budgetStaySavings)
-      });
-    }
-
-    return levers;
-  }, [noneFits, options, basePlan, fullCost, travellersCount]);
+  // What just changed, so a tap never feels like nothing happened
+  const [lastChange, setLastChange] = useState<{ text: string; previous: TripPlan } | null>(null);
 
   const hasAutoSelectedRef = useRef(false);
   useEffect(() => {
@@ -237,214 +192,205 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
   const activePercentOfBudget = targetBudget > 0 ? Math.min(100, Math.round((activePlanOption.totalCostINR / targetBudget) * 100)) : 0;
   const isSelectedOverBudget = targetBudget > 0 && activePlanOption.totalCostINR > targetBudget;
 
+  const overINR = targetBudget > 0 ? activePlanOption.totalCostINR - targetBudget : 0;
+  const withinPct = targetBudget > 0 ? Math.min(100, Math.round((Math.min(activePlanOption.totalCostINR, targetBudget) / activePlanOption.totalCostINR) * 100)) : 100;
+
   return (
-    <div className="card-consumer p-4 sm:p-5 space-y-4 text-left border border-[#E2E6E1] bg-white rounded-2xl shadow-xs">
-      {/* 1. TOP SUMMARY BAR: Total Per Person + Budget Progress Bar */}
-      <div className="p-3.5 rounded-2xl bg-[#F6F8F6] border border-[#0E6B59]/20 space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-[#55625E]">
-              Selected Tier · {activePlanOption.tier}
-            </div>
-            <div className="text-base sm:text-lg font-black text-[#15201D] font-heading flex items-baseline gap-1.5">
-              <span>₹{activePlanOption.perPersonCostINR.toLocaleString('en-IN')}</span>
-              <span className="text-xs font-semibold text-[#55625E]">/ person (all-in · estimate)</span>
-            </div>
+    <div className="space-y-4 text-left">
+      {/* 1. THE ANSWER: one total, the budget bar, and what it is made of */}
+      <section
+        id="plan-answer-card"
+        aria-labelledby="plan-answer-title"
+        className="rounded-[18px] bg-white border border-[#E2E6E1] p-4 sm:p-5 space-y-3.5"
+      >
+        <h2 id="plan-answer-title" className="text-[13px] font-semibold text-[#55625E]">
+          Real total for {travellersCount === 1 ? 'you' : `all ${travellersCount}`} · incl. 15% buffer
+        </h2>
+        <div className="flex items-end justify-between gap-3">
+          <div className="text-[40px] leading-[44px] font-bold tracking-tight text-[#15201D] tabular-nums">
+            ₹{activePlanOption.totalCostINR.toLocaleString('en-IN')}
           </div>
-          <div className="text-right">
-            <div className="text-[10px] text-[#55625E]">Total trip ({travellersCount} travellers)</div>
-            <div className="text-xs sm:text-sm font-extrabold text-[#0E6B59]">
-              ₹{activePlanOption.totalCostINR.toLocaleString('en-IN')}
+          {travellersCount > 1 && (
+            <div className="text-right">
+              <div className="text-lg font-bold text-[#15201D] tabular-nums">₹{activePlanOption.perPersonCostINR.toLocaleString('en-IN')}</div>
+              <div className="text-xs text-[#55625E]">each</div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Budget Bar */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-[11px] text-[#55625E]">
-            <span>
-              {isSelectedOverBudget ? (
-                <span className="text-[#8A4307] font-bold">⚠️ Exceeds budget by ₹{(activePlanOption.totalCostINR - targetBudget).toLocaleString('en-IN')}</span>
+        {targetBudget > 0 && (
+          <div className="space-y-1.5">
+            <div className="h-2.5 rounded-full bg-[#F0E9DD] overflow-hidden flex" aria-hidden="true">
+              <div className="bg-[#0E6B59]" style={{ width: `${overINR > 0 ? withinPct : activePercentOfBudget}%` }} />
+              {overINR > 0 && <div className="bg-[#C2620A]" style={{ width: `${100 - withinPct}%` }} />}
+            </div>
+            <div className="flex justify-between text-[13px]">
+              <span className="text-[#55625E]">Your budget ₹{targetBudget.toLocaleString('en-IN')}</span>
+              {overINR > 0 ? (
+                <span className="font-bold text-[#9A4A00]">₹{overINR.toLocaleString('en-IN')} over</span>
               ) : (
-                <span><strong>{activePercentOfBudget}%</strong> of ₹{targetBudget.toLocaleString('en-IN')} budget</span>
+                <span className="font-bold text-[#0A5546]">Fits · ₹{(-overINR).toLocaleString('en-IN')} left</span>
               )}
-            </span>
-            <span>Target: ₹{targetBudgetPerPerson.toLocaleString('en-IN')} / person</span>
+            </div>
           </div>
-          <div className="w-full h-2 rounded-full bg-[#E2E6E1] overflow-hidden">
-            <div
-              className={`h-full transition-all duration-300 rounded-full ${
-                isSelectedOverBudget ? 'bg-[#C2410C]' : 'bg-[#0E6B59]'
-              }`}
-              style={{ width: `${Math.min(100, activePercentOfBudget)}%` }}
-            />
-          </div>
-        </div>
-      </div>
+        )}
 
-      {/* 2. SECTION HEADER & AI ESTIMATE LEGEND */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-1">
-        <div>
-          <h3 className="text-sm sm:text-base font-bold text-[#15201D] font-heading flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-[#0E6B59]" />
-            <span>{options.length === 1 ? 'Your trip option' : `${options.length} ways to do this trip`}</span>
-            {options.length === 2 && (
-              <span className="text-[11px] font-semibold text-[#8A4307] bg-[#FCEFD9] px-2 py-0.5 rounded-full">
-                Only 2 real options for this trip
-              </span>
-            )}
-          </h3>
-          <p className="text-xs text-[#55625E]">
-            {options.length === 2
-              ? 'Only 2 real options for this trip · Each option offers a distinct stay tier and transport pacing.'
-              : 'Tap any card to view cost breakdown or change plan.'}
-          </p>
-        </div>
-        <div className="text-[11px] text-[#55625E] flex items-center gap-1">
-          <Info className="h-3 w-3 text-[#0E6B59]" />
-          <span>AI estimate · confirmed before booking</span>
-        </div>
-      </div>
+        <FullTripCostCard plan={activePlanOption.plan} preferences={preferences} embedded />
+      </section>
 
-      {/* 3. THREE SWIPEABLE OPTION CARDS (Budget / Balanced / Comfort) */}
-      <div className="flex sm:grid sm:grid-cols-3 gap-3.5 overflow-x-auto pb-2 pt-1 -mx-2 px-2 sm:mx-0 sm:px-0 snap-x snap-mandatory scrollbar-thin">
-        {options.map((opt) => {
-          const isSelected = selectedTier === opt.id;
-          const badge = getOptionBadge(opt);
-          const photoUrl = TIER_PHOTOS[opt.id] || TIER_PHOTOS.balanced;
-          const tradeOff = getTradeOff(opt.id, basePlan.destination, opt.stayArea) || opt.tagline;
+      {/* 2. OPTIONS */}
+      <section aria-labelledby="plan-options-title" className="space-y-2.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 id="plan-options-title" className="text-[17px] font-bold text-[#15201D]">
+            {options.length === 1 ? 'Your trip' : `${options.length} ways to do this trip`}
+          </h2>
+          {options.length > 1 && <span className="text-xs text-[#55625E]">same cost engine</span>}
+        </div>
 
-          return (
-            <div
-              key={opt.id}
-              onClick={() => {
-                handleSelect(opt);
-                setActiveSheetOption(opt);
-              }}
-              className={`min-w-[280px] sm:min-w-0 snap-center rounded-2xl border transition-all cursor-pointer flex flex-col justify-between overflow-hidden group shadow-2xs ${
-                isSelected
-                  ? 'border-[#0E6B59] bg-[#F4F9F7] ring-2 ring-[#0E6B59] shadow-sm'
-                  : 'border-[#E2E6E1] bg-white hover:border-[#0E6B59]/50 hover:bg-[#FAFCFA]'
-              }`}
-            >
-              {/* Card Photo Header */}
-              <div className="relative h-32 w-full bg-[#E2E6E1] overflow-hidden">
-                <img
-                  src={photoUrl}
-                  alt={opt.stayName}
-                  loading="lazy"
-                  onError={(e) => {
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+        <div id="plan-options-list" className="space-y-2.5">
+          {options.map((opt) => {
+            const isSelected = selectedTier === opt.id;
+            const over = targetBudget > 0 ? opt.totalCostINR - targetBudget : 0;
+            const fits = targetBudget > 0 && over <= 0;
+            const badge = isSelected
+              ? { text: 'Your plan', className: 'bg-[#0E6B59] text-white' }
+              : fits
+              ? { text: 'Fits your budget', className: 'bg-[#E3F1EC] text-[#0A5546]' }
+              : opt.badge === 'Recommended'
+              ? { text: 'Recommended', className: 'bg-[#E3F1EC] text-[#0A5546]' }
+              : null;
+
+            return (
+              <article
+                key={opt.id}
+                className={`rounded-[14px] bg-white p-3.5 space-y-2 ${isSelected ? 'border-2 border-[#0E6B59]' : 'border border-[#E2E6E1]'}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-[15px] font-bold text-[#15201D]">{opt.tier}</h3>
+                    {badge && <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${badge.className}`}>{badge.text}</span>}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-[17px] font-bold text-[#15201D] tabular-nums">₹{opt.totalCostINR.toLocaleString('en-IN')}</div>
+                    {travellersCount > 1 && <div className="text-[11px] text-[#55625E]">₹{opt.perPersonCostINR.toLocaleString('en-IN')} each</div>}
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                <PlacePhoto
+                  place={opt.plan.isAiEstimatedDestination ? (opt.plan.hotel.area || opt.plan.destination) : opt.plan.hotel.name}
+                  destination={opt.plan.hotel.city || opt.plan.destination}
+                  kind={opt.plan.isAiEstimatedDestination ? 'place' : 'hotel'}
+                  area={opt.plan.hotel.area || opt.plan.destination}
+                  className="h-16 w-20 shrink-0 rounded-lg"
                 />
-                <div className="absolute top-2.5 left-2.5 flex items-center gap-1">
-                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-xs ${badge.className}`}>
-                    {badge.text}
+                <div className="text-[13px] text-[#15201D] space-y-0.5 min-w-0">
+                  <div>🛏 {opt.stayName}</div>
+                  <div>{({ Flight: '✈️', Train: '🚆', Bus: '🚌', Cab: '🚗', Road: '🚐' } as Record<string, string>)[opt.travelMode] || '🚗'} {opt.travelDetail.replace(/ · Non-stop$/, '')}{opt.travelTime ? ` · ${opt.travelTime.replace(/^approx\. /, '~')}` : ''}</div>
+                  {opt.id !== 'balanced' && opt.diffFromBalanced && /₹/.test(opt.diffFromBalanced) && (
+                    <div className="text-xs text-[#55625E]">{opt.diffFromBalanced.replace(/^\+/, '')} vs Balanced</div>
+                  )}
+                </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-[13px] font-semibold ${targetBudget <= 0 ? 'text-[#55625E]' : fits ? 'text-[#0A5546]' : 'text-[#9A4A00]'}`}>
+                    {targetBudget <= 0 ? '' : fits ? `Fits · ₹${(-over).toLocaleString('en-IN')} left` : `₹${over.toLocaleString('en-IN')} over`}
                   </span>
-                </div>
-                <div className="absolute bottom-2.5 right-2.5">
-                  <span className="text-[10px] font-semibold text-[#15201D] bg-white/90 backdrop-blur-xs px-2 py-0.5 rounded-md shadow-xs">
-                    Sample
-                  </span>
-                </div>
-              </div>
-
-              {/* Card Content */}
-              <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-[#55625E]">
-                      {opt.tier}
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveSheetOption(opt)}
+                      className="h-10 px-2 text-[13px] font-semibold text-[#0E6B59] hover:underline cursor-pointer"
+                    >
+                      Costs
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => !isSelected && handleSelect(opt)}
+                      className={`h-10 px-3.5 rounded-[10px] border border-[#0E6B59] text-[13px] font-semibold cursor-pointer ${
+                        isSelected ? 'bg-[#0E6B59] text-white cursor-default' : 'bg-white text-[#0E6B59] hover:bg-[#E3F1EC]'
+                      }`}
+                    >
+                      {isSelected ? 'Selected' : 'Switch to this'}
+                    </button>
                   </div>
-
-                  {/* Stay Area */}
-                  <div className="text-xs font-bold text-[#15201D] flex items-center gap-1.5 mt-1">
-                    <Building2 className="h-3.5 w-3.5 text-[#0E6B59] shrink-0" />
-                    <span className="truncate">Stay in {opt.stayArea}</span>
-                  </div>
-
-                  {/* One-line Trade-off (Max 12 words) */}
-                  <p className="text-[11px] text-[#55625E] leading-relaxed mt-1 line-clamp-2">
-                    {tradeOff}
-                  </p>
                 </div>
-
-                {/* Price & Action */}
-                <div className="pt-2.5 border-t border-[#E2E6E1]/70 flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-[10px] text-[#55625E]">Per person (all-in)</div>
-                    <div className="text-xs font-black text-[#15201D]">
-                      ₹{opt.perPersonCostINR.toLocaleString('en-IN')}{' '}
-                      <span className="text-[10px] font-normal text-[#55625E]">· est</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSelect(opt);
-                      setActiveSheetOption(opt);
-                    }}
-                    className={`min-h-[44px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#0E6B59] text-white shadow-xs'
-                        : 'bg-white border border-[#0E6B59] text-[#0E6B59] hover:bg-[#E3F1EC]'
-                    }`}
-                  >
-                    {isSelected ? (
-                      <>
-                        <Check className="h-3.5 w-3.5 stroke-[3]" />
-                        <span>Selected</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Details</span>
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 3B. NONE FITS NOTIFICATION & CONCRETE LEVERS */}
-      {noneFits && (
-        <div id="none-fits-budget-banner" className="card-consumer p-4 bg-[#FFFDF7] border-[#8A4307]/40 rounded-2xl space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-[#FCEFD9] text-[#8A4307]">
-              <Info className="h-4 w-4" />
-            </span>
-            <div>
-              <h4 className="text-xs sm:text-sm font-bold text-[#15201D]">
-                {options.length === 1 ? 'This plan' : `None of the ${options.length} options`} {options.length === 1 ? "doesn't" : ""} fit ₹{targetBudget.toLocaleString('en-IN')} — here's what would:
-              </h4>
-              <p className="text-[11px] text-[#55625E]">
-                Concrete levers with computed savings to bring this trip within your target:
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-            {computedLevers.map((lever, idx) => (
-              <div key={idx} className="p-3 rounded-xl bg-white border border-[#E2E6E1] space-y-1 text-left shadow-2xs">
-                <div className="text-xs font-bold text-[#15201D]">{lever.title}</div>
-                <div className="text-[11px] text-[#55625E]">{lever.description}</div>
-                <div className="text-xs font-extrabold text-[#0E6B59] pt-1">
-                  Save ~₹{lever.savingsINR.toLocaleString('en-IN')}
-                </div>
-                <div className="text-[10px] text-[#55625E]">
-                  New total: ~₹{lever.newTotalINR.toLocaleString('en-IN')}
-                </div>
-              </div>
-            ))}
-          </div>
+              </article>
+            );
+          })}
         </div>
+      </section>
+
+      {/* 3B. WHAT JUST CHANGED */}
+      {lastChange && (
+        <div id="plan-last-change" role="status" className="rounded-xl bg-[#E3F1EC] px-3 py-2.5 text-[13px] text-[#0A5546] flex items-center justify-between gap-2">
+          <span><strong>Updated.</strong> {lastChange.text}</span>
+          <button
+            type="button"
+            onClick={() => { onSelectOptionPlan(lastChange.previous); setLastChange(null); }}
+            className="text-xs font-semibold underline cursor-pointer shrink-0"
+          >
+            Undo
+          </button>
+        </div>
+      )}
+
+      {/* 3C. NOTHING FITS: say it plainly, keep the user's days, show what does fit */}
+      {noneFits && (
+        <section id="none-fits-budget-banner" aria-labelledby="none-fits-title" className="rounded-2xl bg-[#FFFDF7] border border-[#8A4307]/30 p-4 space-y-3">
+          <div>
+            <h3 id="none-fits-title" className="text-[15px] font-bold text-[#15201D]">
+              {basePlan.durationDays} days in {basePlan.destination.replace(/,.*$/, '')} costs at least ₹{cheapestOption.totalCostINR.toLocaleString('en-IN')}
+            </h3>
+            <p className="text-xs text-[#55625E] mt-0.5">
+              That is the cheapest way ({cheapestOption.tier}: {cheapestOption.stayName.replace(/,.*$/, '')} + {cheapestOption.travelMode.toLowerCase()}) — ₹{(cheapestOption.totalCostINR - targetBudget).toLocaleString('en-IN')} more than your ₹{targetBudget.toLocaleString('en-IN')} budget. Your {basePlan.durationDays} days stay as you asked.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            {selectedTier !== cheapestOption.id && (
+              <button
+                type="button"
+                id="pick-cheapest-way"
+                onClick={() => handleSelect(cheapestOption)}
+                className="w-full rounded-xl bg-white border border-[#E2E6E1] hover:border-[#0E6B59] p-3 text-left flex items-center justify-between gap-3 cursor-pointer"
+              >
+                <span>
+                  <span className="block text-sm font-bold text-[#15201D]">Go the cheapest way</span>
+                  <span className="block text-xs text-[#55625E]">Same {basePlan.durationDays} days · {cheapestOption.stayName.replace(/,.*$/, '')} · {cheapestOption.travelMode.toLowerCase()}</span>
+                </span>
+                <span className="block text-sm font-bold text-[#15201D] shrink-0">₹{cheapestOption.totalCostINR.toLocaleString('en-IN')}</span>
+              </button>
+            )}
+
+            {otherPlaces.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-[#15201D] pt-1">
+                  Or the same {basePlan.durationDays} days somewhere that fits ₹{targetBudget.toLocaleString('en-IN')}:
+                </div>
+                {otherPlaces.map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    disabled={!onTryPlace}
+                    onClick={() => onTryPlace && onTryPlace(p.name)}
+                    className="w-full rounded-xl bg-white border border-[#E2E6E1] hover:border-[#0E6B59] p-2.5 text-left flex items-center gap-3 cursor-pointer disabled:cursor-default"
+                  >
+                    <PlacePhoto place={p.name} className="h-14 w-16 shrink-0 rounded-lg" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-[#15201D]">{p.name}</span>
+                      <span className="block text-xs text-[#55625E]">{p.state} · about {p.roadKm} km by road</span>
+                    </span>
+                    <span className="text-right shrink-0">
+                      <span className="block text-sm font-bold text-[#15201D]">from ₹{p.totalINR.toLocaleString('en-IN')}</span>
+                      <span className="block text-[11px] font-semibold text-[#0A5546]">Fits · estimate</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
       )}
 
       {/* 4. PROGRESSIVE DISCLOSURE BOTTOM SHEET MODAL (Stacked cost bar + expandable list + buffer slider) */}
@@ -459,7 +405,7 @@ export const PlanOptionsSelector: React.FC<PlanOptionsSelectorProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-[#E2E6E1]">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#0E6B59] bg-[#E3F1EC] px-2 py-0.5 rounded-full">
-                  {activeSheetOption.tier} Tier Cost Breakdown
+                  {activeSheetOption.tier} · what it costs
                 </span>
                 <h4 className="text-base sm:text-lg font-bold text-[#15201D] font-heading mt-1">
                   ₹{activeSheetOption.totalCostINR.toLocaleString('en-IN')}{' '}

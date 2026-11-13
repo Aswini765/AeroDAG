@@ -234,7 +234,7 @@ async function runTests() {
   const bookedItemsFile = fs.readFileSync('src/components/consumer/plan/BookedItems.tsx', 'utf-8');
   assert(bookedItemsFile.includes('https://www.irctc.co.in/nget/train-search'), 'BookedItems contains IRCTC direct booking link');
   assert(bookedItemsFile.includes('https://www.makemytrip.com/flights/'), 'BookedItems contains MakeMyTrip Flights link');
-  assert(bookedItemsFile.includes('https://www.makemytrip.com/hotels/'), 'BookedItems contains MakeMyTrip Hotels link');
+  assert(bookedItemsFile.includes('buildHotelSearchUrl'), 'BookedItems links to a MakeMyTrip hotel search with dates and guests');
   assert(bookedItemsFile.includes('official site booking'), 'BookedItems contains direct official hotel booking search link');
   assert(bookedItemsFile.includes('No checkout or payment handling on AeroDAG'), 'Explicitly notes no checkout required');
 
@@ -245,11 +245,13 @@ async function runTests() {
 
   const dayByDayFile = fs.readFileSync('src/components/consumer/plan/DayByDay.tsx', 'utf-8');
   assert(dayByDayFile.includes('Open Day'), 'DayByDay contains button to open day route');
-  assert(dayByDayFile.includes('https://www.google.com/maps/dir/?api=1'), 'DayByDay constructs multi-stop Google Maps directions URL');
-  assert(dayByDayFile.includes('waypoints='), 'DayByDay directions URL includes ordered waypoints');
+  assert(dayByDayFile.includes('dayRouteUrl') && dayByDayFile.includes('mapStopsForDay'), 'DayByDay builds the Google Maps route from the day\'s real place names');
+  const itText = fs.readFileSync('src/services/itineraryText.ts', 'utf-8');
+  assert(itText.includes('https://www.google.com/maps/dir/?api=1'), 'Route URL is a multi-stop Google Maps directions URL');
+  assert(itText.includes('waypoints='), 'Directions URL includes ordered waypoints');
   assert(dayByDayFile.includes('pinNumber'), 'DayByDay renders numbered pins 1, 2, 3');
   assert(dayByDayFile.includes('travelTimeToNext'), 'DayByDay shows travel time to next stop on each leg');
-  assert(dayByDayFile.toLowerCase().includes('feeds into food & transit budget'), 'DayByDay notes estimated day cost feeds into budget');
+  assert(dayByDayFile.includes('already in the total above'), 'DayByDay says day costs are already counted in the one total');
 
   console.log(`\n🎉 All ${passed} User Interview Insights assertions passed successfully!`);
 }

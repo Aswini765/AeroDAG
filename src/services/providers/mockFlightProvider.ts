@@ -79,8 +79,8 @@ export class MockFlightProvider implements FlightProvider {
     } else {
       // Dynamic fallback for any other destination (e.g. Kerala via Kochi airport)
       const fallbackOriginCode = (params.origin || '').match(/\(([A-Z]{3})\)/)?.[1] || 'BLR';
-      const fallbackDestCode = dest.includes('kerala') ? 'COK' : 'DST';
-      const fallbackDestCity = dest.includes('kerala') ? 'Kochi' : params.destination;
+      const fallbackDestCode = (dest.includes('kerala') || dest.includes('munnar')) ? 'COK' : 'DST';
+      const fallbackDestCity = (dest.includes('kerala') || dest.includes('munnar')) ? 'Kochi' : params.destination;
       baseOptions = [
         {
           id: `fl-dyn-1`,

@@ -236,7 +236,7 @@ async function runAllScenarios() {
     await checkMobile375(page, 'My Trips Screen');
 
     const myTripsText = await page.evaluate(() => document.body.innerText);
-    assert(myTripsText.includes('Booked trips') && myTripsText.includes('Booked'), 'My Trips lists the trip under "Booked trips" with a plain "Booked" label');
+    assert(myTripsText.includes('Demo bookings') && myTripsText.includes('Demo booking'), 'My Trips lists the trip under "Demo bookings", never as a real booking');
     assert(!myTripsText.includes('Confirmed Voucher'), 'My Trips does NOT display "Confirmed Voucher"');
     assert(!myTripsText.includes('Reserved\n') && !myTripsText.includes('· Reserved'), 'My Trips does NOT display "Reserved" status');
 

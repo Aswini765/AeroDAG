@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { MapPin, Navigation, Utensils, ShoppingBag, PlusCircle, Star, ExternalLink, Sparkles, Building2 } from 'lucide-react';
+import { PlacePhoto } from './PlacePhoto';
 import { getStayAreasForDestination, StayAreaInfo } from '../../../services/stayAreasData';
 
 interface StayAreaMapCardProps {
@@ -120,7 +121,7 @@ export const StayAreaMapCard: React.FC<StayAreaMapCardProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {stayAreas.map((area) => {
           const isSelected = area.id === activeArea?.id;
-          const reviewsUrl = `https://www.google.com/search?q=${encodeURIComponent(area.name + ' ' + cleanDestination + ' reviews')}`;
+          const reviewsUrl = `https://www.google.com/search?q=${encodeURIComponent(area.name + ' ' + cleanDestination + ' reviews')}&hl=en&lr=lang_en&gl=in`;
 
           return (
             <div
@@ -135,6 +136,9 @@ export const StayAreaMapCard: React.FC<StayAreaMapCardProps> = ({
                   : 'border-[#E2E6E1] bg-white hover:border-[#0E6B59]/40'
               }`}
             >
+              {/* A real photo of the area */}
+              <PlacePhoto place={area.name} destination={cleanDestination} label={area.name} showCredit className="h-24 w-full rounded-xl" />
+
               {/* Area Header */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">

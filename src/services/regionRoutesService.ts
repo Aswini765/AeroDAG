@@ -1,7 +1,12 @@
+import { originCodeFor } from './originCities';
+import { REGION_ROUTES, regionKeyFor } from './regionRoutesData';
+import { findIndiaPlace } from './indiaPlaces';
 // src/services/regionRoutesService.ts
 import { TripPlan, HotelItem, TransferItem, ActivityDayItem, FlightItem } from '../types/travelBooking';
 import { evaluateMonthWorthiness, isOffbeatRequested, getHowToGetThereModes } from './seasonAndFitHelper';
 import { computeFullTripCost } from './fullTripCostHelper';
+import { realisticReturnFarePerPerson, getRouteRealism, coordsFor, AIRPORT_COORDS } from './travelRealism';
+import { TrainItem } from '../types/travelBooking';
 
 export interface RegionRouteBase {
   name: string;
@@ -88,6 +93,16 @@ export function getNearestAirportForPlace(placeName: string): {
   if (p.includes('mysuru') || p.includes('mysore')) {
     return { code: 'MYQ', name: 'Mysuru (MYQ)', driveTimeText: 'MYQ (~20m drive)', driveHours: 0.3 };
   }
+  const ref = findIndiaPlace(placeName);
+  if (ref?.airport) {
+    const a = ref.airport;
+    return {
+      code: a.code,
+      name: `${a.name} (${a.code})`,
+      driveTimeText: a.hours > 1 ? `${a.code} + ~${a.hours}h drive to ${ref.name}` : `${a.code} (~${Math.round(a.hours * 60)}m drive)`,
+      driveHours: a.hours
+    };
+  }
   return {
     code: null,
     name: 'Nearest airport: unknown — check before booking',
@@ -103,7 +118,8 @@ export function getRegionRoutes(
   targetBudgetINR?: number | null,
   travellersCount: number = 2,
   origin: string = 'Bengaluru (BLR)',
-  dates: string = '14–20 Nov 2026'
+  dates: string = '14–20 Nov 2026',
+  party?: { adults: number; children?: number; childAges?: number[]; seniors?: number }
 ): RegionRouteOption[] {
   const regLower = (region || '').toLowerCase();
   const prefLower = (preferences || '').toLowerCase();
@@ -305,50 +321,48 @@ export function getRegionRoutes(
       }
     ];
   } else {
-    // Generic fallback for other regions (Himachal, Uttarakhand, North-East)
-    const half1 = Math.floor(nights / 2);
-    const half2 = nights - half1;
-    rawRoutes = [
-      {
-        id: `${region.toLowerCase()}-route-1`,
-        title: `${region} Highlights Route`,
-        tagline: `Balanced multi-base itinerary exploring the best of ${region}`,
-        basesCount: 2,
-        bases: [
-          {
-            name: `${region} Base 1`,
-            area: 'Scenic Valley',
-            nights: half1,
-            highlight: 'Mountain viewpoints and cultural center',
-            starRating: 4,
-            pricePerNightINR: 3800,
-            nearestAirportCode: null,
-            nearestAirportText: 'Nearest airport: unknown — check before booking'
-          },
-          {
-            name: `${region} Base 2`,
-            area: 'Highland Retreat',
-            nights: half2,
-            highlight: 'Quiet nature trails and scenic viewpoints',
-            starRating: 4,
-            pricePerNightINR: 3800,
-            nearestAirportCode: null,
-            nearestAirportText: 'Nearest airport: unknown — check before booking'
-          }
-        ],
-        nightsPerBaseText: `Base 1 (${half1}N) · Base 2 (${half2}N)`,
-        totalTravelHours: 4,
-        totalTravelHoursText: 'approx. 4 hours total travel between bases',
-        isRecommended: true,
-        highlights: ['Scenic Nature', 'Multi-base experience', 'Authentic Food']
+    // Real routes for every other region (see regionRoutesData.ts) — never "Base 1 / Base 2"
+    const specs = REGION_ROUTES[regionKeyFor(region) || ''] || [];
+    rawRoutes = specs.map((spec, idx) => {
+      // Split nights by share; every base gets at least 1 night and the total stays exact
+      const counts = spec.bases.map((b) => Math.max(1, Math.floor(nights * b.share)));
+      let diff = nights - counts.reduce((a, b) => a + b, 0);
+      for (let k = 0; diff !== 0 && k < 50; k++) {
+        const at = k % counts.length;
+        if (diff > 0) { counts[at] += 1; diff -= 1; } else if (counts[at] > 1) { counts[at] -= 1; diff += 1; }
       }
-    ];
+      const bases = spec.bases.map((b, bi) => {
+        const airport = getNearestAirportForPlace(b.place);
+        return {
+          name: b.place,
+          area: b.area,
+          nights: counts[bi],
+          highlight: b.highlight,
+          starRating: 3,
+          pricePerNightINR: b.pricePerNightINR,
+          nearestAirportCode: airport.code,
+          nearestAirportText: airport.driveTimeText
+        };
+      });
+      return {
+        id: spec.id,
+        title: spec.title,
+        tagline: spec.tagline,
+        basesCount: bases.length,
+        bases,
+        nightsPerBaseText: bases.map((b) => `${b.name} (${b.nights}N)`).join(' · '),
+        totalTravelHours: spec.travelHours,
+        totalTravelHoursText: spec.travelText,
+        isRecommended: isOffbeat ? Boolean(spec.offbeat) : idx === 0,
+        highlights: spec.highlights
+      };
+    });
   }
 
   // Authoritative Cost Calculation (Prompt 1 requirement):
   // Build each route's plan and run it through computeFullTripCost to get the card total.
   // Never compute budget * 0.9x or invent costs.
-  return rawRoutes.map((raw) => {
+  const priced: RegionRouteOption[] = rawRoutes.map((raw) => {
     const routeObj: RegionRouteOption = {
       ...raw,
       estimatedCostINR: 0
@@ -360,10 +374,10 @@ export function getRegionRoutes(
         dates,
         durationDays: nights + 1,
         totalTravellers: travellersCount,
-        adultsCount: travellersCount,
-        childrenCount: 0,
-        childrenAges: [],
-        seniorsCount: 0,
+        adultsCount: party ? party.adults : travellersCount,
+        childrenCount: party?.children || 0,
+        childrenAges: party?.childAges || [],
+        seniorsCount: party?.seniors || 0,
         budgetTotalINR: budget,
         freeTextPreferences: preferences
       },
@@ -377,9 +391,9 @@ export function getRegionRoutes(
       targetDates: dates,
       durationDays: nights + 1,
       partySize: travellersCount,
-      adultsCount: travellersCount,
-      childrenCount: 0,
-      childrenAges: [],
+      adultsCount: party ? party.adults : travellersCount,
+      childrenCount: party?.children || 0,
+      childrenAges: party?.childAges || [],
       budgetTotalINR: budget,
       budgetTotalUSD: Math.round(budget / 84),
       budgetTier: 'Comfortable',
@@ -391,6 +405,27 @@ export function getRegionRoutes(
     routeObj.estimatedCostINR = costCalc.totalWithBufferINR;
     return routeObj;
   });
+
+  // "Best fit" is decided by the numbers and always says why:
+  // fits the budget, then least time on the road (offbeat routes first if asked for).
+  const fits = priced.filter((r) => r.estimatedCostINR <= budget);
+  const pool = fits.length > 0 ? fits : priced;
+  const offbeatPool = isOffbeat ? pool.filter((r) => /offbeat|quiet|less crowded|hidden/i.test(`${r.title} ${r.tagline} ${r.highlights.join(' ')}`)) : [];
+  const ranked = [...(offbeatPool.length > 0 ? offbeatPool : pool)].sort((a, b) =>
+    fits.length > 0 ? a.totalTravelHours - b.totalTravelHours : a.estimatedCostINR - b.estimatedCostINR
+  );
+  const best = ranked[0];
+  for (const r of priced) {
+    r.isRecommended = r === best;
+    r.matchReason = r === best
+      ? [
+          fits.length > 0 ? 'Fits your budget' : 'Closest to your budget',
+          offbeatPool.length > 0 ? 'offbeat, as you asked' : '',
+          fits.length > 1 || fits.length === 0 ? `least time on the road (~${r.totalTravelHours}h)` : ''
+        ].filter(Boolean).join(' · ')
+      : undefined;
+  }
+  return [best, ...priced.filter((r) => r !== best)].filter(Boolean);
 }
 
 export function buildMultiBasePlanFromRoute(
@@ -420,7 +455,7 @@ export function buildMultiBasePlanFromRoute(
   const childAges = ctx.childrenAges || [];
   const seniors = ctx.seniorsCount || 0;
   const originClean = (ctx.origin || 'Bengaluru (BLR)').replace(/\s*\(.*\)/, '').trim();
-  const originCode = (ctx.origin || 'BLR').match(/\((.*?)\)/)?.[1] || 'BLR';
+  const originCode = originCodeFor(ctx.origin || '') || 'BLR';
   const destClean = (ctx.destination || 'Rajasthan').replace(/,\s*India$/i, '').trim();
   const isKerala = destClean.toLowerCase().includes('kerala') || route.id.startsWith('ker-');
 
@@ -470,8 +505,9 @@ export function buildMultiBasePlanFromRoute(
     vehicleType: totalTravellers > 3 ? 'AC Innova Crysta MPV' : 'AC Sedan',
     capacityPassengers: Math.max(4, totalTravellers),
     luggageCapacity: Math.max(3, totalTravellers),
-    priceINR: 6500,
-    priceUSD: Math.round(6500 / 84),
+    // About ₹900 per driving hour for a sedan, ₹1,500 for a tempo traveller (fuel, tolls, driver)
+    priceINR: Math.max(2500, Math.round((route.totalTravelHours || 4) * (totalTravellers >= 5 ? 1500 : 900) / 100) * 100),
+    priceUSD: Math.round(Math.max(2500, (route.totalTravelHours || 4) * (totalTravellers >= 5 ? 1500 : 900)) / 84),
     description: `Chauffeured private inter-base transport: ${route.totalTravelHoursText}. Includes fuel, tolls, and driver allowance.`,
     duration: `${route.totalTravelHours} hours`,
     pickupLocation: `${stays[0].baseName} Hotel`,
@@ -482,11 +518,15 @@ export function buildMultiBasePlanFromRoute(
 
   // Nearest arrival airport
   const firstBaseAirport = getNearestAirportForPlace(route.bases[0].name);
-  const destAirportCode = firstBaseAirport.code || 'COK';
+  const destAirportCode = firstBaseAirport.code || route.bases[0].nearestAirportCode || '';
 
-  // Prompt 2 & 3: Generic flight description without invented flight numbers (no "6E-452")
-  // Shows drive time if place has no direct airport
-  const flightPricePerPerson = 4200;
+  // Fly in to the first stop and home from the last stop (open-jaw) when they have different airports
+  const lastBase = route.bases[route.bases.length - 1];
+  const lastBaseAirport = getNearestAirportForPlace(lastBase.name);
+  const returnFromCode = lastBaseAirport.code && lastBaseAirport.code !== destAirportCode ? lastBaseAirport.code : '';
+  const fareIn = realisticReturnFarePerPerson(originCode, destAirportCode || null);
+  const fareOut = returnFromCode ? realisticReturnFarePerPerson(originCode, returnFromCode) : fareIn;
+  const flightPricePerPerson = Math.round((fareIn + fareOut) / 2 / 100) * 100;
   const flightDriveNote = firstBaseAirport.driveHours > 1 ? ` + ~${firstBaseAirport.driveHours}h road drive` : '';
   const totalTravelDuration = firstBaseAirport.driveHours > 0
     ? `approx. ${Math.round(2 + firstBaseAirport.driveHours)}h total (flight + drive)`
@@ -494,13 +534,16 @@ export function buildMultiBasePlanFromRoute(
 
   const flight: FlightItem = {
     id: `fl-reg-${route.id}`,
-    airline: `Morning non-stop flight ${originCode}→${destAirportCode}${flightDriveNote} · ~₹${flightPricePerPerson.toLocaleString('en-IN')}`,
+    airline: returnFromCode
+      ? `Fly ${originCode}→${destAirportCode}, home ${returnFromCode}→${originCode}${flightDriveNote}`
+      : `Morning non-stop flight ${originCode}→${destAirportCode}${flightDriveNote}`,
     airlineCode: 'AI-EST',
     flightNumber: '',
     originCode,
     originCity: originClean,
     destinationCode: destAirportCode,
     destinationCity: route.bases[0].name,
+    returnFromCode: returnFromCode || undefined,
     departureTime: 'Morning',
     arrivalTime: 'Morning',
     duration: totalTravelDuration,
@@ -513,9 +556,37 @@ export function buildMultiBasePlanFromRoute(
     cabinClass: 'Economy',
     refundable: true,
     seatAvailability: Math.max(4, totalTravellers),
-    source: isKerala ? 'sample' : 'estimate',
-    sourceLabel: isKerala ? 'Sample' : 'AI estimate'
+    source: 'estimate',
+    sourceLabel: isKerala ? 'Estimate' : 'Estimate'
   };
+
+  // The cheaper way most people do it: overnight train or bus to the first stop
+  const realism = getRouteRealism({
+    fromCoords: AIRPORT_COORDS[originCode] || null,
+    toCoords: coordsFor(route.bases[0].name, destAirportCode),
+    destinationState: destClean,
+    travellers: totalTravellers,
+    hasAirport: Boolean(destAirportCode)
+  });
+  const groundBudget: TrainItem | null = realism ? {
+    id: `gr-reg-${route.id}`,
+    trainName: realism.budget.label,
+    trainNumber: '',
+    fromStation: originClean,
+    toStation: route.bases[0].name,
+    departureTime: realism.budget.hours >= 7 ? 'Night' : 'Morning',
+    arrivalTime: realism.budget.hours >= 7 ? 'Next morning' : 'Afternoon',
+    duration: `approx. ${realism.budget.hours}h`,
+    classes: [],
+    selectedClass: '3A',
+    pricePerPersonINR: realism.budget.perPersonReturnINR,
+    totalPriceINR: realism.budget.totalINR,
+    foodIncluded: false,
+    isVandeBharatOrRajdhani: false,
+    mode: realism.budget.mode === 'bus' ? 'bus' : 'train',
+    source: 'estimate',
+    sourceLabel: 'Estimate'
+  } : null;
 
   const transfer: TransferItem = {
     id: `tr-reg-arrival`,
@@ -586,13 +657,42 @@ export function buildMultiBasePlanFromRoute(
     const baseKey = base.name.toLowerCase();
     const curatedSights = isKerala && KERALA_BASE_SIGHTS[baseKey] ? KERALA_BASE_SIGHTS[baseKey] : null;
 
+    // Real sights for this stop, used one by one so no two days read the same
+    const baseSights = (findIndiaPlace(base.name)?.sights || []).slice();
+    let sightIdx = 0;
+    const nextSight = () => (sightIdx < baseSights.length ? baseSights[sightIdx++] : null);
+    const spareDays = [
+      `Slow morning, then a walk through the old town and markets of ${base.name}.`,
+      `Optional day trip from ${base.name} — ask your hotel which one suits the season.`,
+      `Free day in ${base.name}: cafés, a local cooking class or simply rest.`
+    ];
+    let spareIdx = 0;
+    const prevBase = bIdx > 0 ? route.bases[bIdx - 1] : null;
+
     for (let n = 0; n < base.nights; n++) {
+      const isArrivalDay = bIdx === 0 && n === 0;
       const isTransferDay = n === 0 && bIdx > 0;
-      let dayTitle = isTransferDay ? `Travel to ${base.name} · Check-in & Evening Walk` : `Explore ${base.name} · ${base.highlight}`;
+      const s1 = nextSight();
+      const s2 = isArrivalDay || isTransferDay ? null : nextSight();
+      let dayTitle = isArrivalDay
+        ? `Arrive in ${base.name}`
+        : isTransferDay
+        ? `${prevBase ? `${prevBase.name} → ` : ''}${base.name}`
+        : `${base.name} · ${s1 || base.highlight || 'Explore'}`;
       let dayTheme = base.highlight || 'Cultural Exploration';
-      let morning = isTransferDay ? `Scenic highway drive to ${base.name} with roadside cafe stop.` : `Morning guided heritage walk around ${base.area || base.name}.`;
-      let afternoon = `Local sightseeing and leisurely cultural lunch in ${base.name}.`;
-      let evening = `Sunset viewpoint and authentic local dinner in ${base.name}.`;
+      let morning = isArrivalDay
+        ? (destAirportCode
+            ? `Fly ${originCode} → ${destAirportCode}${firstBaseAirport.driveHours > 1 ? `, then about ${firstBaseAirport.driveHours}h by road` : ''} to ${base.name}.`
+            : `Travel from ${originClean} to ${base.name}.`)
+        : isTransferDay
+        ? `Drive ${prevBase ? `from ${prevBase.name} ` : ''}to ${base.name}${route.totalTravelHours ? ` (about ${Math.max(2, Math.round(route.totalTravelHours / Math.max(1, route.bases.length - 1)))}h)` : ''}.`
+        : (s1 ? `Visit ${s1}.` : spareDays[spareIdx++ % spareDays.length]);
+      let afternoon = isArrivalDay || isTransferDay
+        ? `Check in and rest${s1 ? `, then an easy visit to ${s1}` : ''}.`
+        : (s2 ? `Visit ${s2}.` : spareDays[spareIdx++ % spareDays.length]);
+      let evening = isArrivalDay || isTransferDay
+        ? `Early dinner near your stay in ${base.area || base.name}.`
+        : `Sunset and dinner in ${base.area || base.name}.`;
 
       if (curatedSights) {
         const sightObj = curatedSights[n % curatedSights.length];
@@ -600,7 +700,7 @@ export function buildMultiBasePlanFromRoute(
           ? `Scenic Drive to ${base.name} · ${sightObj.theme}`
           : `Day in ${base.name} · ${sightObj.theme}`;
         dayTheme = sightObj.theme;
-        morning = isTransferDay ? `Inter-city transfer from previous base to ${base.name}.` : sightObj.morning;
+        morning = isTransferDay ? `Drive ${prevBase ? `from ${prevBase.name} ` : ''}to ${base.name}.` : sightObj.morning;
         afternoon = sightObj.afternoon;
         evening = sightObj.evening;
       }
@@ -627,10 +727,10 @@ export function buildMultiBasePlanFromRoute(
     itinerary.push({
       day: dayCounter,
       dateStr: `Day ${dayCounter}`,
-      title: `Farewell ${destClean} · Departure`,
+      title: `Head home from ${stays[stays.length - 1].baseName}`,
       theme: 'Departure',
-      morning: 'Breakfast at hotel and souvenir shopping in local markets.',
-      afternoon: `Transfer to ${destAirportCode} airport for return journey to ${originClean}.`,
+      morning: `Breakfast and a last walk in ${stays[stays.length - 1].baseName}.`,
+      afternoon: `Transfer to ${returnFromCode || destAirportCode} airport for the trip home to ${originClean}.`,
       evening: 'Flight home.',
       stayArea: stays[stays.length - 1].baseName,
       estimatedCostINR: 600,
@@ -667,6 +767,7 @@ export function buildMultiBasePlanFromRoute(
     hotelZone: stays[0].baseName,
     flight,
     availableFlights: [flight],
+    availableTrains: groundBudget ? [groundBudget] : [],
     hotel: primaryHotel,
     availableHotels: stays.map((s) => s.hotel),
     stays,
@@ -681,7 +782,9 @@ export function buildMultiBasePlanFromRoute(
     recommendations: [`Enjoy your ${route.title} route across ${destClean}.`],
     verificationChecks: [],
     createdAt: new Date().toISOString(),
-    isAiEstimatedDestination: !isKerala,
+    // Region routes come from our own route data, not the AI: label them "Estimate"
+    isAiEstimatedDestination: false,
+    allPricesEstimated: !isKerala,
     monthWorthiness: evaluateMonthWorthiness(destClean, ctx.dates || '14–20 Nov 2026', `${ctx.notes?.join(' ')} ${ctx.freeTextPreferences || ''}`, !isKerala),
     isOffbeatLeaning: isOffbeatRequested(ctx.freeTextPreferences || '', ctx.notes),
     transitModeComparison: getHowToGetThereModes(destClean, ctx.origin || 'Bengaluru (BLR)', totalTravellers, 'Flight'),

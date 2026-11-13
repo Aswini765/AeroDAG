@@ -1,30 +1,50 @@
 import { TripPlan, TripPreferences } from '../types/travelBooking';
 import { computeFullTripCost } from './fullTripCostHelper';
+import { generatePlanOptions } from './planOptionsGenerator';
 
 export function formatTripShareText(plan: TripPlan, preferences?: TripPreferences | null): string {
   const cost = computeFullTripCost(plan, preferences);
+  const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
   const adults = plan.travellers?.adults ?? preferences?.adultsCount ?? 2;
   const children = plan.travellers?.children ?? preferences?.childrenCount ?? 0;
+  const total = adults + children;
   const travellersText = children > 0
-    ? `${adults} adult${adults > 1 ? 's' : ''}, ${children} child${children > 1 ? 'ren' : ''}`
-    : `${adults} traveller${adults > 1 ? 's' : ''}`;
+    ? `${adults} adult${adults > 1 ? 's' : ''} + ${children} child${children > 1 ? 'ren' : ''}`
+    : `${adults} ${adults === 1 ? 'person' : 'people'}`;
+  const place = plan.destination.replace(/,.*$/, '').trim();
+  const origin = (plan.origin || '').replace(/\s*\([^)]*\)/, '').trim();
 
-  const linesText = cost.lines
-    .map((l) => `• ${l.name}: ₹${l.amountINR.toLocaleString('en-IN')}${l.isEstimate ? ' (Est.)' : ''}`)
-    .join('\n');
+  const stayText = plan.stays && plan.stays.length > 1
+    ? plan.stays.map((s) => `${s.baseName} ${s.nights}N`).join(' + ')
+    : `${Math.max(1, plan.durationDays - 1)} night${plan.durationDays - 1 === 1 ? "" : "s"} in ${plan.hotel?.area || place}`;
+  const travelText = plan.flight ? `flights from ${origin}` : plan.selectedTrain ? `train from ${origin}` : `by road from ${origin}`;
 
-  return `✈️ Trip Plan: ${plan.destination.replace(/,.*$/, '')}
-📅 Dates: ${plan.dates} (${plan.durationDays} days)
-👥 Travellers: ${travellersText}
+  const budget = preferences?.budgetTotalINR || plan.budget?.targetINR || 0;
+  const budgetText = budget > 0
+    ? (cost.totalWithBufferINR > budget
+        ? ` · ${inr(cost.totalWithBufferINR - budget)} over our ${inr(budget)}`
+        : ` · fits our ${inr(budget)}`)
+    : '';
 
-💰 Total Real Cost: ₹${cost.totalWithBufferINR.toLocaleString('en-IN')} (with 15% buffer)
-👤 Per Person: ₹${cost.perPersonINR.toLocaleString('en-IN')}
+  // A cheaper way to do the same trip, from the same cost engine
+  let cheaperText = '';
+  try {
+    const options = generatePlanOptions(plan, preferences);
+    const cheapest = options.reduce((m, o) => (o.totalCostINR < m.totalCostINR ? o : m), options[0]);
+    if (cheapest && cheapest.totalCostINR < cost.totalWithBufferINR - 500) {
+      cheaperText = `\nCheaper option: ${inr(cheapest.totalCostINR)} (${cheapest.stayArea}${cheapest.travelMode ? ', ' + cheapest.travelMode.toLowerCase() : ''})`;
+    }
+  } catch {
+    // options are a nice-to-have in the message
+  }
 
-Cost Breakdown:
-${linesText}
-• 15% Buffer for Surprises: ₹${cost.bufferAmountINR.toLocaleString('en-IN')}
+  return `${place} · ${plan.dates} · ${travellersText}
+${stayText}, ${travelText}
 
-Planned with AeroDAG (aerodag.onrender.com)`;
+Real total: ${inr(cost.totalWithBufferINR)} (incl. 15% buffer of ${inr(cost.bufferAmountINR)})
+${total > 1 ? `${inr(cost.perPersonINR)} each` : 'Just me'}${budgetText}${cheaperText}
+
+Prices are estimates, not quotes. Planned with AeroDAG (aerodag.onrender.com)`;
 }
 
 export function getWhatsAppShareUrl(plan: TripPlan, preferences?: TripPreferences | null): string {

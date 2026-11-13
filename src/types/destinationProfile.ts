@@ -49,6 +49,8 @@ export interface DestinationProfile {
   weatherNote: string;
   localTips: string[]; // exactly 3 tips
   vegFriendly: 'low' | 'medium' | 'high';
+  /** Built from AeroDAG's offline India reference, not the AI (AI busy or unavailable) */
+  isOfflineEstimate?: boolean;
 }
 
 export type DestinationProfileApiResponse =

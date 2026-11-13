@@ -17,6 +17,7 @@
 import { TripPlan, TripPreferences, HotelItem, FlightItem, TrainItem } from '../types/travelBooking';
 import { TripPlanningEngine } from './tripPlanningEngine';
 import { computeFullTripCost } from './fullTripCostHelper';
+import { alignItineraryToPlan } from './itineraryText';
 import {
   MOCK_HOTELS_GOA,
   MOCK_HOTELS_COORG,
@@ -35,7 +36,7 @@ export interface PlanTierOption {
   stayArea: string;
   stayName: string;
   stayStars: number;
-  travelMode: 'Flight' | 'Train' | 'Cab' | 'Road';
+  travelMode: 'Flight' | 'Train' | 'Bus' | 'Cab' | 'Road';
   travelTime: string;
   travelDetail: string;
   hotel: HotelItem;
@@ -123,22 +124,24 @@ export function generatePlanOptions(
 
   // 1. BALANCED OPTION (Reference Baseline)
   const balancedHotel = basePlan.hotel;
-  let balancedTravelMode: 'Flight' | 'Train' | 'Cab' | 'Road' = 'Flight';
+  let balancedTravelMode: 'Flight' | 'Train' | 'Bus' | 'Cab' | 'Road' = 'Flight';
   let balancedTravelTime = 'approx. 1h 50m';
   let balancedTravelDetail = 'Direct scheduled travel';
 
-  if (basePlan.selectedTrain) {
-    balancedTravelMode = 'Train';
-    balancedTravelTime = basePlan.selectedTrain.duration || 'approx. 6h';
-    balancedTravelDetail = `${basePlan.selectedTrain.trainName} · Express`;
-  } else if (basePlan.flight) {
+  // Same order as the cost engine (flight first, then train/bus, then road), so the label
+  // on the option card always matches the travel line in the cost breakdown
+  if (basePlan.flight) {
     balancedTravelMode = 'Flight';
     balancedTravelTime = basePlan.flight.duration || 'approx. 1h 50m';
     balancedTravelDetail = `${basePlan.flight.airline} · Non-stop`;
+  } else if (basePlan.selectedTrain) {
+    balancedTravelMode = basePlan.selectedTrain.mode === 'bus' ? 'Bus' : 'Train';
+    balancedTravelTime = basePlan.selectedTrain.duration || 'approx. 6h';
+    balancedTravelDetail = basePlan.selectedTrain.trainName;
   } else if (basePlan.transfer) {
-    balancedTravelMode = 'Cab';
+    balancedTravelMode = /tempo/i.test(basePlan.transfer.vehicleType || '') ? 'Road' : 'Cab';
     balancedTravelTime = basePlan.transfer.duration || 'approx. 3h 30m';
-    balancedTravelDetail = basePlan.transfer.vehicleType;
+    balancedTravelDetail = `${basePlan.transfer.vehicleType} there and back`;
   }
 
   const extractBreakdown = (costCalc: ReturnType<typeof computeFullTripCost>) => ({
@@ -180,28 +183,59 @@ export function generatePlanOptions(
   };
 
   // 2. BUDGET OPTION
-  // Cheapest hotel + cheapest transit
+  // How budget travellers really do it: hostel / guesthouse, bus or train, local food
+  const pax = Math.max(1, (basePlan.travellers?.adults || 0) + (basePlan.travellers?.children || 0) + (basePlan.travellers?.seniors || 0));
+  const hasKids = (basePlan.travellers?.children || 0) > 0;
   const cheaperHotels = sortedHotelsAsc.filter((h) => h.pricePerNightINR < balancedHotel.pricePerNightINR);
-  const budgetHotel = cheaperHotels[0] || sortedHotelsAsc[0] || balancedHotel;
+  const cheapestKnown = cheaperHotels[0] || sortedHotelsAsc[0] || balancedHotel;
+  const budgetStayArea = cheapestKnown.area || balancedHotel.area || balancedHotel.city;
+  const soloOrFriends = !hasKids && (pax === 1 || pax >= 5);
+  const hostelBed = Math.max(500, Math.round((cheapestKnown.pricePerNightINR * 0.3) / 50) * 50);
+  const guesthouseRoom = Math.max(900, Math.round((cheapestKnown.pricePerNightINR * 0.6) / 50) * 50);
+  const budgetStay: HotelItem = {
+    ...cheapestKnown,
+    id: `${cheapestKnown.id}-budget-stay`,
+    name: soloOrFriends && pax === 1
+      ? `Hostel dorm bed in ${budgetStayArea}, ~₹${hostelBed.toLocaleString('en-IN')}/night`
+      : `Guesthouse / homestay in ${budgetStayArea}, ~₹${guesthouseRoom.toLocaleString('en-IN')}/night`,
+    roomType: soloOrFriends && pax === 1 ? 'Dorm bed (hostel)' : 'Clean double room, shared or private bath',
+    starRating: 2,
+    pricePerNightINR: soloOrFriends && pax === 1 ? hostelBed : guesthouseRoom,
+    totalPriceINR: 0,
+    maxCapacity: pax >= 5 ? 3 : 2,
+    breakfastIncluded: false,
+    tag: 'Within Budget',
+    source: 'estimate',
+    sourceLabel: 'Estimate'
+  };
+  // Use the cheapest real listing when it is already guesthouse-priced; otherwise the budget stay
+  // Couples and families: the cheapest real listing if there is one below Balanced.
+  // Solo travellers and groups of friends: a hostel / guesthouse, which is what they actually book.
+  const budgetHotel = !soloOrFriends && cheaperHotels.length > 0 ? cheaperHotels[0] : budgetStay;
 
   let budgetFlight: FlightItem | null = null;
   let budgetTrain: TrainItem | null = null;
-  let budgetTravelMode: 'Flight' | 'Train' | 'Cab' | 'Road' = balancedTravelMode;
+  let budgetTravelMode: 'Flight' | 'Train' | 'Bus' | 'Cab' | 'Road' = balancedTravelMode;
   let budgetTravelTime = balancedTravelTime;
   let budgetTravelDetail = balancedTravelDetail;
   let travelDiff = '';
 
   if (availableTrains.length > 0) {
     const sortedTrainsAsc = [...availableTrains].sort((a, b) => a.totalPriceINR - b.totalPriceINR);
-    const chosenTrain = sortedTrainsAsc[0];
+    let chosenTrain = sortedTrainsAsc[0];
+    // Budget travellers book 3AC, not 2A
+    const threeA = chosenTrain?.classes?.find((c) => c.code === '3A' && c.isAvailable);
+    if (chosenTrain && threeA && chosenTrain.selectedClass !== '3A') {
+      chosenTrain = { ...chosenTrain, selectedClass: '3A', pricePerPersonINR: threeA.fareINR, totalPriceINR: threeA.fareINR * pax };
+    }
     if (chosenTrain) {
       budgetTrain = chosenTrain;
       budgetFlight = null;
-      budgetTravelMode = 'Train';
+      budgetTravelMode = chosenTrain.mode === 'bus' ? 'Bus' : 'Train';
       budgetTravelTime = chosenTrain.duration || 'approx. 8h 30m';
-      budgetTravelDetail = `${chosenTrain.trainName} (${chosenTrain.selectedClass || '3A'})`;
+      budgetTravelDetail = chosenTrain.mode === 'bus' ? chosenTrain.trainName : `${chosenTrain.trainName} (${chosenTrain.selectedClass || '3A'})`;
       if (balancedTravelMode === 'Flight') {
-        travelDiff = 'train instead of flight';
+        travelDiff = `${chosenTrain.mode === 'bus' ? 'bus' : 'train'} instead of flight`;
       }
     }
   } else if (availableFlights.length > 0) {
@@ -212,18 +246,26 @@ export function generatePlanOptions(
       budgetTrain = null;
       budgetTravelMode = 'Flight';
       budgetTravelTime = chosenFlight.duration || 'approx. 2h 15m';
-      budgetTravelDetail = `${chosenFlight.airline} (${chosenFlight.flightNumber})`;
+      budgetTravelDetail = `${chosenFlight.airline}${chosenFlight.flightNumber ? ` ${chosenFlight.flightNumber}` : ''}`;
       if (basePlan.flight && chosenFlight.id !== basePlan.flight.id) {
         travelDiff = 'cheaper flight';
       }
     }
   }
 
-  const budgetPlan = TripPlanningEngine.swapComponent(basePlan, {
-    hotel: budgetHotel,
-    flight: budgetFlight,
-    train: budgetTrain
-  });
+  const budgetPlan: TripPlan = {
+    ...TripPlanningEngine.swapComponent(basePlan, {
+      hotel: budgetHotel,
+      flight: budgetFlight,
+      train: budgetTrain
+    }),
+    costTier: 'budget',
+    // A one-base budget trip: one stay, no multi-stop hotel list
+    stays: basePlan.stays && basePlan.stays.length > 1
+      ? basePlan.stays.map((st) => ({ ...st, hotel: { ...st.hotel, id: `${st.hotel.id}-budget`, name: `Guesthouse / homestay in ${st.baseName}, ~₹${Math.max(900, Math.round(st.hotel.pricePerNightINR * 0.55 / 50) * 50).toLocaleString('en-IN')}/night`, pricePerNightINR: Math.max(900, Math.round(st.hotel.pricePerNightINR * 0.55 / 50) * 50), totalPriceINR: 0, starRating: 2, source: 'estimate' as const } }))
+      : basePlan.stays
+  };
+  budgetPlan.itinerary = alignItineraryToPlan(budgetPlan);
   const budgetCost = computeFullTripCost(budgetPlan, preferences, optionsConfig);
 
   const budgetDiffINR = balancedCost.totalWithBufferINR - budgetCost.totalWithBufferINR;
@@ -248,6 +290,7 @@ export function generatePlanOptions(
     }
   }
 
+  const budgetCardHotel = budgetPlan.stays && budgetPlan.stays.length > 1 ? budgetPlan.stays[0].hotel : budgetHotel;
   const budgetOption: PlanTierOption = {
     id: 'budget',
     tier: 'Budget',
@@ -256,9 +299,9 @@ export function generatePlanOptions(
     tagline: 'Clean, value-rated stay & smart economical transport',
     totalCostINR: budgetCost.totalWithBufferINR,
     perPersonCostINR: budgetCost.perPersonINR,
-    stayArea: budgetHotel.area || budgetHotel.city || 'Central Area',
-    stayName: budgetHotel.name,
-    stayStars: budgetHotel.starRating, // ALWAYS show real starRating! Never overwrite!
+    stayArea: budgetPlan.stays && budgetPlan.stays.length > 1 ? budgetPlan.stays.map((st) => st.baseName).join(' + ') : (budgetHotel.area || budgetHotel.city || 'Central Area'),
+    stayName: budgetCardHotel.name,
+    stayStars: budgetCardHotel.starRating, // ALWAYS show real starRating! Never overwrite!
     travelMode: budgetTravelMode,
     travelTime: budgetTravelTime,
     travelDetail: budgetTravelDetail,
@@ -277,7 +320,7 @@ export function generatePlanOptions(
 
   let comfortFlight: FlightItem | null = null;
   let comfortTrain: TrainItem | null = null;
-  let comfortTravelMode: 'Flight' | 'Train' | 'Cab' | 'Road' = balancedTravelMode;
+  let comfortTravelMode: 'Flight' | 'Train' | 'Bus' | 'Cab' | 'Road' = balancedTravelMode;
   let comfortTravelTime = balancedTravelTime;
   let comfortTravelDetail = balancedTravelDetail;
   let comfortTravelDiff = '';
@@ -292,27 +335,39 @@ export function generatePlanOptions(
       comfortTrain = null;
       comfortTravelMode = 'Flight';
       comfortTravelTime = chosenFlight.duration || 'approx. 1h 35m';
-      comfortTravelDetail = `${chosenFlight.airline} (${chosenFlight.flightNumber}) · Fastest`;
+      comfortTravelDetail = `${chosenFlight.airline}${chosenFlight.flightNumber ? ` ${chosenFlight.flightNumber}` : ''}`;
       if (balancedTravelMode === 'Train') {
         comfortTravelDiff = 'flight instead of train';
       }
     }
   } else if (availableTrains.length > 0) {
-    const vbTrain = availableTrains.find((t) => t.trainName.toLowerCase().includes('vande')) || availableTrains[0];
+    const vbTrain = availableTrains.find((t) => t.trainName.toLowerCase().includes('vande')) || basePlan.selectedTrain || availableTrains[0];
     if (vbTrain) {
       comfortTrain = vbTrain;
       comfortFlight = null;
-      comfortTravelMode = 'Train';
+      comfortTravelMode = vbTrain.mode === 'bus' ? 'Bus' : 'Train';
       comfortTravelTime = vbTrain.duration || 'approx. 5h';
-      comfortTravelDetail = `${vbTrain.trainName} · Executive / Chair Car`;
+      comfortTravelDetail = vbTrain.mode === 'bus' ? vbTrain.trainName : `${vbTrain.trainName} · AC chair car`;
     }
   }
 
-  const comfortPlan = TripPlanningEngine.swapComponent(basePlan, {
+  // Trips too short to fly: Comfort is a door-to-door private cab, not the same bus
+  const roadTransfer = (basePlan.availableTransfers || []).find((t) => t.id.endsWith('-road'));
+  if (availableFlights.length === 0 && roadTransfer) {
+    comfortTrain = null;
+    comfortTravelMode = /tempo/i.test(roadTransfer.vehicleType) ? 'Road' : 'Cab';
+    comfortTravelTime = roadTransfer.duration;
+    comfortTravelDetail = roadTransfer.title;
+  }
+  const comfortBase = availableFlights.length === 0 && roadTransfer
+    ? { ...basePlan, transfer: roadTransfer, selectedTrain: undefined }
+    : basePlan;
+  const comfortPlan = TripPlanningEngine.swapComponent(comfortBase, {
     hotel: comfortHotel,
     flight: comfortFlight,
     train: comfortTrain
   });
+  comfortPlan.itinerary = alignItineraryToPlan(comfortPlan);
   const comfortCost = computeFullTripCost(comfortPlan, preferences, optionsConfig);
 
   const comfortDiffINR = comfortCost.totalWithBufferINR - balancedCost.totalWithBufferINR;
@@ -351,7 +406,7 @@ export function generatePlanOptions(
   // If two would be equal, show fewer and say "Only N real options for this trip".
   const sameStay = (budgetOption.hotel.id === balancedOption.hotel.id || budgetOption.hotel.name === balancedOption.hotel.name);
   const sameTransportMode = budgetOption.travelMode === balancedOption.travelMode;
-  const budgetDiffersReal = !sameStay || !sameTransportMode;
+  const budgetDiffersReal = !sameStay || !sameTransportMode || budgetOption.totalCostINR < balancedCost.totalWithBufferINR - 500;
 
   const candidateOptions: PlanTierOption[] = [];
 

@@ -299,7 +299,8 @@ async function runTests() {
   // Check PlanHeader badge
   const planHeader = fs.readFileSync(path.resolve('src/components/consumer/plan/PlanHeader.tsx'), 'utf8');
   assert(!planHeader.includes('RESEARCH & DECIDE'), "PlanHeader.tsx has no 'RESEARCH & DECIDE'");
-  assert(planHeader.includes('Your plan'), "PlanHeader.tsx has 'Your plan' badge");
+  // The demo banner was removed in the answer-first redesign; the header now leads with the trip and a clear Book action
+  assert(planHeader.includes('Book on MakeMyTrip') && planHeader.includes('plan-action-bar') && planHeader.includes('ShareSaveSheet'), "PlanHeader.tsx has one action bar: Share with group, Save, Book on MakeMyTrip");
 
   // =========================================================================
   // FIX 7: FAVICON AND LINK PREVIEW

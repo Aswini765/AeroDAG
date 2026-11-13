@@ -1,17 +1,8 @@
 import React, { useState } from 'react';
-import {
-  Footprints,
-  Clock,
-  Car,
-  Sparkles,
-  Navigation,
-  ExternalLink,
-  MapPin,
-  ArrowUpDown,
-  Trash2,
-  Star
-} from 'lucide-react';
+import { Car, Navigation, ExternalLink, Footprints, Utensils } from 'lucide-react';
 import { ActivityDayItem } from '../../../types/travelBooking';
+import { cleanDayText, mapStopsForDay, dayRouteUrl } from '../../../services/itineraryText';
+import { PlacePhoto } from './PlacePhoto';
 
 interface DayByDayProps {
   itinerary: ActivityDayItem[];
@@ -19,102 +10,103 @@ interface DayByDayProps {
   stayArea?: string;
   onAdjustDay?: (dayNumber: number, type: 'relaxed' | 'food' | 'budget') => void;
   onCardFocus?: (pinNumber: number) => void;
+  /** Tell the map which day is showing (index into itinerary) */
+  onDayChange?: (index: number) => void;
 }
 
-const STOP_PHOTOS = {
-  morning: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=400&q=80',
-  afternoon: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=400&q=80',
-  evening: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=400&q=80'
-};
-
+/**
+ * Day by day — a plain timeline. No made-up per-stop prices or fake maps:
+ * money lives in the cost breakdown above; travel times only appear when we
+ * actually have them.
+ */
 export const DayByDay: React.FC<DayByDayProps> = ({
   itinerary,
   destination,
   stayArea,
-  onAdjustDay,
-  onCardFocus
+  onCardFocus,
+  onDayChange
 }) => {
-  const [activeDayIdx, setActiveDayIdx] = useState(0);
-  const [activeStopId, setActiveStopId] = useState<string>('morning');
-  const [removedStops, setRemovedStops] = useState<Record<string, boolean>>({});
+  const [activeDayIdx, setActiveDayIdxRaw] = useState(0);
+  const setActiveDayIdx = (i: number) => { setActiveDayIdxRaw(i); onDayChange?.(i); };
+  const [showAllDays, setShowAllDays] = useState(false);
 
   if (!itinerary || itinerary.length === 0) {
     return null;
   }
 
   const currentDay = itinerary[activeDayIdx] || itinerary[0];
-  const cleanDestination = (destination || 'Goa').replace(/,.*$/, '').trim();
+  const cleanDestination = (destination || '').replace(/,.*$/, '').trim();
   const cleanStay = (stayArea || cleanDestination).replace(/,.*$/, '').trim();
 
-  // Extract ordered stops for this day
-  const rawMorningStop = {
-    id: 'morning',
-    pinNumber: 1,
-    timeSlot: 'Morning',
-    name: (currentDay.morning.split(/[.:]/)[0] || 'Morning Discovery').trim(),
-    description: currentDay.morning,
-    costINR: Math.round((currentDay.estimatedCostINR || 1200) * 0.35),
-    travelTimeToNext: currentDay.stopDriveTimes?.[0]?.note || '15 min drive · 4.2 km',
-    coordinates: { x: 30, y: 32 },
-    photoUrl: STOP_PHOTOS.morning
-  };
+  const stops = [
+    { id: 'morning', timeSlot: 'Morning', description: cleanDayText(currentDay.morning), travelTimeToNext: currentDay.stopDriveTimes?.[0]?.note },
+    { id: 'afternoon', timeSlot: 'Afternoon', description: cleanDayText(currentDay.afternoon), travelTimeToNext: currentDay.stopDriveTimes?.[1]?.note },
+    { id: 'evening', timeSlot: 'Evening', description: cleanDayText(currentDay.evening), travelTimeToNext: undefined as string | undefined }
+  ]
+    .filter((s) => (s.description || '').trim().length > 0)
+    .map((s, idx) => ({ ...s, pinNumber: idx + 1 }));
 
-  const rawAfternoonStop = {
-    id: 'afternoon',
-    pinNumber: 2,
-    timeSlot: 'Afternoon',
-    name: (currentDay.afternoon.split(/[.:]/)[0] || 'Afternoon Highlights').trim(),
-    description: currentDay.afternoon,
-    costINR: Math.round((currentDay.estimatedCostINR || 1200) * 0.40),
-    travelTimeToNext: currentDay.stopDriveTimes?.[1]?.note || '20 min drive · 6.5 km',
-    coordinates: { x: 70, y: 45 },
-    photoUrl: STOP_PHOTOS.afternoon
-  };
+  // Google Maps directions through the day's real places (names, not sentences)
+  const dayStops = mapStopsForDay(currentDay, destination || cleanDestination);
+  const googleMapsRouteUrl = dayRouteUrl(dayStops, destination || cleanDestination, stayArea || cleanStay);
 
-  const rawEveningStop = {
-    id: 'evening',
-    pinNumber: 3,
-    timeSlot: 'Evening',
-    name: (currentDay.evening.split(/[.:]/)[0] || 'Sunset & Dinner').trim(),
-    description: currentDay.evening,
-    costINR: Math.round((currentDay.estimatedCostINR || 1200) * 0.25),
-    travelTimeToNext: `15 min drive back to ${cleanStay}`,
-    coordinates: { x: 45, y: 78 },
-    photoUrl: STOP_PHOTOS.evening
-  };
+  const dayTitle = (currentDay.title || '').replace(/^Day\s*\d+\s*[:·\-–—]\s*/i, '').trim();
+  const showDate = currentDay.dateStr && !/^day\s*\d+$/i.test(currentDay.dateStr.trim());
 
-  const [order, setOrder] = useState<('morning' | 'afternoon' | 'evening')[]>(['morning', 'afternoon', 'evening']);
-
-  const allStops = order.map((key, idx) => {
-    const raw = key === 'morning' ? rawMorningStop : key === 'afternoon' ? rawAfternoonStop : rawEveningStop;
-    return { ...raw, pinNumber: idx + 1 };
-  });
-
-  const activeStops = allStops.filter((s) => !removedStops[`${currentDay.day}-${s.id}`]);
-  const activeStop = activeStops.find((s) => s.id === activeStopId) || activeStops[0] || allStops[0];
-
-  const handleSwap = (idx1: number, idx2: number) => {
-    if (idx1 < 0 || idx2 < 0 || idx1 >= order.length || idx2 >= order.length) return;
-    const nextOrder = [...order];
-    const temp = nextOrder[idx1];
-    nextOrder[idx1] = nextOrder[idx2];
-    nextOrder[idx2] = temp;
-    setOrder(nextOrder);
-  };
-
-  const handleRemove = (stopId: string) => {
-    setRemovedStops((prev) => ({
-      ...prev,
-      [`${currentDay.day}-${stopId}`]: true
-    }));
-  };
-
-  // Build multi-stop Google Maps directions URL for turn-by-turn navigation
-  const originQuery = encodeURIComponent(`${cleanStay} ${cleanDestination}`);
-  const stop1Query = encodeURIComponent(`${rawMorningStop.description.slice(0, 35).replace(/[.,]/g, '')} ${cleanDestination}`);
-  const stop2Query = encodeURIComponent(`${rawAfternoonStop.description.slice(0, 35).replace(/[.,]/g, '')} ${cleanDestination}`);
-  const stop3Query = encodeURIComponent(`${rawEveningStop.description.slice(0, 35).replace(/[.,]/g, '')} ${cleanDestination}`);
-  const googleMapsRouteUrl = `https://www.google.com/maps/dir/?api=1&origin=${originQuery}&destination=${stop3Query}&waypoints=${stop1Query}%7C${stop2Query}&travelmode=driving`;
+  // Compact first: Day 1 as a short list, then "See days 2–N"
+  if (!showAllDays) {
+    const day1 = itinerary[0];
+    const day1Title = (day1.title || '').replace(/^Day\s*\d+\s*[:·\-–—]\s*/i, '').trim();
+    const day1Items = [day1.morning, day1.afternoon, day1.evening].map(cleanDayText).filter((t) => t.length > 0);
+    return (
+      <section
+        id="day-by-day-card"
+        data-testid="day-by-day-card"
+        aria-labelledby="day-by-day-title"
+        className="rounded-[14px] bg-white border border-[#E2E6E1] p-3.5 space-y-2.5 text-left"
+      >
+        <h2 id="day-by-day-title" className="text-[15px] font-bold text-[#15201D]">
+          Day 1{day1Title ? ` · ${day1Title}` : ''}
+        </h2>
+        <ul className="list-disc pl-[18px] text-sm leading-[21px] text-[#15201D] space-y-1">
+          {day1Items.map((t, i) => <li key={i}>{t}</li>)}
+        </ul>
+        {(() => {
+          const stops1 = mapStopsForDay(day1, destination || '');
+          const where = (destination || '').replace(/,.*$/, '').trim();
+          return stops1.length > 0 ? (
+            <>
+              <div className="flex gap-2 overflow-x-auto scrollbar-none">
+                {stops1.map((st) => (
+                  <PlacePhoto key={st.name} place={st.name} destination={where} label={st.name} showCredit className="h-24 w-40 shrink-0 rounded-xl" />
+                ))}
+              </div>
+              <a
+                href={dayRouteUrl(stops1, destination || '', stayArea)}
+                target="_blank"
+                rel="noopener noreferrer"
+                id="open-day-route-in-google-maps"
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#0E6B59] hover:underline"
+              >
+                <Navigation className="h-3.5 w-3.5" />
+                Open Day 1 in Google Maps ({stops1.map((x) => x.name).join(' → ')})
+              </a>
+            </>
+          ) : null;
+        })()}
+        <p className="text-xs text-[#55625E]">Tickets, food and local cabs are already in the total above.</p>
+        {itinerary.length > 1 && (
+          <button
+            type="button"
+            onClick={() => { setShowAllDays(true); setActiveDayIdx(1); }}
+            className="h-10 px-3 rounded-[10px] border border-[#D5D3CA] bg-white text-[13px] font-semibold text-[#0E6B59] hover:bg-[#E3F1EC] cursor-pointer"
+          >
+            {itinerary.length === 2 ? "See day 2" : `See days 2–${itinerary.length}`}
+          </button>
+        )}
+      </section>
+    );
+  }
 
   return (
     <div
@@ -122,38 +114,24 @@ export const DayByDay: React.FC<DayByDayProps> = ({
       data-testid="day-by-day-card"
       className="card-consumer p-4 sm:p-5 space-y-4 text-left border border-[#E2E6E1] bg-white rounded-2xl shadow-xs"
     >
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#E2E6E1]">
-        <div>
-          <h2 className="text-base sm:text-lg font-bold text-[#15201D] font-heading">
-            Day by day Plan & Route Map
-          </h2>
-          <div className="text-xs text-[#55625E]">
-            Ordered stops with travel time between each. Feeds into food & transit budget.
-          </div>
-        </div>
-
-        {/* Walking level badge */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F5F6F3] border border-[#E2E6E1] text-xs font-semibold text-[#15201D]">
-            <Footprints className="h-3.5 w-3.5 text-[#0E6B59]" />
-            <span className="capitalize">{currentDay.walkingLevel || 'Light'} walking</span>
-          </div>
-        </div>
+      <div>
+        <h2 className="text-base sm:text-lg font-bold text-[#15201D] font-heading">Day by day</h2>
+        <p className="text-xs text-[#55625E]">
+          What you’ll do each day. The cost of tickets, food and local cabs is already in the total above.
+        </p>
       </div>
 
-      {/* Day Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+      {/* Day tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" role="tablist">
         {itinerary.map((dayItem, idx) => {
           const isActive = idx === activeDayIdx;
           return (
             <button
               key={dayItem.day}
               type="button"
-              onClick={() => {
-                setActiveDayIdx(idx);
-                setActiveStopId('morning');
-              }}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setActiveDayIdx(idx)}
               className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
                 isActive
                   ? 'bg-[#0E6B59] text-white shadow-xs'
@@ -166,210 +144,79 @@ export const DayByDay: React.FC<DayByDayProps> = ({
         })}
       </div>
 
-      {/* Day Overview Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#F6F8F6] border border-[#0E6B59]/20">
-        <div>
-          <h3 className="text-sm sm:text-base font-bold text-[#15201D] font-heading">
-            Day {currentDay.day} · {(currentDay.title || '').replace(/^Day\s*\d+\s*[:·\-–—]\s*/i, '').trim()}
-          </h3>
-          {currentDay.dateStr && !/^day\s*\d+$/i.test(currentDay.dateStr.trim()) && (
-            <div className="text-xs font-semibold text-[#0E6B59]">
-              {currentDay.dateStr}
-            </div>
+      {/* Day heading */}
+      <div>
+        <h3 className="text-sm sm:text-base font-bold text-[#15201D] font-heading">
+          Day {currentDay.day}{dayTitle ? ` · ${dayTitle}` : ''}
+        </h3>
+        <div className="text-xs text-[#55625E] flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
+          {showDate && <span className="font-semibold text-[#0E6B59]">{currentDay.dateStr}</span>}
+          {currentDay.walkingLevel && (
+            <span className="inline-flex items-center gap-1">
+              <Footprints className="h-3.5 w-3.5 text-[#0E6B59]" />
+              <span className="capitalize">{currentDay.walkingLevel} walking</span>
+            </span>
           )}
         </div>
-        <div className="text-left sm:text-right">
-          <div className="text-[10px] text-[#55625E]">Estimated Day Cost</div>
-          <div className="text-xs sm:text-sm font-extrabold text-[#0E6B59]">
-            ₹{(currentDay.estimatedCostINR || 1200).toLocaleString('en-IN')}{' '}
-            <span className="text-[10px] font-normal text-[#55625E]">· feeds into food & transit budget</span>
-          </div>
+        {currentDay.walkingFlag && (
+          <p className="text-xs text-[#8A4307] mt-1">{currentDay.walkingFlag}</p>
+        )}
+      </div>
+
+      {/* Timeline */}
+      <ol className="relative border-l-2 border-[#E2E6E1] ml-3 space-y-4">
+        {stops.map((stop) => (
+          <li
+            key={stop.id}
+            className="pl-5 relative"
+            onClick={() => onCardFocus && onCardFocus(stop.pinNumber)}
+          >
+            <span className="absolute -left-[13px] top-0 h-6 w-6 rounded-full bg-[#0E6B59] text-white text-[11px] font-bold flex items-center justify-center">
+              {stop.pinNumber}
+            </span>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-[#0E6B59]">{stop.timeSlot}</div>
+            <p className="text-sm text-[#15201D] leading-relaxed">{stop.description}</p>
+            {stop.travelTimeToNext && (
+              <div className="flex items-center gap-1 text-xs text-[#55625E] mt-1">
+                <Car className="h-3.5 w-3.5 text-[#0E6B59] shrink-0" />
+                <span>Then: {stop.travelTimeToNext}</span>
+              </div>
+            )}
+          </li>
+        ))}
+      </ol>
+
+      {currentDay.localDining && currentDay.localDining.length > 0 && (
+        <div className="text-xs text-[#55625E] flex items-start gap-1.5">
+          <Utensils className="h-3.5 w-3.5 text-[#0E6B59] shrink-0 mt-0.5" />
+          <span><strong className="text-[#15201D]">Where to eat:</strong> {currentDay.localDining.slice(0, 3).join(' · ')}</span>
         </div>
-      </div>
+      )}
 
-      {/* Day Map Canvas with Numbered Pins */}
-      <div className="relative w-full h-44 sm:h-52 bg-gradient-to-br from-[#EAF3EF] via-[#F4F9F7] to-[#E3EFEA] rounded-xl border border-[#CBD5E1] overflow-hidden select-none flex items-center justify-center">
-        <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="day-route-grid" width="30" height="30" patternUnits="userSpaceOnUse">
-              <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#0E6B59" strokeWidth="0.6" strokeOpacity="0.25" />
-            </pattern>
-            <marker id="route-arrow-pt" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="#0E6B59" />
-            </marker>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#day-route-grid)" />
-          <path
-            d="M 30 32 Q 50 30, 70 45 T 45 78"
-            fill="none"
-            stroke="#0E6B59"
-            strokeWidth="2.5"
-            strokeDasharray="4 3"
-            markerEnd="url(#route-arrow-pt)"
-            className="opacity-80"
-          />
-        </svg>
+      {currentDay.dayNote && (
+        <p className="text-xs text-[#9A4A00] bg-[#FFF8EC] rounded-lg px-2.5 py-1.5">Good to know: {currentDay.dayNote}</p>
+      )}
 
-        <div className="absolute top-2 left-3 text-[10px] font-bold text-[#0E6B59] bg-white/90 px-2 py-0.5 rounded shadow-xs flex items-center gap-1">
-          <MapPin className="h-3 w-3" />
-          <span>Base: {cleanStay}</span>
+      {dayStops.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto scrollbar-none">
+          {dayStops.map((st) => (
+            <PlacePhoto key={st.name} place={st.name} destination={cleanDestination} label={st.name} showCredit className="h-24 w-40 shrink-0 rounded-xl" />
+          ))}
         </div>
+      )}
 
-        {/* Numbered Pins */}
-        {activeStops.map((stop) => {
-          const isSelected = stop.id === activeStopId;
-          return (
-            <div
-              key={stop.id}
-              onClick={() => {
-                setActiveStopId(stop.id);
-                if (onCardFocus) onCardFocus(stop.pinNumber);
-              }}
-              style={{ left: `${stop.coordinates.x}%`, top: `${stop.coordinates.y}%` }}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-200 z-10 flex flex-col items-center ${
-                isSelected ? 'scale-125 z-20' : 'hover:scale-110'
-              }`}
-              title={`${stop.name} · ${stop.timeSlot}`}
-            >
-              <div
-                className={`h-7 w-7 rounded-full flex items-center justify-center font-black text-xs shadow-md transition-all ${
-                  isSelected
-                    ? 'bg-[#0E6B59] text-white ring-4 ring-[#0E6B59]/30 ring-offset-2'
-                    : 'bg-white text-[#0E6B59] border-2 border-[#0E6B59]'
-                }`}
-              >
-                {stop.pinNumber}
-              </div>
-              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded mt-0.5 shadow-xs whitespace-nowrap ${
-                isSelected ? 'bg-[#0E6B59] text-white' : 'bg-white/90 text-[#15201D]'
-              }`}>
-                {stop.timeSlot}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 3 COMPACT CARDS (Morning, Afternoon, Evening) */}
-      <div className="space-y-3">
-        {activeStops.map((stop, idx) => {
-          const isSelected = stop.id === activeStopId;
-          return (
-            <div
-              key={stop.id}
-              onClick={() => {
-                setActiveStopId(stop.id);
-                if (onCardFocus) onCardFocus(stop.pinNumber);
-              }}
-              className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
-                isSelected
-                  ? 'border-[#0E6B59] bg-[#F4F9F7] ring-1 ring-[#0E6B59] shadow-xs'
-                  : 'border-[#E2E6E1] bg-white hover:border-[#0E6B59]/40 hover:bg-[#FAFCFA]'
-              }`}
-            >
-              {/* Left: Photo + Name + Rating */}
-              <div className="flex items-center gap-3">
-                <div className="relative h-16 w-16 rounded-xl bg-[#E2E6E1] overflow-hidden shrink-0">
-                  <img
-                    src={stop.photoUrl}
-                    alt={stop.name}
-                    loading="lazy"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                    className="w-full h-full object-cover"
-                  />
-                  <span className="absolute bottom-1 right-1 text-[8px] font-bold px-1 rounded bg-white/90 text-[#15201D]">
-                    Sample
-                  </span>
-                  <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-[#0E6B59] text-white font-bold text-[10px] flex items-center justify-center">
-                    {stop.pinNumber}
-                  </div>
-                </div>
-
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#0E6B59] bg-[#E3F1EC] px-1.5 py-0.2 rounded">
-                      {stop.timeSlot}
-                    </span>
-
-                  </div>
-
-                  <div className="text-xs sm:text-sm font-bold text-[#15201D] line-clamp-2">
-                    {stop.name}
-                  </div>
-
-                  {/* Travel time to next stop */}
-                  <div className="flex items-center gap-1 text-[11px] text-[#55625E]">
-                    <Car className="h-3 w-3 text-[#0E6B59] shrink-0" />
-                    <span>Next stop: <strong>{stop.travelTimeToNext}</strong></span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right: Cost + Swap & Remove Buttons (>= 44px tap targets) */}
-              <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-[#E2E6E1]/60">
-                <div className="text-left sm:text-right">
-                  <div className="text-[10px] text-[#55625E]">Cost</div>
-                  <div className="text-xs font-black text-[#0E6B59]">
-                    ₹{stop.costINR.toLocaleString('en-IN')}{' '}
-                    <span className="text-[10px] font-normal text-[#55625E]">· est</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  {/* Swap Button */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const targetIdx = idx === activeStops.length - 1 ? 0 : idx + 1;
-                      handleSwap(idx, targetIdx);
-                    }}
-                    className="min-h-[44px] min-w-[44px] px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] bg-white hover:border-[#0E6B59] hover:bg-[#E3F1EC] text-[#15201D] text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
-                    title="Swap with next stop"
-                    aria-label="Swap order"
-                  >
-                    <ArrowUpDown className="h-3.5 w-3.5 text-[#0E6B59]" />
-                    <span className="hidden sm:inline">Swap</span>
-                  </button>
-
-                  {/* Remove Button */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemove(stop.id);
-                    }}
-                    className="min-h-[44px] min-w-[44px] px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] bg-white hover:border-[#DC2626] hover:bg-[#FEE2E2] text-[#DC2626] text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
-                    title="Remove stop"
-                    aria-label="Remove stop"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-[#DC2626]" />
-                    <span className="hidden sm:inline">Remove</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* SINGLE "OPEN IN GOOGLE MAPS" BUTTON */}
-      <div className="pt-2 border-t border-[#E2E6E1]/70">
-        <a
-          href={googleMapsRouteUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          id="open-day-route-in-google-maps"
-          className="btn-primary min-h-[44px] w-full py-3 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-xs transition-all hover:shadow-md cursor-pointer"
-          title="Open Day route in Google Maps"
-        >
-          <Navigation className="h-4 w-4" />
-          <span>Open Day {currentDay.day} Route in Google Maps</span>
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-      </div>
+      <a
+        href={googleMapsRouteUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        id="open-day-route-in-google-maps"
+        className="min-h-[44px] w-full py-2.5 px-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 border border-[#0E6B59] text-[#0E6B59] bg-white hover:bg-[#E3F1EC] transition cursor-pointer"
+        title="Open this day's route in Google Maps"
+      >
+        <Navigation className="h-4 w-4" />
+        <span>{dayStops.length > 0 ? `Open Day ${currentDay.day} in Google Maps (${dayStops.length} stop${dayStops.length > 1 ? 's' : ''})` : `Open ${cleanDestination} in Google Maps`}</span>
+        <ExternalLink className="h-3.5 w-3.5" />
+      </a>
     </div>
   );
 };
