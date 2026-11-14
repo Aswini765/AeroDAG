@@ -29,6 +29,8 @@ export type BookingState =
 
 export interface TrainItem {
   id: string;
+  /** no station at the destination: cab from the nearest one (both ways, whole group) */
+  lastLeg?: { station: string; km: number; cabINR: number };
   trainName: string;
   trainNumber: string;
   fromStation: string;
@@ -470,6 +472,8 @@ export interface TripPlan {
     extraNights?: number;
     /** Places the traveller added to a day: { day: 2, place: 'Spice farm' } */
     addedStops?: { day: number; place: string }[];
+    /** When the chosen train / bus / car gets in and leaves (shown on Day 1 and the last day) */
+    journey?: { arrive: string; leaveBack: string; home: string; early: number; late: number; by: string };
   };
   /** true = the number of days includes the journey; false/undefined = days at the destination only */
   daysIncludeTravel?: boolean;

@@ -19,7 +19,7 @@ export function cleanDayText(text?: string | null): string {
   return t.trim();
 }
 
-import type { TripPlan } from '../types/travelBooking';
+import type { TripPlan, ActivityDayItem } from '../types/travelBooking';
 
 /**
  * Keep the day plan consistent with the option the user picked:
@@ -99,11 +99,42 @@ export function alignItineraryToPlan(plan: TripPlan): TripPlan['itinerary'] {
         ? `Fly ${plan.flight.originCode} → ${plan.flight.destinationCode}, then by road to ${stayName}.`
         : morning;
     }
-    if (i === it.length - 1 && it.length > 1 && (ground || road) && /\bflight|airport\b/i.test(`${d.afternoon} ${d.evening}`)) {
-      afternoon = `Leave for ${origin} by ${ground ? (plan.selectedTrain!.mode === 'bus' ? 'bus' : 'train') : 'road'}.`;
-      evening = 'Home.';
+    const j = plan.userChoices?.journey;
+    const vehicle = ground
+      ? (plan.selectedTrain!.mode === 'bus' ? plan.selectedTrain!.trainName : `Train (${plan.selectedTrain!.trainName})`)
+      : road ? (/selfdrive/.test(plan.transfer.id || '') ? 'Your own car' : `${plan.transfer.vehicleType}`) : '';
+    const noAirport = (x: ActivityDayItem): Partial<ActivityDayItem> => ({
+      stopDriveTimes: (x.stopDriveTimes || []).filter((s2) => !/airport/i.test(s2.note)),
+      localDining: (x.localDining || []).filter((n) => !/airport/i.test(n)),
+      transitTip: /airport/i.test(x.transitTip || '') ? (road ? 'Your own car.' : `Auto or local cab from the ${plan.selectedTrain?.mode === 'bus' ? 'bus stand' : 'station'}.`) : x.transitTip
+    });
+    let fix: Partial<ActivityDayItem> = {};
+    // Day 1 follows the train / bus / car times the traveller chose
+    if (i === 0 && (ground || road)) {
+      fix = noAirport(d);
+      if (j && j.early > 0) {
+        morning = `You reached ${place} on ${j.arrive} by ${j.by} and spent the night at ${stayName}. Slow morning after the journey.`;
+        afternoon = `Rest at ${stayName}.`;
+      } else if (j) {
+        morning = `${vehicle} from ${origin} — you reach ${place} about ${j.arrive.replace(/^.*,\s*/, '')}, then ${road ? 'drive' : 'an auto'} to ${stayName}.`;
+      }
     }
-    return { ...d, morning, afternoon, evening };
+    // The last day follows the way home
+    if (i === it.length - 1 && it.length > 1 && (ground || road)) {
+      fix = noAirport(d);
+      morning = morning.replace(/\s*Then:?[^.]*airport[^.]*\.?/i, '');
+      if (j && j.late > 0) {
+        afternoon = `Free time near ${stayShort || place}. ${j.late === 1 ? 'One more night' : `${j.late} more nights`} at ${stayName} — your ${j.by} home leaves later.`;
+        evening = `Leaving: ${j.leaveBack}. Home ${j.home}.`;
+      } else if (j) {
+        afternoon = `Leave for ${origin}: ${j.leaveBack}.`;
+        evening = `Home ${j.home}.`;
+      } else if (/\bflight|airport\b/i.test(`${d.afternoon} ${d.evening}`)) {
+        afternoon = `Leave for ${origin} by ${ground ? (plan.selectedTrain!.mode === 'bus' ? 'bus' : 'train') : 'road'}.`;
+        evening = 'Home.';
+      }
+    }
+    return { ...d, ...fix, morning, afternoon, evening };
   });
 }
 

@@ -268,7 +268,9 @@ export function curatedDayItem(
   const afternoon = gentle && !t.fullDay
     ? `${line('Afternoon') || 'Rest at your stay.'} Take a break at your stay in the heat of the day if you need it.`
     : (line('Afternoon') || 'Rest at your stay.');
-  const evening = `${line('Evening') ? line('Evening') + ' ' : ''}Dinner at ${dining[0]}.`;
+  // We don't know which restaurants are near each day's places, so we don't name one far away
+  const lastStop = [...t.stops].reverse()[0];
+  const evening = `${line('Evening') ? line('Evening') + ' ' : ''}Dinner near ${lastStop && lastStop.slot === 'Evening' ? lastStop.name : 'your stay'}.`;
   return {
     day: dayNum,
     dateStr: `Day ${dayNum}`,
@@ -279,7 +281,7 @@ export function curatedDayItem(
     evening,
     estimatedCostINR: 1000,
     estimatedCostUSD: 12,
-    localDining: dining,
+    localDining: [],
     transitTip: `Cab for the day: ${driveText(t.driveFromStayH)}, short hops between stops.`,
     walkingLevel: gentle ? 'light' : 'moderate',
     stopDriveTimes: [{ from: stay.name, to: t.stops[0].name, driveMinutes: Math.round(t.driveFromStayH * 60), note: driveText(t.driveFromStayH) }],

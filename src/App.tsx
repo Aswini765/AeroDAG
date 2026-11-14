@@ -664,7 +664,7 @@ export default function App() {
       while (childAges.length < want) childAges.push(8);
     }
     // children mentioned without an age
-    if (childAges.length === 0 && /\b(daughter|son|child|kid)\b/.test(lower)) {
+    if (childAges.length === 0 && /\b(daughters?|sons?|child|children|kids?)\b/.test(lower)) {
       const kidCount = lower.match(/\b(\d|one|two|three|four)\s+(?:kids|children)\b/);
       const n = kidCount ? toNum(kidCount[1]) : 1;
       for (let i = 0; i < n; i++) childAges.push(8);

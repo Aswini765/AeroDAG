@@ -198,9 +198,12 @@ export function computeFullTripCost(
     const isBus = plan.selectedTrain.mode === 'bus';
     // Getting to and from a station or bus stand is an auto / local cab, not an airport sedan
     const stationTransfer = Math.min(transferCost || 0, 300 * 2 * Math.max(1, Math.ceil(totalTravellers / 3)));
-    travelCost = trainCost + stationTransfer;
+    const leg = plan.selectedTrain.lastLeg;
+    travelCost = trainCost + (leg ? leg.cabINR : stationTransfer);
     const what = isBus ? `${plan.selectedTrain.trainName} for ${people}` : `Train both ways for ${people}${plan.selectedTrain.selectedClass ? ` (${plan.selectedTrain.selectedClass})` : ''}`;
-    travelSubtitle = stationTransfer > 0
+    travelSubtitle = leg
+      ? `${what} (${fmtINR(trainCost)}) + cab ${leg.station} station ↔ your stay, ${leg.km} km each way (${fmtINR(leg.cabINR)})`
+      : stationTransfer > 0
       ? `${what} (${fmtINR(trainCost)}) + autos to and from the ${isBus ? 'bus stand' : 'station'} (${fmtINR(stationTransfer)})`
       : `${what} (${fmtINR(trainCost)})`;
   } else if (plan.transfer) {

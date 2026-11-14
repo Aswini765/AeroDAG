@@ -10,6 +10,7 @@
 import { TripPlanningEngine } from '../../src/services/tripPlanningEngine';
 import { computeFullTripCost } from '../../src/services/fullTripCostHelper';
 import { travelOptions, applyTravelOption, journeyDates, selfDriveCost } from '../../src/services/routeOptions';
+import { alignItineraryToPlan } from '../../src/services/itineraryText';
 
 let passed = 0;
 function assert(condition: boolean, msg: string) {
@@ -80,6 +81,27 @@ const ctx = (origin: string, budget: number): any => ({
   const own = applyTravelOption(blr, travelOptions(blr).find((o) => o.mode === 'selfdrive')!, { selfDrive: { fuel: 'diesel', kmpl: 18, cars: 1, fuelPriceINR: 99.82 } });
   const local = computeFullTripCost(own, {} as any).lines.find((l) => l.id === 'cost-local-transport')!;
   assert(/Your own car/.test(local.subtitle || '') && local.amountINR === Math.round((40 / 18) * 99.82 + 100) * 4, `Own car: local = fuel for 40 km/day + parking, not cabs (₹${local.amountINR})`);
+
+  // Coorg has no railway station: train to Mysuru + a cab, priced in
+  const coorg: any = await TripPlanningEngine.buildDeterministicPlan({ ...ctx('Bengaluru (BLR)', 30000), destination: 'Coorg' });
+  const co = travelOptions(coorg);
+  const ct = co.find((o) => o.mode === 'train')!;
+  assert(Boolean(ct && ct.lastLeg && /Mysuru/.test(ct.detail)), `Coorg train goes to Mysuru + cab (${ct?.detail})`);
+  const ccar = co.find((o) => o.mode === 'selfdrive')!;
+  assert(ccar.oneWayHours === 5.5 && ccar.roadKm === 265, `Bengaluru → Coorg by car 265 km, 5.5 h (${ccar.roadKm} km, ${ccar.oneWayHours} h)`);
+  const coT = applyTravelOption(coorg, ct, { trainClass: 'SL' });
+  const coLine = computeFullTripCost(coT, {} as any).lines.find((l) => l.id === 'cost-travel' || /Travel/.test((l as any).label || ''))!;
+  assert(/cab Mysuru station/.test(coLine.subtitle || '') && coLine.amountINR > ct.lastLeg!.cabINR, `Cab from Mysuru counted in the total (${coLine.subtitle})`);
+
+  // Day 1 and the last day follow the train actually chosen, not a flight
+  const days = alignItineraryToPlan(withTrain2);
+  const d1 = days[0], dl = days[days.length - 1];
+  const all = JSON.stringify([d1, dl]);
+  assert(!/airport|Airport/.test(all), `No airport on Day 1 / last day of a train trip (${all.match(/.{30}airport.{30}/i)?.[0]})`);
+  assert(/reached .* by train/.test(d1.morning) && /18048/.test(dl.evening) && /One more night/.test(dl.afternoon),
+    `Train trip: Day 1 says you got in early, last day says the 18048 leaves next morning (${d1.morning} | ${dl.afternoon} | ${dl.evening})`);
+  const mids = days.slice(1, -1);
+  assert(mids.every((m) => !/Dinner at Kamat|Panaji\./.test(m.evening) || /Panaji|Fontainhas|Mandovi/.test(m.morning + m.afternoon + m.evening)), 'No far-away dinner named on a planned day');
 
   console.log(`TOTAL PASSED: ${passed}`);
 })().catch((e) => { console.error(e); process.exit(1); });

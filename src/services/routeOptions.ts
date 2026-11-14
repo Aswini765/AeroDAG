@@ -48,6 +48,8 @@ export interface TravelOption {
   classes?: TrainClassFare[];
   /** km by road (for road modes) */
   roadKm?: number;
+  /** trains to places with no station: the cab from the nearest station (both ways, whole group) */
+  lastLeg?: { station: string; km: number; cabINR: number };
 }
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
@@ -91,7 +93,8 @@ const CHECKED_FLIGHTS: CheckedFlight[] = [
 /** Road distances checked against route guides (Nov 2026) */
 const CHECKED_ROADS: { from: RegExp; to: RegExp; km: number; hours: number; note: string }[] = [
   { from: /bengaluru|bangalore|\bBLR\b/i, to: /goa/i, km: 560, hours: 10.5, note: 'NH48 via Hubballi, ~560 km (Savaari, Tejas Travels)' },
-  { from: /kolkata|calcutta|\bCCU\b/i, to: /goa/i, km: 2060, hours: 30, note: 'About 2,050–2,130 km (rome2rio, Holidify)' }
+  { from: /kolkata|calcutta|\bCCU\b/i, to: /goa/i, km: 2060, hours: 30, note: 'About 2,050–2,130 km (rome2rio, Holidify)' },
+  { from: /bengaluru|bangalore|\bBLR\b/i, to: /coorg|madikeri|kodagu/i, km: 265, hours: 5.5, note: 'Via Mysuru (NH275), ~250–270 km, 5–6 h (Tejas Travels, tourtravelworld)' }
 ];
 
 /** Fuel prices checked (Nov 2026); other cities use the national figure, labelled */
@@ -170,6 +173,18 @@ export function routeGeometry(plan: TripPlan): RouteGeometry {
 
 // ---------- the options ----------
 
+/** Places with no railway station: the nearest useful station and the road from it (null = no sensible train) */
+const NO_RAIL: { to: RegExp; station: string | null; km: number; hours: number }[] = [
+  { to: /coorg|madikeri|kodagu/i, station: 'Mysuru', km: 120, hours: 3 },
+  { to: /munnar/i, station: 'Aluva', km: 110, hours: 3.5 },
+  { to: /wayanad|kalpetta/i, station: 'Kozhikode', km: 75, hours: 2.5 },
+  { to: /thekkady|kumily|periyar/i, station: 'Kottayam', km: 115, hours: 3.5 },
+  { to: /gangtok|sikkim/i, station: 'New Jalpaiguri', km: 120, hours: 4 },
+  { to: /mussoorie/i, station: 'Dehradun', km: 35, hours: 1.5 },
+  { to: /mcleod|dharamshala/i, station: 'Pathankot', km: 90, hours: 3 },
+  { to: /manali|kasol|leh|ladakh|spiti|auli/i, station: null, km: 0, hours: 0 }
+];
+
 export function travelOptions(plan: TripPlan): TravelOption[] {
   const g = routeGeometry(plan);
   const pax = Math.max(1, plan.travellers?.total || 1);
@@ -228,6 +243,21 @@ export function travelOptions(plan: TripPlan): TravelOption[] {
       schedule: { departs: ct.departs, arrives: ct.arrives, arrivesDayOffset: ct.arrivesDayOffset, runsOn: ct.runsOn },
       returnSchedule: ct.ret
     });
+  } else if (g.roadKm && g.roadKm >= 120 && NO_RAIL.some((n) => n.to.test(plan.destination))) {
+    const n = NO_RAIL.find((x) => x.to.test(plan.destination))!;
+    if (n.station && g.roadKm - n.km >= 100) {
+      const railKm = Math.round((g.roadKm - n.km) * 1.05);
+      const cars = Math.max(1, Math.ceil(pax / 4));
+      const cabINR = Math.round((n.km * 18 * cars) / 50) * 50 * 2;
+      out.push({
+        key: 'train-est', mode: 'train', title: 'Train + cab',
+        detail: `Train ${g.originName} → ${n.station}, then ${n.km} km by cab to ${g.destName} (no station at ${g.destName})`,
+        oneWayHours: Math.round(railKm / 50) + n.hours, overheadHours: 1, haltNightsEachWay: 0, travelCostINR: 0, howPriced: [],
+        checked: false, sourceNote: `Estimate — ${g.destName} has no railway station; nearest is ${n.station}. About ${railKm.toLocaleString('en-IN')} km by rail at ~50 km/h, then a cab (~₹18/km). Check IRCTC for the exact train.`,
+        classes: estimateTrainFares(railKm),
+        lastLeg: { station: n.station, km: n.km, cabINR }
+      });
+    }
   } else if (g.roadKm && g.roadKm >= 120) {
     const railKm = Math.round(g.roadKm * 1.05);
     out.push({
@@ -240,8 +270,8 @@ export function travelOptions(plan: TripPlan): TravelOption[] {
   // fill each class's group price later (depends on the class picked); default 3A
   for (const o of out) if (o.mode === 'train' && o.classes) {
     const c = o.classes.find((x) => x.code === '3A') || o.classes[0];
-    o.travelCostINR = c.fareINR * pax * 2;
-    o.howPriced = [`${c.code} ${inr(c.fareINR)} per person each way × ${pax} × 2 ways`];
+    o.travelCostINR = c.fareINR * pax * 2 + (o.lastLeg?.cabINR || 0);
+    o.howPriced = [`${c.code} ${inr(c.fareINR)} per person each way × ${pax} × 2 ways`, ...(o.lastLeg ? [`Cab ${o.lastLeg.station} ↔ ${g.destName} both ways ${inr(o.lastLeg.cabINR)}`] : [])];
   }
 
   // 🚌 Bus (overnight AC sleeper) — only where buses really run, up to ~1,000 km
@@ -307,7 +337,8 @@ export function selfDriveCost(p: { roadKm: number; roadHours: number; fuel: 'pet
 export function trainCostForClass(o: TravelOption, code: string, pax: number): { totalINR: number; line: string } {
   const c = o.classes?.find((x) => x.code === code) || o.classes?.[0];
   if (!c) return { totalINR: o.travelCostINR, line: '' };
-  return { totalINR: c.fareINR * pax * 2, line: `${c.code} ${inr(c.fareINR)} per person each way × ${pax} × 2 ways` };
+  const cab = o.lastLeg ? ` · cab ${o.lastLeg.station} ↔ there, both ways ${inr(o.lastLeg.cabINR)}` : '';
+  return { totalINR: c.fareINR * pax * 2 + (o.lastLeg?.cabINR || 0), line: `${c.code} ${inr(c.fareINR)} per person each way × ${pax} × 2 ways${cab}` };
 }
 
 // ---------- applying a choice to the plan ----------
@@ -367,6 +398,7 @@ export function applyTravelOption(
       source: o.checked && o.mode === 'train' ? 'sample' : 'estimate', sourceLabel: o.checked ? 'Checked fare' : 'Estimate'
     };
     if (cls) key = `${o.key}-${cls}`;
+    if (o.lastLeg) { train.toStation = o.lastLeg.station; train.lastLeg = o.lastLeg; }
     next = { ...base, selectedTrain: train, transfer: localCab(plan, `Auto / local cab to and from the ${o.mode === 'bus' ? 'bus stand' : 'station'}`) };
   } else {
     const sd = opts.selfDrive || { fuel: 'petrol' as const, kmpl: 15, cars: 1, fuelPriceINR: fuelPriceFor(plan.origin).petrol };
@@ -386,13 +418,19 @@ export function applyTravelOption(
     };
     next = { ...base, transfer };
   }
-  const extraNights = opts.firstDay && opts.lastDay ? journeyDates(o, opts.firstDay, opts.lastDay).extraNights : 0;
+  const jd = opts.firstDay && opts.lastDay ? journeyDates(o, opts.firstDay, opts.lastDay) : null;
+  const extraNights = jd ? jd.extraNights : 0;
+  const by = o.mode === 'train' ? 'train' : o.mode === 'bus' ? 'bus' : o.mode === 'flight' ? 'flight' : 'road';
+  const journey = jd && opts.firstDay && opts.lastDay
+    ? { arrive: jd.arrive, leaveBack: jd.leaveGoa, home: jd.home, early: jd.early, late: jd.late, by }
+    : undefined;
   return {
     ...next,
     userChoices: {
       ...(plan.userChoices || {}),
       travelKey: key,
       extraNights,
+      journey,
       selfDrive: o.mode === 'selfdrive' ? opts.selfDrive || plan.userChoices?.selfDrive : plan.userChoices?.selfDrive
     }
   };
@@ -405,6 +443,8 @@ const fmtDay = (d: Date) => d.toLocaleDateString('en-IN', { weekday: 'short', da
 const fmtTime = (d: Date) => d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' ', ' ').toUpperCase();
 
 export interface JourneyDates {
+  early: number;      // nights at the stay before Day 1
+  late: number;       // nights at the stay after the last day
   leave: string;      // "Sat 14 Nov, 11:10 PM"
   arrive: string;     // "Mon 16 Nov, 4:10 PM"
   leaveGoa: string;   // "Fri 20 Nov"
@@ -492,6 +532,8 @@ export function journeyDates(o: TravelOption, firstDay: Date, lastDay: Date): Jo
   const extraNights = early + late;
   return {
     extraNights,
+    early,
+    late,
     leave: `${fmtDay(leave)}, ${fmtTime(leave)}`,
     arrive: `${fmtDay(arrive)}, ${fmtTime(arrive)}`,
     leaveGoa: leaveText,
