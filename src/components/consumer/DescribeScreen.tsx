@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowRight, Clock, Tag, Mic, Square, Compass, Sparkles, Check, GitCompare } from 'lucide-react';
 import { useSpeechInput } from '../../hooks/useSpeechInput';
 import { suggestAlternative, swapPlaceInText, findKnownUnsupportedPlace, suggestFromTripType, DestinationSuggestion } from '../../services/destinationSuggestions';
-import { DESTINATIONS, DestinationCardData } from './WhereShouldWeGo';
+import { DESTINATIONS, DestinationCardData, CARD_STORIES } from './WhereShouldWeGo';
 import {
   trackLandingView,
   trackCardClick,
@@ -525,7 +525,9 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
       <section aria-labelledby="top-cards-heading" className="mb-4">
         <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-2 px-2 sm:mx-0 sm:px-0 snap-x snap-mandatory scrollbar-thin">
           {filteredCards.map((dest) => {
-            const roughPerPerson = Math.round(dest.baseCostPerDayINR * selectedDays / 1000) * 1000;
+            const story = CARD_STORIES[dest.name];
+            const roughPerPerson = story ? Math.round(story.fromINR / story.people) : Math.round(dest.baseCostPerDayINR * selectedDays / 1000) * 1000;
+            const cardPrompt = story ? story.prompt : `${selectedDays} days in ${dest.name}`;
             const isChecked = compareSelected.includes(dest.name);
 
             return (
@@ -533,7 +535,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
                 key={dest.name}
                 onClick={() => {
                   trackCardClick({ destination: dest.name, days: selectedDays, pricePerPerson: roughPerPerson, vibe: dest.vibe });
-                  void handleSubmit(undefined, `${selectedDays} days in ${dest.name}`);
+                  void handleSubmit(undefined, cardPrompt);
                 }}
                 className={`w-[155px] sm:w-[195px] shrink-0 snap-center rounded-xl border bg-white transition-all cursor-pointer flex flex-col justify-between overflow-hidden group ${
                   isChecked ? 'border-[#0E6B59] ring-2 ring-[#0E6B59]/20 shadow-md' : 'border-[#E2E6E1] hover:border-[#0E6B59] hover:shadow-md'
@@ -583,10 +585,17 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
                         {dest.name}
                       </h3>
                     </div>
-                    {/* Prompt 6 exact format: "~₹X per person · N days" */}
-                    <div className="text-[10px] sm:text-[11px] font-bold text-[#15201D] mt-0.5">
-                      ~₹{roughPerPerson.toLocaleString('en-IN')} per person · {selectedDays} days
-                    </div>
+                    {/* A small real trip and what it costs, in total: "Couple · 4 days / from ₹28,500 for 2" */}
+                    {story ? (
+                      <div className="mt-0.5 leading-tight" title={`Cheapest sensible way from ${story.origin}: travel, stay, food, local cabs and a 15% buffer. Your city and choices change it.`}>
+                        <div className="text-[10px] sm:text-[11px] text-[#55625E]">{story.who} · {story.days}{story.origin !== 'Bengaluru' ? ` · from ${story.origin}` : ''}</div>
+                        <div className="text-[10px] sm:text-[11px] font-bold text-[#15201D]">from ₹{story.fromINR.toLocaleString('en-IN')} for {story.people}</div>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] sm:text-[11px] font-bold text-[#15201D] mt-0.5">
+                        ~₹{roughPerPerson.toLocaleString('en-IN')} per person · {selectedDays} days
+                      </div>
+                    )}
                   </div>
 
                   <button
@@ -594,7 +603,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
                     onClick={(e) => {
                       e.stopPropagation();
                       trackCardClick({ destination: dest.name, days: selectedDays, pricePerPerson: roughPerPerson, vibe: dest.vibe });
-                      void handleSubmit(undefined, `${selectedDays} days in ${dest.name}`);
+                      void handleSubmit(undefined, cardPrompt);
                     }}
                     className="w-full min-h-[44px] px-2.5 py-1.5 rounded-lg bg-[#0E6B59] text-white text-xs font-bold hover:bg-[#0A5546] transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
                   >
@@ -606,6 +615,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
             );
           })}
         </div>
+        <p className="text-[10px] sm:text-[11px] text-[#55625E] mt-1">Card prices: the cheapest sensible way from Bengaluru (Udaipur from Delhi) — travel, stay, food and a 15% buffer. Your city changes them.</p>
       </section>
 
       {/* 4. Example Trips */}

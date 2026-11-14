@@ -371,6 +371,8 @@ export interface PlanUpgradeOption {
 
 export interface TripPlanBudget {
   targetINR: number;
+  /** total = for everyone · per_person = targetINR is each person's share × travellers · none = no budget given */
+  basis?: 'total' | 'per_person' | 'none';
   flightsCostINR: number;
   hotelCostINR: number;
   transportCostINR: number; // Airport transfers

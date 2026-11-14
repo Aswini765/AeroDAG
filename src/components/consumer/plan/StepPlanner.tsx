@@ -12,6 +12,7 @@ import { PlacePhoto } from './PlacePhoto';
 import { FullTripCostCard } from './FullTripCostCard';
 import { buildFlightSearchUrl, buildHotelSearchUrl, buildBusSearchUrl } from '../../../services/bookingLinks';
 import { placesThatFit } from '../../../services/budgetFixes';
+import { budgetLine } from '../../../services/budgetBasis';
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 const ICON: Record<string, string> = { flight: '✈️', train: '🚆', bus: '🚌', selfdrive: '🚗', cab: '🚕' };
@@ -86,7 +87,19 @@ export const TravelStep: React.FC<{
   const [sd, setSd] = useState(plan.userChoices?.selfDrive || { fuel: 'petrol' as 'petrol' | 'diesel', kmpl: 15, cars: Math.max(1, Math.ceil(pax / 5)), fuelPriceINR: fp.petrol });
 
   if (options.length === 0) {
-    return <p className="text-sm text-[#55625E]">{g.destName} is in or right next to {g.originName} — no long journey to plan. Go to step 2.</p>;
+    if (g.roadKm !== null && g.roadKm < 40) {
+      return <p className="text-sm text-[#55625E]">{g.destName} is in or right next to {g.originName} — no long journey to plan. Go to step 2.</p>;
+    }
+    // We don't know the route: say so, never pretend it's next door
+    return (
+      <p className="text-sm text-[#55625E]">
+        We couldn't work out the route from {g.originName} to {g.destName}.{' '}
+        <a className="font-semibold text-[#0E6B59] underline" target="_blank" rel="noopener noreferrer"
+          href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(g.originName)}&destination=${encodeURIComponent(g.destName)}`}>
+          See the route on Google Maps
+        </a>, then go to step 2.
+      </p>
+    );
   }
 
   const costOf = (o: TravelOption) => {
@@ -401,10 +414,21 @@ export const TotalStep: React.FC<{
   const pax = Math.max(1, plan.travellers?.total || 1);
   const over = budgetINR > 0 ? total - budgetINR : 0;
   const days = tripDays(plan);
+  const basis = plan.budget?.basis || 'total';
+  const noBudget = basis === 'none' || budgetINR <= 0;
+  const perPerson = basis === 'per_person' && pax > 1;
+  const [budgetInput, setBudgetInput] = useState('');
+  // Same number, read the other way: "15,000" for each person ↔ "15,000" for all
+  const switchBasis = (b: 'total' | 'per_person') => {
+    if (b === basis) return;
+    const written = basis === 'per_person' ? Math.round(budgetINR / pax) : budgetINR;
+    const target = b === 'per_person' ? written * pax : written;
+    onApply({ ...plan, budget: { ...plan.budget, targetINR: target, basis: b } }, `Budget: ${budgetLine(target, b, pax)}`);
+  };
 
   // The cheapest way to do these same days: every travel option × every stay, same cost engine
   const cheapest = useMemo(() => {
-    if (over <= 0) return null;
+    if (over <= 0 && !noBudget) return null;
     let best: { plan: TripPlan; total: number; label: string } | null = null;
     for (const o of travelOptions(plan)) {
       const variants = o.mode === 'train' ? (['SL', '3A'] as const) : ([undefined] as const);
@@ -418,7 +442,7 @@ export const TotalStep: React.FC<{
       }
     }
     return best && best.total < total - 200 ? best : null;
-  }, [plan, preferences, over]);
+  }, [plan, preferences, over, noBudget]);
 
   const cheapestStillOver = cheapest ? cheapest.total > budgetINR : over > 0;
   const fitPlaces = useMemo(() => (over > 0 && cheapestStillOver
@@ -446,16 +470,66 @@ export const TotalStep: React.FC<{
           {pax > 1 && <div className="text-right"><div className="text-lg font-bold text-[#15201D] tabular-nums">{inr(cost.perPersonINR)}</div><div className="text-xs text-[#55625E]">each</div></div>}
         </div>
       </div>
-      {budgetINR > 0 && (
-        <div className="space-y-1">
+      {pax > 1 && (
+        <div className="text-xs text-[#55625E]">Rooms, cabs and fuel are split evenly; tickets, food and entry fees are per person.</div>
+      )}
+      {!noBudget && (
+        <div className="space-y-1.5">
           <div className="h-2.5 rounded-full bg-[#F0E9DD] overflow-hidden flex" aria-hidden="true">
             <div className="bg-[#0E6B59]" style={{ width: `${Math.min(100, Math.round((Math.min(total, budgetINR) / Math.max(total, budgetINR)) * 100))}%` }} />
             {over > 0 && <div className="bg-[#C2620A]" style={{ width: `${100 - Math.round((budgetINR / total) * 100)}%` }} />}
           </div>
-          <div className="flex justify-between text-[13px]">
-            <span className="text-[#55625E]">Your budget {inr(budgetINR)}</span>
-            {over > 0 ? <span className="font-bold text-[#9A4A00]">{inr(over)} over</span> : <span className="font-bold text-[#0A5546]">Fits · {inr(-over)} left</span>}
+          <div className="flex justify-between gap-2 text-[13px]">
+            <span id="budget-line" className="text-[#55625E]">Your budget: {budgetLine(budgetINR, basis, pax)}</span>
+            {perPerson
+              ? (over > 0
+                  ? <span className="font-bold text-[#9A4A00] shrink-0">{inr(Math.ceil(over / pax))} each over</span>
+                  : <span className="font-bold text-[#0A5546] shrink-0">Fits · {inr(Math.floor(-over / pax))} each left</span>)
+              : (over > 0 ? <span className="font-bold text-[#9A4A00] shrink-0">{inr(over)} over</span> : <span className="font-bold text-[#0A5546] shrink-0">Fits · {inr(-over)} left</span>)}
           </div>
+          {pax > 1 && (
+            <div className="flex items-center gap-2 text-xs text-[#55625E]" role="group" aria-label="What your budget covers">
+              <span>Your number is</span>
+              {([['per_person', 'per person'], ['total', 'for all']] as const).map(([k, label]) => (
+                <button key={k} type="button" aria-pressed={basis === k} onClick={() => switchBasis(k)}
+                  className={`h-7 px-2.5 rounded-full border cursor-pointer ${basis === k ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0A5546] font-bold' : 'border-[#D5D3CA] bg-white text-[#15201D]'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {noBudget && (
+        <div id="what-it-costs" className="rounded-xl bg-[#F4F9F7] border border-[#0E6B59]/25 p-3 space-y-2">
+          <div className="text-sm font-bold text-[#0E6B59]">What this trip costs</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg bg-white border border-[#E2E6E1] p-2.5">
+              <div className="text-xs text-[#55625E]">Your choices</div>
+              <div className="text-base font-bold tabular-nums">{inr(total)}</div>
+              {pax > 1 && <div className="text-xs text-[#55625E]">{inr(total / pax)} each</div>}
+            </div>
+            <div className="rounded-lg bg-white border border-[#E2E6E1] p-2.5">
+              <div className="text-xs text-[#55625E]">Cheapest way</div>
+              <div className="text-base font-bold tabular-nums">{inr(cheapest ? cheapest.total : total)}</div>
+              {pax > 1 && <div className="text-xs text-[#55625E]">{inr((cheapest ? cheapest.total : total) / pax)} each</div>}
+            </div>
+          </div>
+          {cheapest && (
+            <button type="button" onClick={() => onApply(cheapest.plan, `Cheapest way: ${cheapest.label}: ${inr(total)} → ${inr(cheapest.total)}`)}
+              className="h-9 px-3 rounded-[10px] border border-[#0E6B59] bg-white text-[#0E6B59] text-[13px] font-semibold cursor-pointer hover:bg-[#E3F1EC]">
+              Switch to the cheapest way
+            </button>
+          )}
+          <form className="flex items-center gap-2" onSubmit={(e) => {
+            e.preventDefault();
+            const n = parseInt(budgetInput.replace(/[^\d]/g, ''), 10);
+            if (n > 0) onApply({ ...plan, budget: { ...plan.budget, targetINR: n, basis: 'total' } }, `Budget: ${budgetLine(n, 'total', pax)}`);
+          }}>
+            <input value={budgetInput} onChange={(e) => setBudgetInput(e.target.value)} inputMode="numeric" placeholder="Add a budget (₹ for all)" aria-label="Add a budget for everyone"
+              className="flex-1 h-9 rounded-[10px] border border-[#D5D3CA] px-2.5 text-[13px] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none" />
+            <button type="submit" className="h-9 px-3 rounded-[10px] bg-[#0E6B59] text-white text-[13px] font-semibold cursor-pointer">Check</button>
+          </form>
         </div>
       )}
 

@@ -128,7 +128,9 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
   const nightsCount = Math.max(1, plan.durationDays - 1);
   const cost = computeFullTripCost(plan, preferences);
   const targetBudget = cost.targetBudgetINR;
-  const isOverBudget = cost.budgetStatus === 'over';
+  // "How much will it cost?" — no budget given, so nothing is "over"
+  const noBudget = plan.budget?.basis === 'none';
+  const isOverBudget = !noBudget && cost.budgetStatus === 'over';
   const overAmountINR = cost.budgetDifferenceINR;
   const percentOver = isOverBudget && targetBudget > 0 ? (overAmountINR / targetBudget) * 100 : 0;
 
@@ -375,7 +377,7 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                   plan={plan}
                   daysIncludeTravel={daysIncludeTravel}
                   onDaysIncludeTravel={(v) => onPlanChange({ ...plan, daysIncludeTravel: v })}
-                  budgetINR={targetBudget}
+                  budgetINR={noBudget ? 0 : targetBudget}
                   onChoose={(next, summary) => {
                     onPlanChange(next);
                     setOpenStep(2);
@@ -441,12 +443,13 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                 <TotalStep
                   plan={plan}
                   preferences={preferences}
-                  budgetINR={targetBudget}
+                  budgetINR={noBudget ? 0 : targetBudget}
                   onApply={(next, msg) => { onPlanChange(next); showRefineMsg(msg); }}
                   onTryPlace={onStartNewPlan ? (place) => {
                     const t = plan.travellers;
                     const who = t.children > 0 ? `${t.adults} adults and ${t.children} kids` : `${t.total} ${t.total === 1 ? 'person' : 'people'}`;
-                    onStartNewPlan(`${plan.durationDays} days in ${place} for ${who} from ${plan.origin.replace(/\s*\([^)]*\)/, '')}, budget ${targetBudget}`);
+                    const budgetWords = plan.budget?.basis === 'per_person' ? `budget ${Math.round(targetBudget / Math.max(1, t.total))} per person` : `budget ${targetBudget} in total`;
+                    onStartNewPlan(`${plan.durationDays} days in ${place} for ${who} from ${plan.origin.replace(/\s*\([^)]*\)/, '')}, ${budgetWords}`);
                   } : undefined}
                 />
               </StepCard>

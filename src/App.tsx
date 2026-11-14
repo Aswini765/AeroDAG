@@ -16,6 +16,7 @@ import { BookingConfirmationView } from './components/consumer/BookingConfirmati
 import { MyTripsView } from './components/consumer/MyTripsView';
 import { HowItWorksModal } from './components/consumer/HowItWorksModal';
 import { parseBudgetINR } from './services/budgetParser';
+import { basisFromWords, decideBasis, totalFromBudget } from './services/budgetBasis';
 
 import {
   TripPreferences,
@@ -614,8 +615,9 @@ export default function App() {
 
     // Dynamic Budget Parsing (supports 45k, 1.5 lakh, under 35000, ₹50,000, etc.)
     const parsedBudget = parseBudgetINR(promptText);
-    if (parsedBudget !== null && parsedBudget >= 5000) {
+    if (parsedBudget !== null && (parsedBudget >= 5000 || (parsedBudget >= 1000 && basisFromWords(promptText) === 'per_person'))) {
       ctx.budgetTotalINR = parsedBudget;
+      ctx.budgetAmountINR = parsedBudget;
       fieldSources.budget = 'stated';
     } else {
       ctx.budgetTotalINR = 60000;
@@ -679,6 +681,10 @@ export default function App() {
       travellersStated = true;
     } else if (friendsMatch) {
       adults = toNum(friendsMatch[1]) + 1;
+      travellersStated = true;
+    } else if (/\b(\d{1,2}|two|three|four|five|six)\s+(?:friends|buddies|colleagues|people|of us|members)\b/.test(lower)) {
+      // "10 friends", "6 of us": that many people in all
+      adults = toNum((lower.match(/\b(\d{1,2}|two|three|four|five|six)\s+(?:friends|buddies|colleagues|people|of us|members)\b/) as RegExpMatchArray)[1]);
       travellersStated = true;
     } else if (/\b(wife|husband|partner|spouse)\b/.test(lower)) {
       adults = Math.max(adults, 2);
@@ -771,6 +777,20 @@ export default function App() {
     ctx.parseMode = 'basic';
     if (ai.kind === 'ok') {
       applyAiParse(ctx, fieldSources, ai.data);
+    }
+    // Budget: for everyone or for each person? Read it from their words — never ask.
+    if (fieldSources.budget === 'stated' && ctx.budgetTotalINR) {
+      const n = Math.max(1, ctx.totalTravellers || 1);
+      const amount = ctx.budgetAmountINR || ctx.budgetTotalINR;
+      const fromWords = basisFromWords(promptText);
+      const basis = fromWords || (ai.kind === 'ok' && ai.data.budgetBasis) || decideBasis(promptText, amount, n, ctx.partyType);
+      ctx.budgetBasis = basis === 'none' ? 'total' : basis;
+      ctx.budgetAmountINR = amount;
+      ctx.budgetTotalINR = totalFromBudget(amount, ctx.budgetBasis, n);
+    } else if (/\bhow much\b|\bwhat (?:will|would|does|do)\b[^?]*\bcost\b|\bcost (?:of|for)\b|\bkitna\b|\bhow expensive\b/i.test(promptText)) {
+      // "How much will Goa cost?" — answer with the cost, don't ask for a budget
+      ctx.budgetBasis = 'none';
+      ctx.budgetAmountINR = null;
     }
     // Exact dates win over any guessed duration: 20–27 Oct is 8 days, whatever else was assumed.
     if (resolvedDates && resolvedDates.ok) {

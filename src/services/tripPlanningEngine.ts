@@ -641,6 +641,7 @@ export class TripPlanningEngine {
     // 9. Deterministic Financial Math Calculation (all integer rupees)
     const budget: TripPlanBudget = {
       targetINR: targetBudgetINR,
+      basis: context.budgetBasis || 'total',
       flightsCostINR: chosen.flightCostINR,
       hotelCostINR: chosen.hotelCostINR,
       transportCostINR: transferCostINR,

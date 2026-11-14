@@ -18,6 +18,7 @@ export interface ParseTripData {
   children: Array<{ age?: number | null }>;
   seniors: Array<{ age?: number | null }>;
   budgetINR: number | null;
+  budgetBasis?: 'total' | 'per_person' | null;
   pace: string | null;
   freeTextPreferences?: string | null;
   accommodationPreference: string | null;
@@ -175,6 +176,8 @@ export function applyAiParse(
   // Budget
   if (data.budgetINR && data.budgetINR >= 1000) {
     ctx.budgetTotalINR = data.budgetINR;
+    ctx.budgetAmountINR = data.budgetINR;
+    if (data.budgetBasis) ctx.budgetBasis = data.budgetBasis;
     fieldSources.budget = toTag(src.budgetINR);
   }
 

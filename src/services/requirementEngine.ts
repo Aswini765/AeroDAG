@@ -49,6 +49,10 @@ export interface TripContext {
   infantsCount: number | null;
   seniorsCount: number | null;
   budgetTotalINR: number | null;
+  /** How the traveller meant their budget: for everyone, for each person, or not given ('what will it cost?') */
+  budgetBasis?: 'total' | 'per_person' | 'none';
+  /** The amount exactly as they wrote it (per person when budgetBasis is per_person) */
+  budgetAmountINR?: number | null;
   budgetTier: 'Frugal' | 'Comfortable' | 'Premium' | 'Luxury' | 'Budget' | null;
   currency: Currency;
   accommodationPreference: string | null;

@@ -34,6 +34,7 @@ const tripSchema = z.object({
   children: z.array(childSchema).nullable().optional(),
   seniors: z.array(childSchema).nullable().optional(),
   budgetINR: z.number().int().nonnegative().nullable().optional(),
+  budgetBasis: z.enum(['total', 'per_person']).nullable().optional(),
   pace: z.string().nullable().optional(),
   freeTextPreferences: z.string().nullable().optional(),
   accommodationPreference: z.string().nullable().optional(),
@@ -104,6 +105,7 @@ Set "destinationType" to "region" for states or multi-city regions (e.g. Rajasth
 Store specific atmosphere/style phrases like "offbeat", "not touristy", "heritage" in "freeTextPreferences" (do not overwrite pace with them).
 Include "<field>Source" (stated|assumed|missing) and, if stated, "<field>Quote" with the exact phrase from the message.
 For "dates", convert relative phrases ("20th to 27th this month", "next weekend") to an exact range written like "20-27 Oct 2026" or "28 Oct - 2 Nov 2026"; the quote must still be the user's own words. Ages: "children" are under 18, "seniors" are 60 or older. The person writing is one of the travellers: "me, my wife and our son" is 2 adults + 1 child.
+Budget: put the amount exactly as written in "budgetINR" and say what it covers in "budgetBasis": "per_person" when it is each traveller's share ("15k each", "8000 per head", "each of us can spend 12k", "everyone's budget is 10k"), "total" when it is for the whole group or family ("family budget 60k", "1.5 lakh for 10 of us", "under 40k for 4 of us"). If they only ask what it costs, leave both null. If the words don't say, use "total".
 User: "${userMessage}"
 Schema: ${JSON.stringify(tripSchema.shape)}
 `;
@@ -186,6 +188,7 @@ Schema: ${JSON.stringify(tripSchema.shape)}
       children: data.children ?? [],
       seniors: data.seniors ?? [],
       budgetINR: data.budgetINR ?? null,
+      budgetBasis: data.budgetBasis ?? null,
       pace: data.pace ?? null,
       freeTextPreferences: data.freeTextPreferences ?? null,
       accommodationPreference: data.accommodationPreference ?? null,

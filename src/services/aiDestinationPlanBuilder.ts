@@ -506,6 +506,7 @@ export function buildPlanFromDestinationProfile(
     diningSuggestions,
     budget: {
       targetINR: targetBudgetINR,
+      basis: context.budgetBasis || 'total',
       flightsCostINR: balancedIsGround ? (balancedTrain ? balancedTrain.totalPriceINR : 0) : flightTotalPriceINR,
       hotelCostINR: hotelTotalCostINR,
       transportCostINR: transferPriceINR,

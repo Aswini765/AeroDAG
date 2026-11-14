@@ -790,6 +790,7 @@ export function buildMultiBasePlanFromRoute(
     transitModeComparison: getHowToGetThereModes(destClean, ctx.origin || 'Bengaluru (BLR)', totalTravellers, 'Flight'),
     budget: {
       targetINR: targetBudget,
+      basis: ctx.budgetBasis || 'total',
       flightsCostINR: flightsCost,
       hotelCostINR: hotelTotal,
       transportCostINR: transportCost,

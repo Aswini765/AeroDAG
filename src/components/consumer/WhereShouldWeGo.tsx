@@ -17,7 +17,24 @@ export interface DestinationCardData {
   baseCostPerDayINR: number;
   imageUrl: string;
   isAiEstimate?: boolean;
+  /** Home card: a small real trip people take there, priced by the same cost engine as the plan */
+  story?: { who: string; days: string; people: number; fromINR: number; origin: string; prompt: string };
 }
+
+/**
+ * Card stories. fromINR = the cheapest sensible way (no own car, travel under 40% of the trip),
+ * travel + stay + food + local + 15% buffer, worked out with the app's cost engine on 14 Nov 2026
+ * (dates 4 Dec 2026). Re-run the card price script when fares or stays change.
+ */
+export const CARD_STORIES: Record<string, NonNullable<DestinationCardData['story']>> = {
+  Goa: { who: 'Couple', days: '4 days', people: 2, fromINR: 28500, origin: 'Bengaluru', prompt: '4 days in Goa for 2 adults from Bengaluru' },
+  Coorg: { who: '4 friends', days: 'weekend', people: 4, fromINR: 34000, origin: 'Bengaluru', prompt: 'Weekend in Coorg for 4 friends from Bengaluru' },
+  Mysuru: { who: 'Family of 4', days: 'weekend', people: 4, fromINR: 24000, origin: 'Bengaluru', prompt: 'Weekend in Mysuru for 2 adults and 2 kids from Bengaluru' },
+  Kerala: { who: 'Couple', days: '5 days', people: 2, fromINR: 30000, origin: 'Bengaluru', prompt: '5 days in Kerala for 2 adults from Bengaluru' },
+  Ooty: { who: 'Family of 4', days: '3 days', people: 4, fromINR: 33000, origin: 'Bengaluru', prompt: '3 days in Ooty for 2 adults and 2 kids from Bengaluru' },
+  Pondicherry: { who: 'Couple', days: '3 days', people: 2, fromINR: 20000, origin: 'Bengaluru', prompt: '3 days in Pondicherry for 2 adults from Bengaluru' },
+  Udaipur: { who: 'Couple', days: '3 days', people: 2, fromINR: 33500, origin: 'Delhi', prompt: '3 days in Udaipur for 2 adults from Delhi' }
+};
 
 export const DESTINATIONS: DestinationCardData[] = [
   {

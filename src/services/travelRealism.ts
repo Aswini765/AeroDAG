@@ -50,7 +50,14 @@ export const PLACE_COORDS: Record<string, [number, number]> = {
   bundi: [25.44, 75.64], lonavala: [18.75, 73.41], mahabaleshwar: [17.92, 73.66], puri: [19.81, 85.83],
   kaziranga: [26.58, 93.17], majuli: [26.95, 94.17], pahalgam: [34.01, 75.32], gulmarg: [34.05, 74.38],
   nubra: [34.60, 77.55], pangong: [33.75, 78.66], havelock: [11.97, 92.99], orchha: [25.35, 78.64],
-  'rann of kutch': [23.73, 69.86], agra: [27.18, 78.01], 'kabini': [11.94, 76.35]
+  'rann of kutch': [23.73, 69.86], agra: [27.18, 78.01], 'kabini': [11.94, 76.35],
+  // Cities people name as the destination (their airports are listed above, but a plan may not carry the code)
+  mysuru: [12.30, 76.64], mysore: [12.30, 76.64], udaipur: [24.58, 73.71], jaipur: [26.91, 75.79],
+  jodhpur: [26.24, 73.02], jaisalmer: [26.92, 70.91], varanasi: [25.32, 83.01], amritsar: [31.63, 74.87],
+  kochi: [9.93, 76.27], cochin: [9.93, 76.27], goa: [15.30, 74.12], leh: [34.15, 77.58], srinagar: [34.08, 74.80],
+  madurai: [9.93, 78.12], tirupati: [13.63, 79.42], khajuraho: [24.85, 79.93], kolkata: [22.57, 88.36],
+  hyderabad: [17.39, 78.49], chennai: [13.08, 80.27], mumbai: [19.08, 72.88], delhi: [28.61, 77.21],
+  bengaluru: [12.97, 77.59], bangalore: [12.97, 77.59], pune: [18.52, 73.86], ahmedabad: [23.03, 72.58]
 };
 
 /** Coordinates for a place: its own town centre if we know it, else its airport. */

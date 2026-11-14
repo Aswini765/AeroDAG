@@ -24,6 +24,7 @@ import { fetchDestinationProfile } from '../../services/destinationProfileClient
 import { buildPlanFromDestinationProfile } from '../../services/aiDestinationPlanBuilder';
 import { DESTINATIONS } from './WhereShouldWeGo';
 import { buildFallbackProfile } from '../../services/indiaPlaces';
+import { totalFromBudget, budgetLine } from '../../services/budgetBasis';
 
 interface ClarifyScreenProps {
   initialPrompt: string;
@@ -134,7 +135,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
   // Where you start changes every price (flight vs overnight bus), so never silently assume it
   const originAlreadyStated = initialContext.fieldSources?.origin === 'stated';
 
-  const budgetAlreadyStated = Boolean(
+  const budgetAlreadyStated = initialContext.budgetBasis === 'none' || Boolean(
     initialContext.fieldSources?.budget === 'stated' &&
     initialContext.budgetTotalINR &&
     initialContext.budgetTotalINR > 0
@@ -213,7 +214,14 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     roundTo(typicalTotalINR, 5000),
     roundTo(typicalTotalINR * 1.5, 5000)
   ]));
-  const selectedBudgetINR = pickedBudgetINR ?? roundTo(typicalTotalINR, 5000);
+  // Total for everyone, or each person's share? Friends groups of 5+ usually think per head.
+  const [budgetBasisPick, setBudgetBasisPick] = useState<'total' | 'per_person' | 'none'>(
+    initialContext.budgetBasis === 'per_person' || (tripContext.partyType === 'friends' && (tripContext.totalTravellers || 0) >= 5) ? 'per_person' : 'total'
+  );
+  const paxNow = Math.max(1, selectedTravellersCount);
+  const perPersonPicks = Array.from(new Set([0.75, 1, 1.5].map((f) => roundTo((typicalTotalINR / paxNow) * f, 1000))));
+  const shownPicks = budgetBasisPick === 'per_person' ? perPersonPicks : budgetQuickPicks;
+  const selectedBudgetINR = pickedBudgetINR ?? (budgetBasisPick === 'per_person' ? roundTo(typicalTotalINR / paxNow, 1000) : roundTo(typicalTotalINR, 5000));
   const [pickedOrigin, setPickedOrigin] = useState<string>(
     originAlreadyStated ? '' : ''
   );
@@ -229,9 +237,13 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     const finalTravellers = isCustomTravellersOpen && parseInt(customTravellersInput, 10) > 0
       ? parseInt(customTravellersInput, 10)
       : selectedTravellersCount;
-    const finalBudget = isCustomBudgetOpen && parseInt(customBudgetInput.replace(/[^\d]/g, ''), 10) > 0
+    const budgetAmount = isCustomBudgetOpen && parseInt(customBudgetInput.replace(/[^\d]/g, ''), 10) > 0
       ? parseInt(customBudgetInput.replace(/[^\d]/g, ''), 10)
       : selectedBudgetINR;
+    // A per-person budget stays per person when the group size changes
+    const basis = budgetAlreadyStated ? (tripContext.budgetBasis || 'total') : budgetBasisPick;
+    const amount = budgetAlreadyStated ? (tripContext.budgetAmountINR || tripContext.budgetTotalINR || budgetAmount) : budgetAmount;
+    const finalBudget = basis === 'none' ? (tripContext.budgetTotalINR || roundTo(typicalTotalINR, 5000)) : totalFromBudget(amount, basis, finalTravellers);
 
     let originValue = tripContext.origin;
     let originSource = tripContext.fieldSources?.origin;
@@ -255,13 +267,15 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     const updated = {
       ...tripContext,
       origin: originValue,
-      adultsCount: finalTravellers,
-      totalTravellers: finalTravellers,
+      // Keep adults/kids as written when the group was already understood
+      ...(travellersAlreadyStated ? {} : { adultsCount: finalTravellers, totalTravellers: finalTravellers }),
       budgetTotalINR: finalBudget,
+      budgetBasis: basis,
+      budgetAmountINR: basis === 'none' ? null : amount,
       fieldSources: {
         ...tripContext.fieldSources,
         travellers: 'stated' as const,
-        budget: 'stated' as const,
+        budget: (basis === 'none' ? 'assumed' : 'stated') as any,
         origin: (originSource || 'assumed') as any
       }
     };
@@ -281,7 +295,9 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     } else if (tripContext.totalTravellers && tripContext.totalTravellers > 0) {
       parts.push(`${tripContext.totalTravellers} of you`);
     }
-    if (tripContext.budgetTotalINR && tripContext.budgetTotalINR > 0) {
+    if (tripContext.budgetBasis === 'per_person' && tripContext.budgetAmountINR) {
+      parts.push(`₹${tripContext.budgetAmountINR.toLocaleString('en-IN')} each`);
+    } else if (tripContext.budgetBasis !== 'none' && tripContext.fieldSources?.budget === 'stated' && tripContext.budgetTotalINR && tripContext.budgetTotalINR > 0) {
       parts.push(`₹${tripContext.budgetTotalINR.toLocaleString('en-IN')}`);
     }
     if (parts.length >= 2) {
@@ -448,12 +464,14 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
 
   // Step 5: Budget per person handlers
   const handleSelectBudgetPerPerson = (perPersonINR: number) => {
-    const travellers = (tripContext.adultsCount || 2) + (tripContext.childrenCount || 0);
+    const travellers = (tripContext.adultsCount || 2) + (tripContext.childrenCount || 0) + (tripContext.seniorsCount || 0);
     const totalINR = perPersonINR * Math.max(1, travellers);
     const tier = totalINR <= 35000 ? 'Frugal' : totalINR <= 90000 ? 'Comfortable' : 'Premium';
     setTripContext((prev) => ({
       ...prev,
       budgetTotalINR: totalINR,
+      budgetBasis: 'per_person',
+      budgetAmountINR: perPersonINR,
       budgetTier: tier,
       fieldSources: { ...prev.fieldSources, budget: 'stated' }
     }));
@@ -994,9 +1012,28 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
 
               {!budgetAlreadyStated && (
               <fieldset className="space-y-2">
-                <legend className="text-sm font-semibold text-[#15201D] mb-2">Roughly what budget, in total?</legend>
+                <legend className="text-sm font-semibold text-[#15201D] mb-2">Roughly what budget?</legend>
+                <div className="flex flex-wrap gap-2" role="group" aria-label="What the budget covers">
+                  {([['total', 'Total for all'], ['per_person', 'Per person'], ['none', 'Not sure — show me the cost']] as const).map(([k, label]) => {
+                    const on = budgetBasisPick === k;
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => { setBudgetBasisPick(k); setSelectedBudgetINR(null); setIsCustomBudgetOpen(false); setCustomBudgetInput(''); }}
+                        className={`h-9 px-3 rounded-full border text-[13px] transition cursor-pointer ${
+                          on ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0A5546] font-bold' : 'border-[#D5D3CA] bg-white text-[#15201D]'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {budgetBasisPick !== 'none' && (<>
                 <div className="grid grid-cols-3 gap-2">
-                  {budgetQuickPicks.map((amt) => {
+                  {shownPicks.map((amt) => {
                     const on = !isCustomBudgetOpen && selectedBudgetINR === amt;
                     return (
                       <button
@@ -1008,7 +1045,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                           on ? 'border-[#0E6B59] bg-[#E3F1EC] text-[#0A5546] font-bold' : 'border-[#D5D3CA] bg-white text-[#15201D]'
                         }`}
                       >
-                        ₹{amt >= 1000 ? `${Math.round(amt / 1000)}k` : amt}
+                        ₹{amt >= 1000 ? `${Math.round(amt / 1000)}k` : amt}{budgetBasisPick === 'per_person' ? ' each' : ''}
                       </button>
                     );
                   })}
@@ -1020,11 +1057,21 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                   inputMode="numeric"
                   value={customBudgetInput}
                   onChange={(e) => { setCustomBudgetInput(e.target.value); setIsCustomBudgetOpen(e.target.value.trim().length > 0); }}
-                  placeholder="₹ amount"
+                  placeholder={budgetBasisPick === 'per_person' ? '₹ per person' : '₹ for everyone'}
                   className="w-full h-11 rounded-xl border border-[#D5D3CA] px-3 text-[15px] focus:ring-2 focus:ring-[#0E6B59] focus:outline-none"
                 />
+                {(() => {
+                  const n = isCustomTravellersOpen && parseInt(customTravellersInput, 10) > 0 ? parseInt(customTravellersInput, 10) : selectedTravellersCount;
+                  const amt = isCustomBudgetOpen && parseInt(customBudgetInput.replace(/[^\d]/g, ''), 10) > 0 ? parseInt(customBudgetInput.replace(/[^\d]/g, ''), 10) : selectedBudgetINR;
+                  return (
+                    <p id="clarify-budget-line" className="text-[13px] font-semibold text-[#15201D]">
+                      {budgetLine(totalFromBudget(amt, budgetBasisPick === 'per_person' ? 'per_person' : 'total', n), budgetBasisPick === 'per_person' ? 'per_person' : 'total', n)}
+                    </p>
+                  );
+                })()}
+                </>)}
                 <p className="text-xs text-[#55625E]">
-                  Typical {cleanDest} trip of {Math.max(1, tripContext.durationDays || 4)} days for {isCustomTravellersOpen && parseInt(customTravellersInput, 10) > 0 ? parseInt(customTravellersInput, 10) : selectedTravellersCount}: about ₹{typicalTotalINR.toLocaleString('en-IN')}
+                  Typical {cleanDest} trip of {Math.max(1, tripContext.durationDays || 4)} days for {isCustomTravellersOpen && parseInt(customTravellersInput, 10) > 0 ? parseInt(customTravellersInput, 10) : selectedTravellersCount}: about ₹{typicalTotalINR.toLocaleString('en-IN')}{selectedTravellersCount > 1 ? ` (₹${Math.round(typicalTotalINR / Math.max(1, selectedTravellersCount)).toLocaleString('en-IN')} each)` : ''}
                 </p>
               </fieldset>
               )}
