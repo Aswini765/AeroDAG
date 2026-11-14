@@ -30,7 +30,9 @@ export const ForYourTripCard: React.FC<ForYourTripCardProps> = ({ plan, preferen
   const lines: { icon: React.ReactNode; text: string }[] = [];
 
   if (t.children > 0) {
-    const ageText = ages.length ? ` aged ${ages.join(' and ')}` : '';
+    // Age 8 is our stand-in when no age was given: never show it as if the traveller said it
+    const told = ages.filter((a) => a !== 8);
+    const ageText = told.length && told.length === ages.length ? ` aged ${ages.join(' and ')}` : told.length ? ` (age${told.length > 1 ? 's' : ''} given: ${told.join(', ')})` : '';
     lines.push({
       icon: <Baby className="h-4 w-4 text-[#0E6B59]" />,
       text: `With ${t.children === 1 ? 'a child' : `${t.children} kids`}${ageText}: ${

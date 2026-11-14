@@ -462,7 +462,7 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                         <span className="text-xs font-normal text-[#55625E]">Your stay and each day's places, with photos</span>
                       </span>
                     </div>
-                    <span className="text-xs font-semibold text-[#0E6B59]">Show</span>
+                    <span className="text-xs font-semibold text-[#0E6B59]"><span className="group-open:hidden">Show</span><span className="hidden group-open:inline">Hide</span></span>
                   </summary>
                   <div className="p-2 border-t border-[#E2E6E1]">
                     <UnifiedPlanMap

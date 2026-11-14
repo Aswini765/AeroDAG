@@ -115,6 +115,9 @@ export function alignItineraryToPlan(plan: TripPlan): TripPlan['itinerary'] {
       if (j && j.early > 0) {
         morning = `You reached ${place} on ${j.arrive} by ${j.by} and spent the night at ${stayName}. Slow morning after the journey.`;
         afternoon = `Rest at ${stayName}.`;
+      } else if (j && plan.selectedTrain?.lastLeg) {
+        const leg = plan.selectedTrain.lastLeg;
+        morning = `Train from ${origin} to ${leg.station}, then a ${leg.km} km cab to ${stayName} — you reach about ${j.arrive.replace(/^.*,\s*/, '')}.`;
       } else if (j) {
         morning = `${vehicle} from ${origin} — you reach ${place} about ${j.arrive.replace(/^.*,\s*/, '')}, then ${road ? 'drive' : 'an auto'} to ${stayName}.`;
       }

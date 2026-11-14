@@ -398,7 +398,7 @@ export function applyTravelOption(
       source: o.checked && o.mode === 'train' ? 'sample' : 'estimate', sourceLabel: o.checked ? 'Checked fare' : 'Estimate'
     };
     if (cls) key = `${o.key}-${cls}`;
-    if (o.lastLeg) { train.toStation = o.lastLeg.station; train.lastLeg = o.lastLeg; }
+    if (o.lastLeg) { train.toStation = o.lastLeg.station; train.lastLeg = o.lastLeg; train.trainName = `Train to ${o.lastLeg.station} + ${o.lastLeg.km} km cab`; }
     next = { ...base, selectedTrain: train, transfer: localCab(plan, `Auto / local cab to and from the ${o.mode === 'bus' ? 'bus stand' : 'station'}`) };
   } else {
     const sd = opts.selfDrive || { fuel: 'petrol' as const, kmpl: 15, cars: 1, fuelPriceINR: fuelPriceFor(plan.origin).petrol };

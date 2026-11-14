@@ -110,8 +110,8 @@ export const TravelStep: React.FC<{
         <div className="text-sm font-bold text-[#0E6B59]">⏳ Available time flips the choice (Nani's rule)</div>
         <ul className="text-[13px] text-[#15201D] space-y-1">
           <li><strong>Short on time?</strong> {ICON[fastest.mode]} {fastest.title}: about {formatHours(doorHours(fastest))} door to door each way.</li>
-          {fastest.mode !== slowest.mode && (
-            <li><strong>Time to spare?</strong> {perMode.filter((o) => o.mode !== fastest.mode).map((o) => `${ICON[o.mode]} ${o.title} ${formatHours(doorHours(o))}`).join(' · ')} — slower, but {cheapest !== fastest ? `${cheapest.title.toLowerCase()} is the cheapest` : 'you see the country on the way'}.</li>
+          {perMode.some((o) => doorHours(o) > doorHours(fastest) + 0.25) && (
+            <li><strong>Time to spare?</strong> {perMode.filter((o) => doorHours(o) > doorHours(fastest) + 0.25).map((o) => `${ICON[o.mode]} ${o.title} ${formatHours(doorHours(o))}`).join(' · ')} — slower, but {cheapest !== fastest ? `${cheapest.title.toLowerCase()} is the cheapest` : 'you see the country on the way'}.</li>
           )}
           {flight && ground && costOf(flight).totalINR > costOf(ground).totalINR && (
             <li>Flying costs {inr(costOf(flight).totalINR - costOf(ground).totalINR)} more than the {ground.title.toLowerCase()} for {pax === 1 ? 'you' : `${pax} people`} and saves about {formatHours(doorHours(ground) - doorHours(flight))} each way.</li>
