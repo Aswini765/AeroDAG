@@ -82,7 +82,7 @@ export function alignItineraryToPlan(plan: TripPlan): TripPlan['itinerary'] {
       d = {
         ...d,
         afternoon: `${(d.afternoon || '').replace(/\.?\s*$/, '.')}${extra.map((a) => ` Visit ${a.place}.`).join('')}`,
-        stops: d.stops && d.stops.length
+        stops: d.stops
           ? [...d.stops, ...mine.filter((a) => !d.stops!.some((x) => x.name === a.place)).map((a) => ({ name: a.place, slot: 'Afternoon' as const, mapQuery: `${a.place}, ${where}` }))]
           : d.stops
       };
@@ -169,7 +169,8 @@ type DayLike = {
  */
 export function mapStopsForDay(day: DayLike, destination: string): MapStop[] {
   const where = (destination || '').replace(/,.*$/, '').trim();
-  if (day.stops && day.stops.length) {
+  // Days that list their places (even none, e.g. a free day) are not read from the text
+  if (day.stops) {
     const out: MapStop[] = [];
     for (const st of day.stops) {
       if (!out.some((o) => o.name.toLowerCase() === st.name.toLowerCase())) out.push({ name: st.name, query: st.mapQuery || `${st.name}, ${where}` });
@@ -180,7 +181,7 @@ export function mapStopsForDay(day: DayLike, destination: string): MapStop[] {
 }
 
 export function stopsForDay(day: DayLike): string[] {
-  if (day.stops && day.stops.length) return day.stops.map((x) => x.name);
+  if (day.stops) return day.stops.map((x) => x.name);
   const out: string[] = [];
   for (const line of [day.morning, day.afternoon, day.evening]) {
     const p = placeFromLine(line);
@@ -213,8 +214,8 @@ export function dayRouteUrl(stops: Array<string | MapStop>, destination: string,
   const origin = stayQuery(destination, stayArea);
   const others = list.filter((x) => x.query.toLowerCase() !== origin.toLowerCase() && !origin.toLowerCase().startsWith(x.name.toLowerCase()));
   if (others.length === 0) {
-    // Nothing to route to (arrival / rest day): just show the stay's area
-    const q = list[0]?.query || origin;
+    // Nothing to route to: show the stay's area — or, on a day with no set places, things to do near it
+    const q = list[0]?.query || `things to do near ${origin}`;
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}&hl=en`;
   }
   const last = others[others.length - 1];

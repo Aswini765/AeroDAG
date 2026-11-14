@@ -17,7 +17,8 @@ export function isDetailedDestination(destination: string): boolean {
   return (
     /\b(goa|panaji|panjim|calangute|baga|colva|palolem)\b/.test(lower) ||
     /\b(coorg|kodagu|madikeri)\b/.test(lower) ||
-    /\b(kerala|munnar|alleppey|alappuzha|kumarakom|thekkady|wayanad|varkala|kovalam|fort kochi)\b/.test(lower) ||
+    // Only Munnar has hand-built Kerala data; Alleppey, Wayanad, Kochi etc. use the destination profile
+    /\b(kerala|munnar)\b/.test(lower) ||
     /\b(mysuru|mysore)\b/.test(lower)
   );
 }

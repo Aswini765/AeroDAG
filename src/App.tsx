@@ -865,11 +865,8 @@ export default function App() {
         } else {
           if (!profileData) {
             const fetched = await fetchDestinationProfile(ctx.destination || '', ctx.origin || 'Bengaluru');
-            if (!fetched || ('unsupported' in fetched)) {
-              setIsLoadingPlan(false);
-              return 'AI planning is busy right now — try again in a minute, or plan one of our detailed destinations.';
-            }
-            profileData = fetched as DestinationProfile;
+            // AI busy or unsure: use the offline India reference instead of giving up
+            profileData = (fetched && !('unsupported' in fetched) ? fetched : buildFallbackProfile(ctx.destination || '')) as DestinationProfile;
           }
           plan = buildPlanFromDestinationProfile(ctx, profileData);
         }

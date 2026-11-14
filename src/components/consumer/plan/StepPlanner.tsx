@@ -282,7 +282,7 @@ export const StayStep: React.FC<{
   return (
     <div className="space-y-3">
       <p className="text-xs text-[#55625E]">
-        {nights} night{nights > 1 ? 's' : ''}{plan.userChoices?.extraNights ? ` (incl. ${plan.userChoices.extraNights} because you get in early)` : ''}. Photos show the area around each stay (not the hotel itself) unless they say otherwise. Prices are sample rates — check the live price when you book.
+        {nights} night{nights > 1 ? 's' : ''}{plan.userChoices?.extraNights ? ` (incl. ${plan.userChoices.extraNights} extra for your train times)` : ''}. Photos show the area around each stay (not the hotel itself) unless they say otherwise. Prices are sample rates — check the live price when you book.
       </p>
       {(regions.length > 1 || priceSteps.length > 0) && (
         <div className="flex flex-wrap gap-1.5">

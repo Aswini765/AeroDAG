@@ -42,6 +42,8 @@ export interface TravelOption {
   checked: boolean;
   sourceNote: string;
   schedule?: { departs: string; arrives: string; arrivesDayOffset: number; runsOn?: number[] /* 0=Sun */ };
+  /** the checked train back home (trains only) */
+  returnSchedule?: ReturnTrain;
   /** for trains: the classes to pick from (fares one way, per person) */
   classes?: TrainClassFare[];
   /** km by road (for road modes) */
@@ -56,21 +58,26 @@ interface CheckedTrain {
   from: RegExp; to: RegExp; number: string; name: string; fromStation: string; toStation: string;
   departs: string; arrives: string; arrivesDayOffset: number; hours: number; km: number; runsOn?: number[];
   fares: TrainClassFare[]; note: string;
+  /** the train back home */
+  ret: ReturnTrain;
 }
+export interface ReturnTrain { number: string; name: string; departs: string; arrives: string; arrivesDayOffset: number; runsOn?: number[] }
 const CHECKED_TRAINS: CheckedTrain[] = [
   {
     from: /bengaluru|bangalore|\bBLR\b|yesvantpur/i, to: /goa/i,
     number: '17309', name: 'Yesvantpur – Vasco da Gama Express', fromStation: 'Yesvantpur Jn (YPR)', toStation: 'Vasco da Gama (VSG)',
     departs: '15:00', arrives: '05:15', arrivesDayOffset: 1, hours: 14.25, km: 664,
     fares: [{ code: 'SL', name: 'Sleeper', fareINR: 365 }, { code: '3A', name: 'AC 3-tier', fareINR: 1000 }, { code: '2A', name: 'AC 2-tier', fareINR: 1440 }],
-    note: 'Runs daily. Timetable and fares checked on ixigo / Wikipedia, Nov 2026.'
+    note: 'Runs daily. Timetable and fares checked on ixigo / Wikipedia, Nov 2026.',
+    ret: { number: '17310', name: 'Vasco da Gama – Yesvantpur Express', departs: '22:55', arrives: '12:35', arrivesDayOffset: 1 }
   },
   {
     from: /kolkata|calcutta|howrah|shalimar|\bCCU\b/i, to: /goa/i,
     number: '18047', name: 'Amaravati Express', fromStation: 'Shalimar, Kolkata (SHM)', toStation: 'Vasco da Gama (VSG)',
     departs: '23:10', arrives: '16:10', arrivesDayOffset: 2, hours: 41, km: 2157, runsOn: [1, 2, 4, 6],
     fares: [{ code: 'SL', name: 'Sleeper', fareINR: 745 }, { code: '3A', name: 'AC 3-tier', fareINR: 1990 }, { code: '2A', name: 'AC 2-tier', fareINR: 2940 }],
-    note: 'Runs Mon, Tue, Thu, Sat from Shalimar. Timetable and fares checked on erail / ixigo, Nov 2026.'
+    note: 'Runs Mon, Tue, Thu, Sat from Shalimar. Timetable and fares checked on erail / ixigo, Nov 2026.',
+    ret: { number: '18048', name: 'Amaravati Express', departs: '06:30', arrives: '23:45', arrivesDayOffset: 1, runsOn: [0, 2, 4, 5] }
   }
 ];
 
@@ -218,7 +225,8 @@ export function travelOptions(plan: TripPlan): TravelOption[] {
       key: `train-${ct.number}`, mode: 'train', title: 'Train', detail: `${ct.name} (${ct.number}) · ${ct.fromStation} → ${ct.toStation}`,
       oneWayHours: ct.hours, overheadHours: 1, haltNightsEachWay: 0, travelCostINR: 0, howPriced: [],
       checked: true, sourceNote: ct.note, classes: ct.fares,
-      schedule: { departs: ct.departs, arrives: ct.arrives, arrivesDayOffset: ct.arrivesDayOffset, runsOn: ct.runsOn }
+      schedule: { departs: ct.departs, arrives: ct.arrives, arrivesDayOffset: ct.arrivesDayOffset, runsOn: ct.runsOn },
+      returnSchedule: ct.ret
     });
   } else if (g.roadKm && g.roadKm >= 120) {
     const railKm = Math.round(g.roadKm * 1.05);
@@ -402,7 +410,7 @@ export interface JourneyDates {
   leaveGoa: string;   // "Fri 20 Nov"
   home: string;       // "Sun 22 Nov, ~9 AM"
   awayDays: number;   // calendar days away from home
-  /** hotel nights needed before Day 1 (arriving a day or more early) */
+  /** extra hotel nights: arriving before Day 1, or waiting for the train home */
   extraNights: number;
   note?: string;
 }
@@ -433,24 +441,60 @@ export function journeyDates(o: TravelOption, firstDay: Date, lastDay: Date): Jo
     const [ah, am] = o.schedule.arrives.split(':').map(Number);
     leave = new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate(), dh, dm - 150); // leave home ~2.5h before
     arrive = new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate(), ah, am + 60);  // at the stay ~1h after landing
+  } else if (o.mode === 'bus' && o.oneWayHours >= 7) {
+    // Overnight buses reach in the morning (~7 AM) on Day 1, leaving the evening before
+    arrive = new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate(), 7, 0);
+    leave = new Date(arrive.getTime() - totalOneWay * 3600000);
   } else {
     // Aim to reach the stay by 2 PM on Day 1 (check-in time)
     arrive = new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate(), 14, 0);
     leave = new Date(arrive.getTime() - totalOneWay * 3600000);
   }
-  // Going home: leave the destination on the last day (after check-out, ~11 AM)
-  const goBack = new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), 11, 0);
-  const home = new Date(goBack.getTime() + totalOneWay * 3600000);
   const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const early = Math.max(0, Math.round((startOf(firstDay) - startOf(arrive)) / DAY));
+  if (early > 0) note = `${note ? note + ' ' : ''}You get in ${early === 1 ? 'the day' : `${early} days`} before Day 1, so ${early === 1 ? '1 extra night is' : `${early} extra nights are`} added at your stay.`;
+
+  // Going home
+  let goBack: Date;
+  let home: Date;
+  let leaveText: string;
+  let late = 0;
+  const rt = o.mode === 'train' ? o.returnSchedule : undefined;
+  if (rt) {
+    // The checked train back: on your last day if it leaves in the evening, else the next morning —
+    // then the first day it actually runs.
+    const [dh, dm] = rt.departs.split(':').map(Number);
+    const [ah, am] = rt.arrives.split(':').map(Number);
+    let dep = new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate() + (dh < 12 ? 1 : 0), dh, dm);
+    if (rt.runsOn && rt.runsOn.length) {
+      let tries = 0;
+      while (!rt.runsOn.includes(dep.getDay()) && tries < 7) { dep = new Date(dep.getTime() + DAY); tries++; }
+    }
+    goBack = dep;
+    home = new Date(dep.getFullYear(), dep.getMonth(), dep.getDate() + rt.arrivesDayOffset, ah, am);
+    late = Math.max(0, Math.round((startOf(dep) - startOf(lastDay)) / DAY));
+    leaveText = `${fmtDay(dep)}, ${fmtTime(dep)} by ${rt.name} (${rt.number})`;
+    const runs = rt.runsOn && rt.runsOn.length ? `runs ${rt.runsOn.map((d) => DAYS[d]).join(', ')}` : 'runs daily';
+    if (late > 0) {
+      note = `${note ? note + ' ' : ''}Going back: ${rt.number} ${runs} and leaves at ${fmtTime(dep)}, so you leave ${fmtDay(dep)} — ${late === 1 ? '1 more night is' : `${late} more nights are`} added at your stay.`;
+    } else {
+      note = `${note ? note + ' ' : ''}Going back: ${rt.number} (${runs}) leaves ${fmtDay(dep)} at ${fmtTime(dep)} — after you check out, keep your bags at the stay till evening.`;
+    }
+  } else {
+    // Leave the destination on the last day: after check-out (~11 AM), or an evening bus (~8 PM)
+    goBack = new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), o.mode === 'bus' && o.oneWayHours >= 7 ? 20 : 11, 0);
+    home = new Date(goBack.getTime() + totalOneWay * 3600000);
+    leaveText = fmtDay(goBack);
+    if (o.mode === 'train' && o.schedule?.runsOn) note = `${note ? note + ' ' : ''}Check the return train's days on IRCTC before fixing your last day.`;
+  }
   const awayDays = Math.round((startOf(home) - startOf(leave)) / DAY) + 1;
-  const extraNights = Math.max(0, Math.round((startOf(firstDay) - startOf(arrive)) / DAY));
-  if (o.mode === 'train' && o.schedule?.runsOn) note = `${note ? note + ' ' : ''}The return train doesn't run every day either — check its days on IRCTC before fixing your last day.`;
-  if (extraNights > 0) note = `${note ? note + ' ' : ''}You get in ${extraNights === 1 ? 'the day' : `${extraNights} days`} before Day 1, so ${extraNights === 1 ? '1 extra night is' : `${extraNights} extra nights are`} added at your stay.`;
+  const extraNights = early + late;
   return {
     extraNights,
     leave: `${fmtDay(leave)}, ${fmtTime(leave)}`,
     arrive: `${fmtDay(arrive)}, ${fmtTime(arrive)}`,
-    leaveGoa: fmtDay(goBack),
+    leaveGoa: leaveText,
     home: `${fmtDay(home)}, ~${fmtTime(home)}`,
     awayDays,
     note

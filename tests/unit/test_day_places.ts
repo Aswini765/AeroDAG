@@ -64,5 +64,20 @@ const ctx = (destination: string, origin: string): any => ({
   const names = jd.flatMap((d) => mapStopsForDay(d, 'Jaipur').map((s) => s.name));
   assert(new Set(names).size === names.length, `No sight twice: ${names.join(', ')}`);
 
+  // Kerala places use their own places, never Munnar's; unknown places get no made-up stops
+  const { buildFallbackProfile } = await import('../../src/services/indiaPlaces');
+  const { buildPlanFromDestinationProfile } = await import('../../src/services/aiDestinationPlanBuilder');
+  const { isDetailedDestination } = await import('../../src/services/destinationsData');
+  assert(!isDetailedDestination('Alleppey') && !isDetailedDestination('Wayanad') && isDetailedDestination('Munnar'), 'Alleppey / Wayanad use the destination profile; Munnar keeps its own data');
+  for (const d of ['Alleppey, Kerala', 'Fort Kochi', 'Wayanad']) {
+    const p: any = buildPlanFromDestinationProfile(ctx(d, 'Bengaluru (BLR)'), buildFallbackProfile(d));
+    const stops = alignItineraryToPlan(p).flatMap((x) => mapStopsForDay(x, p.destination).map((s) => s.name));
+    assert(stops.length >= 4 && !stops.some((n) => /Eravikulam|Mattupetty|Munnar/i.test(n)), `${d}: its own places (${stops.slice(0, 3).join(', ')}…), none from Munnar`);
+  }
+  const unknown: any = buildPlanFromDestinationProfile(ctx('Sakleshpur', 'Bengaluru (BLR)'), buildFallbackProfile('Sakleshpur'));
+  const uStops = alignItineraryToPlan(unknown).flatMap((x) => mapStopsForDay(x, unknown.destination));
+  assert(uStops.length === 0, 'A place we have no guide for gets no made-up stops');
+  assert(dayRouteUrl([], unknown.destination, unknown.hotel.area).includes('things%20to%20do%20near'), '…and its Google Maps button searches "things to do near" the stay');
+
   console.log(`TOTAL PASSED: ${passed}`);
 })().catch((e) => { console.error(e); process.exit(1); });

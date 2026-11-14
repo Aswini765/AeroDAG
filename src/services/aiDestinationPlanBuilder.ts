@@ -269,6 +269,8 @@ export function buildPlanFromDestinationProfile(
   }
   const placeName = profile.name.replace(/,.*$/, '').trim();
   // What Google Maps should search: the place, not the activity ("Nahargarh sunset" → "Nahargarh")
+  // Placeholder sights ("Main sights of X (check Google Maps)") are not places: never put them on a map
+  const isPlaceholder = (t?: TopSight) => !t || /check google maps|^main sights of|local market$|viewpoint or waterfront$/i.test(t.name);
   const mapQ = (t: TopSight) => {
     const n = t.name.replace(/\s+(sunset|sunrise|walk|tour|visit|ride|trek|hike|stroll|views?)$/i, '').trim();
     return new RegExp(placeName, 'i').test(n) ? n : `${n}, ${placeName}`;
@@ -280,8 +282,10 @@ export function buildPlanFromDestinationProfile(
     const sight2: TopSight | undefined = day >= 2 ? orderedSights[mid * 2 + 1] : undefined;
     const areaKey = sight1?.area || profile.stayAreas[0]?.name || profile.name;
 
-    const morningDesc = sight1
+    const morningDesc = sight1 && !isPlaceholder(sight1)
       ? `Visit ${sight1.name} (approx. ${sight1.hoursNeeded}h).`
+      : sight1
+      ? `Explore ${placeName} — tap "Open in Google Maps" for things to do near your stay.`
       : 'Free morning near your stay.';
 
     let fallbackAfternoon = `Afternoon leisure walk through local artisan craft bazaars, historic lanes, and scenic viewpoints in ${profile.name}.`;
@@ -296,7 +300,7 @@ export function buildPlanFromDestinationProfile(
       fallbackAfternoon = `Afternoon scenic mountain walk along pine forest paths, local craft markets, and valley viewpoints.`;
     }
 
-    const afternoonDesc = sight2 && sight2.name !== sight1?.name
+    const afternoonDesc = sight2 && sight2.name !== sight1?.name && !isPlaceholder(sight2)
       ? `Visit ${sight2.name} (approx. ${sight2.hoursNeeded}h).`
       : sight1 ? fallbackAfternoon : 'Free afternoon — rest, or revisit a favourite place.';
 
@@ -313,24 +317,26 @@ export function buildPlanFromDestinationProfile(
       : hasKnownAirport
       ? `Fly ${originCode} → ${destAirportCode}, then about ${transferDriveHours}h by road to ${profile.name}`
       : `Travel from ${originClean} to ${profile.name}`;
-    let dayTitle = sight1 ? `${sight1.name}${sight2 && sight2.name !== sight1.name ? ` & ${sight2.name}` : ''}` : 'Free day near your stay';
+    let dayTitle = sight1 && !isPlaceholder(sight1)
+      ? `${sight1.name}${sight2 && sight2.name !== sight1.name && !isPlaceholder(sight2) ? ` & ${sight2.name}` : ''}`
+      : sight1 ? `Explore ${placeName}` : 'Free day near your stay';
     let dayStops = [sight1, sight2 && sight2.name !== sight1?.name ? sight2 : undefined]
-      .filter(Boolean)
+      .filter((t) => t && !isPlaceholder(t))
       .map((t, k) => ({ name: t!.name, slot: (k === 0 ? 'Morning' : 'Afternoon') as 'Morning' | 'Afternoon', mapQuery: mapQ(t!) }));
     let morning = morningDesc;
     let afternoon = afternoonDesc;
     if (day === 1) {
       dayTitle = `Arrive in ${profile.name}`;
       morning = `${howYouCome}.`;
-      afternoon = `Check in and rest${shortSight ? `, then an easy visit to ${shortSight.name}` : ''}.`;
+      afternoon = `Check in and rest${shortSight && !isPlaceholder(shortSight) ? `, then an easy visit to ${shortSight.name}` : ', then a short walk near your stay'}.`;
       eveningDesc = 'Early dinner near your stay.';
-      dayStops = shortSight ? [{ name: shortSight.name, slot: 'Afternoon', mapQuery: mapQ(shortSight) }] : [];
+      dayStops = shortSight && !isPlaceholder(shortSight) ? [{ name: shortSight.name, slot: 'Afternoon', mapQuery: mapQ(shortSight) }] : [];
     } else if (day === durationDays && durationDays > 1) {
       dayTitle = `Head home`;
       afternoon = `Leave for ${originClean} — ${isRoadTrip || balancedTrainLabel ? 'by road' : `back to ${destAirportCode || 'the airport'} for your flight`}.`;
       eveningDesc = 'Home.';
       morning = sight1 && sight1.hoursNeeded <= 3 ? `Visit ${sight1.name} (approx. ${sight1.hoursNeeded}h), then check out.` : 'Relaxed breakfast and check out.';
-      dayStops = sight1 && sight1.hoursNeeded <= 3 ? [{ name: sight1.name, slot: 'Morning', mapQuery: mapQ(sight1) }] : [];
+      dayStops = sight1 && sight1.hoursNeeded <= 3 && !isPlaceholder(sight1) ? [{ name: sight1.name, slot: 'Morning', mapQuery: mapQ(sight1) }] : [];
     }
 
     itinerary.push({

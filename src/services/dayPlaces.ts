@@ -149,7 +149,7 @@ const PLACES: DestinationPlaces[] = [
     ]
   },
   {
-    match: /munnar|\bkerala\b/i,
+    match: /^(munnar|kerala)$/i,
     zoneOf: [{ zone: 'Munnar', area: /.*/ }],
     defaultZone: 'Munnar',
     driveH: { Munnar: { Munnar: 0.5, Mattupetty: 0.5, TopStation: 1.25 } },
@@ -215,7 +215,9 @@ const PLACES: DestinationPlaces[] = [
 ];
 
 function placesFor(destination: string): DestinationPlaces | undefined {
-  return PLACES.find((p) => p.match.test(destination));
+  // Match the place itself ("Alleppey, Kerala" is Alleppey, not Munnar)
+  const name = (destination || '').split(',')[0].trim();
+  return PLACES.find((p) => p.match.test(name));
 }
 
 /** The stay's zone, e.g. "South" for Sernabatim Beach, South Goa */

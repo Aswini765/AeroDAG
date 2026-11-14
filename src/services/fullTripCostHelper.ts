@@ -237,12 +237,26 @@ export function computeFullTripCost(
     // Budget travellers use autos, shared jeeps and rented scooters, not a cab for the day
     localTransportCost = Math.round(localTransportCost * 0.6);
   }
+  // Driving your own car: you get around in it, so no cabs — just fuel for local driving and parking
+  const ownCar = /selfdrive/.test(plan.transfer?.id || '') && !plan.flight && !plan.selectedTrain;
+  let localSubtitle = `Cabs and autos while you're there · about ${fmtINR(localTransportCost / durationDays)} a day`;
+  if (ownCar) {
+    const sd = (plan as any).userChoices?.selfDrive as { kmpl?: number; fuelPriceINR?: number; cars?: number; fuel?: string } | undefined;
+    const kmpl = Math.max(5, sd?.kmpl || 15);
+    const price = sd?.fuelPriceINR || 108;
+    const cars = Math.max(1, sd?.cars || 1);
+    const kmPerDay = 40;
+    const parkingPerDay = 100;
+    const perDay = Math.round((kmPerDay / kmpl) * price * cars + parkingPerDay * cars);
+    localTransportCost = perDay * durationDays;
+    localSubtitle = `Your own car: about ${kmPerDay} km a day (${fmtINR(Math.round((kmPerDay / kmpl) * price))} fuel) + ${fmtINR(parkingPerDay)} parking${cars > 1 ? `, × ${cars} cars` : ''} · ${fmtINR(perDay)} a day`;
+  }
   const localTransportLine: CostLineItem = {
     id: 'cost-local-transport',
     name: 'Local transport',
     amountINR: Math.round(localTransportCost),
     isEstimate: true,
-    subtitle: `Cabs and autos while you're there · about ${fmtINR(localTransportCost / durationDays)} a day`
+    subtitle: localSubtitle
   };
 
   // 4. Food (Estimate)
@@ -264,12 +278,17 @@ export function computeFullTripCost(
       tier: foodTier
     });
   }
+  // Extra days at the destination because of train times (picked on the plan page) also need food
+  const extraDays = Math.max(0, (plan as any).userChoices?.extraNights || 0);
+  const foodDays = durationDays + extraDays;
+  const foodPerPersonDay = foodCost / (totalTravellers * durationDays);
+  if (extraDays > 0) foodCost = foodPerPersonDay * totalTravellers * foodDays;
   const foodLine: CostLineItem = {
     id: 'cost-food',
     name: 'Food',
     amountINR: Math.round(foodCost),
     isEstimate: true,
-    subtitle: `About ${fmtINR(foodCost / (totalTravellers * durationDays))} per person a day × ${people} × ${durationDays} days`
+    subtitle: `About ${fmtINR(foodPerPersonDay)} per person a day × ${people} × ${foodDays} days${extraDays ? ` (incl. ${extraDays} extra for train times)` : ''}`
   };
 
   // 5. Activities (Estimate)
