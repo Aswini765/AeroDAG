@@ -47,5 +47,5 @@ export function budgetLine(totalINR: number, basis: BudgetBasis, travellers: num
   const n = Math.max(1, travellers);
   if (basis === 'per_person') return `${inr(totalINR / n)} each × ${n} ${n === 1 ? 'person' : 'people'} = ${inr(totalINR)}`;
   if (n === 1) return `${inr(totalINR)} for you`;
-  return `${inr(totalINR)} for all ${n} · about ${inr(totalINR / n)} each`;
+  return `${inr(totalINR)} for all ${n}`;
 }

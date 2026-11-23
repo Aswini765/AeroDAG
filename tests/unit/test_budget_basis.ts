@@ -37,10 +37,21 @@ function assert(condition: boolean, msg: string) {
   assert(decideBasis('how much will Goa cost for 4 of us', null, 4, 'family') === 'none', 'No amount → no budget ("what will it cost?")');
   assert(basisFromWords('Goa trip with friends') === null, 'No budget words → the words say nothing');
 
+  // Amounts typed in the search box are always picked up, so nobody is asked twice
+  assert(parseBudgetINR('Goa 4 days 30 thousand') === 30000 && parseBudgetINR('Coorg weekend, 4 friends, 9000') === 9000, '"30 thousand" and "9000" are read as the budget');
+  assert(parseBudgetINR('4 days Goa 2026 dec 2 people') === null && parseBudgetINR('Goa 3 days, train at 1030 hrs') === null, 'A year or a time is never read as a budget');
+  {
+    const { applyAiParse } = await import('../../src/services/aiTripParser');
+    const ctx2: any = { budgetTotalINR: 30000, budgetAmountINR: 30000 };
+    const fs: any = { budget: 'stated' };
+    applyAiParse(ctx2, fs, { budgetINR: 30000, sources: { budgetINR: 'inferred' } } as any);
+    assert(fs.budget === 'stated', `A budget the traveller typed stays "stated" even if the AI is unsure (${fs.budget})`);
+  }
+
   // The maths shown back
   assert(totalFromBudget(15000, 'per_person', 10) === 150000 && totalFromBudget(60000, 'total', 4) === 60000, '₹15,000 each × 10 = ₹1,50,000; a total stays a total');
   assert(budgetLine(150000, 'per_person', 10) === '₹15,000 each × 10 people = ₹1,50,000', `Per person line (${budgetLine(150000, 'per_person', 10)})`);
-  assert(budgetLine(60000, 'total', 4) === '₹60,000 for all 4 · about ₹15,000 each', `Total line (${budgetLine(60000, 'total', 4)})`);
+  assert(budgetLine(60000, 'total', 4) === '₹60,000 for all 4', `Total line has no "each" (${budgetLine(60000, 'total', 4)})`);
 
   // The plan carries the basis, and a "no budget" plan is never "over"
   const ctx = (extra: any): any => ({

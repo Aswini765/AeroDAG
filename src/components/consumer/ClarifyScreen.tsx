@@ -221,7 +221,8 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
   const paxNow = Math.max(1, selectedTravellersCount);
   const perPersonPicks = Array.from(new Set([0.75, 1, 1.5].map((f) => roundTo((typicalTotalINR / paxNow) * f, 1000))));
   const shownPicks = budgetBasisPick === 'per_person' ? perPersonPicks : budgetQuickPicks;
-  const selectedBudgetINR = pickedBudgetINR ?? (budgetBasisPick === 'per_person' ? roundTo(typicalTotalINR / paxNow, 1000) : roundTo(typicalTotalINR, 5000));
+  const typedAmount = tripContext.budgetAmountINR && tripContext.budgetAmountINR >= 1000 ? tripContext.budgetAmountINR : null;
+  const selectedBudgetINR = pickedBudgetINR ?? typedAmount ?? (budgetBasisPick === 'per_person' ? roundTo(typicalTotalINR / paxNow, 1000) : roundTo(typicalTotalINR, 5000));
   const [pickedOrigin, setPickedOrigin] = useState<string>(
     originAlreadyStated ? '' : ''
   );
@@ -1071,7 +1072,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                 })()}
                 </>)}
                 <p className="text-xs text-[#55625E]">
-                  Typical {cleanDest} trip of {Math.max(1, tripContext.durationDays || 4)} days for {isCustomTravellersOpen && parseInt(customTravellersInput, 10) > 0 ? parseInt(customTravellersInput, 10) : selectedTravellersCount}: about ₹{typicalTotalINR.toLocaleString('en-IN')}{selectedTravellersCount > 1 ? ` (₹${Math.round(typicalTotalINR / Math.max(1, selectedTravellersCount)).toLocaleString('en-IN')} each)` : ''}
+                  Typical {cleanDest} trip of {Math.max(1, tripContext.durationDays || 4)} days for {isCustomTravellersOpen && parseInt(customTravellersInput, 10) > 0 ? parseInt(customTravellersInput, 10) : selectedTravellersCount}: about {budgetBasisPick === 'per_person' ? `₹${(Math.round(typicalTotalINR / Math.max(1, selectedTravellersCount) / 500) * 500).toLocaleString('en-IN')} each` : `₹${typicalTotalINR.toLocaleString('en-IN')} in total`}
                 </p>
               </fieldset>
               )}

@@ -35,7 +35,7 @@ export const PlanSummary: React.FC<{
         <div>
           <div id="plan-total" className="text-[38px] leading-[42px] font-extrabold tracking-tight text-[#15201D] tabular-nums">{inr(total)}</div>
           <div className="text-sm text-[#55625E]">
-            {pax > 1 ? `${inr(total / pax)} each · ` : ''}{noBudget ? 'no budget given' : `budget ${budgetLine(budgetINR, basis, pax).replace(/ · about.*$/, '')}`}
+            {pax > 1 && basis === 'per_person' ? `${inr(total / pax)} each · ` : ''}{noBudget ? 'no budget given' : `budget ${budgetLine(budgetINR, basis, pax).replace(/ · about.*$/, '')}`}
           </div>
         </div>
         {!noBudget && (over <= 0 ? (

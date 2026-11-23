@@ -178,7 +178,8 @@ export function applyAiParse(
     ctx.budgetTotalINR = data.budgetINR;
     ctx.budgetAmountINR = data.budgetINR;
     if (data.budgetBasis) ctx.budgetBasis = data.budgetBasis;
-    fieldSources.budget = toTag(src.budgetINR);
+    // An amount the traveller typed stays "stated" (never ask for it twice)
+    fieldSources.budget = fieldSources.budget === 'stated' ? 'stated' : toTag(src.budgetINR);
   }
 
   // Travellers

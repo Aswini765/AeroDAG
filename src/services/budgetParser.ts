@@ -41,6 +41,13 @@ export function parseBudgetINR(text: string): number | null {
     }
   }
 
+  // 3b. "30 thousand", "25 thousand rupees"
+  const thousandMatch = lower.match(/(\d+(?:\.\d+)?)\s*thousand\b/);
+  if (thousandMatch) {
+    const val = parseFloat(thousandMatch[1]);
+    if (!isNaN(val) && val > 0) return Math.round(val * 1000);
+  }
+
   // 4. Standalone 5 to 7 digit numbers (e.g. "45000", "60000")
   const standaloneMatch = lower.match(/\b(\d{5,7})\b/);
   if (standaloneMatch) {
@@ -49,6 +56,10 @@ export function parseBudgetINR(text: string): number | null {
       return val;
     }
   }
+
+  // 5. A 4-digit amount on its own ("9000"), but never a year ("2026") or a time ("1030")
+  const four = [...lower.matchAll(/\b(\d{4})\b(?!\s*(?:hrs?|hours?|am|pm))/g)].map((m) => parseInt(m[1], 10)).find((v) => v >= 3000 && !(v >= 1900 && v <= 2100));
+  if (four) return four;
 
   return null;
 }
