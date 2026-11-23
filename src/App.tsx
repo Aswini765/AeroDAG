@@ -448,7 +448,7 @@ export default function App() {
       }
     }
 
-    const SUPPORTED_MSG = 'AeroDAG plans trips anywhere in India — try a city, town or state, like Hampi, Rishikesh or Meghalaya.';
+    const SUPPORTED_MSG = 'TripCheck plans trips anywhere in India — try a city, town or state, like Hampi, Rishikesh or Meghalaya.';
     const UNPARSEABLE_MSG = "I couldn't understand that. Try something like: 3 days in Coorg for 2, budget ₹20,000.";
     // A real trip request without a place ("trip next month", "weekend getaway for 4") is not an error:
     // ask where, and point at the place cards that show what a trip costs.
@@ -558,17 +558,17 @@ export default function App() {
         const suggestion = suggestAlternative(place);
         if (suggestion) {
           if (suggestion.destination === 'Goa') {
-            return `AeroDAG plans trips within India. For beaches like ${place}, try Goa, Gokarna or the Andamans.`;
+            return `TripCheck plans trips within India. For beaches like ${place}, try Goa, Gokarna or the Andamans.`;
           } else if (suggestion.destination === 'Coorg') {
-            return `AeroDAG plans trips within India. For hills like ${place}, try Coorg, Ooty or Munnar.`;
+            return `TripCheck plans trips within India. For hills like ${place}, try Coorg, Ooty or Munnar.`;
           } else if (suggestion.destination === 'Mysuru') {
-            return `AeroDAG plans trips within India. For heritage and palaces like ${place}, try Mysuru, Udaipur or Jaipur.`;
+            return `TripCheck plans trips within India. For heritage and palaces like ${place}, try Mysuru, Udaipur or Jaipur.`;
           } else {
-            return `AeroDAG plans trips within India. For nature like ${place}, try Kerala, Wayanad or Kabini.`;
+            return `TripCheck plans trips within India. For nature like ${place}, try Kerala, Wayanad or Kabini.`;
           }
         }
         if (INTERNATIONAL_DESTINATIONS.some((d) => d.toLowerCase() === place.toLowerCase())) {
-          return `AeroDAG plans trips within India. Try popular destinations like Goa, Coorg, Kerala, or Mysuru.`;
+          return `TripCheck plans trips within India. Try popular destinations like Goa, Coorg, Kerala, or Mysuru.`;
         }
         return UNPARSEABLE_MSG;
       }
@@ -1459,7 +1459,7 @@ export default function App() {
       <footer className="border-t border-[#E2E6E1] bg-[#FFFFFF] py-6 px-4 text-xs text-[#55625E]">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-[#15201D]">AeroDAG</span>
+            <span className="font-bold text-[#15201D]">TripCheck</span>
             <span>·</span>
             <span>Plan a trip you can actually take</span>
           </div>
@@ -1472,7 +1472,7 @@ export default function App() {
               How it works
             </button>
             <span>·</span>
-            <span>&copy; 2026 AeroDAG · Demo</span>
+            <span>&copy; 2026 TripCheck · Demo</span>
           </div>
         </div>
       </footer>

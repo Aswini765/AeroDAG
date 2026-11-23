@@ -1,15 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  User,
-  Check,
-  Menu,
-  X,
-  LogOut,
-  Mail,
-  Send,
-  ChevronDown,
-  AlertTriangle
-} from 'lucide-react';
+import { User, Check, Menu, X, LogOut, Mail, Send, ChevronDown, AlertTriangle } from 'lucide-react';
 import type { User as SupabaseUser } from '../../services/persistence';
 
 export type FlowStep = 'describe' | 'clarify' | 'region_route' | 'compare' | 'plan' | 'review' | 'done' | 'mytrips';
@@ -125,14 +115,14 @@ export const ConsumerNavbar: React.FC<ConsumerNavbarProps> = ({
           <button
             onClick={() => onNavigate('describe')}
             className="flex items-center gap-2.5 text-left group cursor-pointer focus-visible:ring-3 focus-visible:ring-[#7CC4B3] rounded-lg p-1"
-            aria-label="AeroDAG - Plan a trip you can actually take"
+            aria-label="TripCheck - Plan a trip you can actually take"
           >
             <div className="h-8 w-8 rounded-lg bg-[#0E6B59] flex items-center justify-center text-white shadow-sm shrink-0">
-              <Send className="h-4 w-4 transform -rotate-45" />
+              <Check className="h-5 w-5" strokeWidth={3} />
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-xl font-bold tracking-tight text-[#15201D] font-heading">
-                AeroDAG
+                TripCheck
               </span>
               <span className="hidden sm:inline text-xs text-[#55625E] font-medium border-l border-[#E2E6E1] pl-2">
                 Plan a trip you can actually take

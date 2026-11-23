@@ -38,7 +38,7 @@ export const SystemObservabilityModal: React.FC<SystemObservabilityModalProps> =
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
-                  AeroDAG &bull; Internal System Observability & Portfolio Architecture
+                  TripCheck &bull; Internal System Observability & Portfolio Architecture
                 </h2>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-500/10 text-teal-300 border border-teal-500/20">
                   Invisible Layer 2
@@ -223,7 +223,7 @@ export const SystemObservabilityModal: React.FC<SystemObservabilityModalProps> =
 
         {/* Modal Footer */}
         <div className="px-6 py-3.5 bg-slate-950 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400">
-          <span>AeroDAG Layer 2 Architecture Active</span>
+          <span>TripCheck Layer 2 Architecture Active</span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium transition"

@@ -21,7 +21,7 @@ const party = { adults: 2, children: 1, childAges: [6] };
 
 // 1. Multi-stop legs follow each other
 const legs = getStayLegs({
-  dates: '20–25 Nov 2026',
+  dates: '20–25 Nov 2027',
   destination: 'Himachal Pradesh, India',
   durationDays: 6,
   stays: [{ baseName: 'Manali', nights: 3 }, { baseName: 'Kasol', nights: 2 }]
@@ -29,13 +29,13 @@ const legs = getStayLegs({
 assert(legs.length === 2, 'Two stops give two hotel links');
 assert(legs[0].place === 'Manali' && legs[0].dateLabel === '20–23 Nov', `Manali is 20–23 Nov (got ${legs[0].dateLabel})`);
 assert(legs[1].place === 'Kasol' && legs[1].dateLabel === '23–25 Nov', `Kasol is 23–25 Nov (got ${legs[1].dateLabel})`);
-assert(legs[0].url.includes('checkin=11202026') && legs[0].url.includes('checkout=11232026'), 'Manali link carries its own check-in/out');
-assert(legs[1].url.includes('checkin=11232026') && legs[1].url.includes('checkout=11252026'), 'Kasol link carries its own check-in/out');
+assert(legs[0].url.includes('checkin=11202027') && legs[0].url.includes('checkout=11232027'), 'Manali link carries its own check-in/out');
+assert(legs[1].url.includes('checkin=11232027') && legs[1].url.includes('checkout=11252027'), 'Kasol link carries its own check-in/out');
 assert(legs[0].url.includes('roomStayQualifier=2e1e6e'), 'Guests (2 adults, 1 child aged 6) are filled in');
 assert(legs[1].url.includes('searchText=Kasol'), 'Second link searches Kasol, not the state');
 
 // 2. Single stop uses the trip nights
-const single = getStayLegs({ dates: '20–23 Nov 2026', destination: 'Coorg, Karnataka, India', durationDays: 4 }, { adults: 2 });
+const single = getStayLegs({ dates: '20–23 Nov 2027', destination: 'Coorg, Karnataka, India', durationDays: 4 }, { adults: 2 });
 assert(single.length === 1 && single[0].place === 'Coorg', 'Single stop books the destination');
 assert(single[0].dateLabel === '20–23 Nov', `Single stop covers all nights (got ${single[0].dateLabel})`);
 

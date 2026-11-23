@@ -476,6 +476,8 @@ export interface TripPlan {
     addedStops?: { day: number; place: string }[];
     /** When the chosen train / bus / car gets in and leaves (shown on Day 1 and the last day) */
     journey?: { arrive: string; leaveBack: string; home: string; early: number; late: number; by: string };
+    /** Why TripCheck picked this travel / stay ("Cheapest that fits"); "Your choice" once the traveller changes it */
+    why?: { travel?: string; stay?: string };
   };
   /** true = the number of days includes the journey; false/undefined = days at the destination only */
   daysIncludeTravel?: boolean;

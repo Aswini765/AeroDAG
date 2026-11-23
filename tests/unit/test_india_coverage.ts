@@ -48,7 +48,7 @@ for (const key of Object.keys(REGION_ALIASES)) {
 const ctx = (destination: string) => ({
   destination,
   origin: 'Bengaluru (BLR)',
-  dates: '20–24 Nov 2026',
+  dates: '20–24 Nov 2027',
   durationDays: 5,
   adultsCount: 2,
   childrenCount: 0,
@@ -81,12 +81,12 @@ for (const place of ['Tawang', 'Hampi', 'Varanasi', 'Shillong', 'Leh', 'Andaman'
 
 // 4. Booking links carry place, dates and guests
 {
-  const h = buildHotelSearchUrl('Coorg', '20–23 Nov 2026', { adults: 2, children: 1, childAges: [4] });
-  assert(h.includes('checkin=11202026') && h.includes('checkout=11232026'), 'Hotel link has check-in and check-out');
+  const h = buildHotelSearchUrl('Coorg', '20–23 Nov 2027', { adults: 2, children: 1, childAges: [4] });
+  assert(h.includes('checkin=11202027') && h.includes('checkout=11232027'), 'Hotel link has check-in and check-out');
   assert(h.includes('roomStayQualifier=2e1e4e') && h.includes('searchText=Coorg'), 'Hotel link has guests and place');
-  const f = buildFlightSearchUrl('BLR', 'IXB', '20–24 Nov 2026', { adults: 2 });
-  assert(!!f && f.includes('BLR-IXB-20/11/2026_IXB-BLR-24/11/2026') && f.includes('paxType=A-2_C-0_I-0'), 'Flight link has route, dates and passengers');
-  assert(buildFlightSearchUrl('BLR', 'BLR', '20–24 Nov 2026', { adults: 2 }) === null, 'No flight link for same-city "flight"');
+  const f = buildFlightSearchUrl('BLR', 'IXB', '20–24 Nov 2027', { adults: 2 });
+  assert(!!f && f.includes('BLR-IXB-20/11/2027_IXB-BLR-24/11/2027') && f.includes('paxType=A-2_C-0_I-0'), 'Flight link has route, dates and passengers');
+  assert(buildFlightSearchUrl('BLR', 'BLR', '20–24 Nov 2027', { adults: 2 }) === null, 'No flight link for same-city "flight"');
 }
 
 // 5. Starting city is read from the text and used for the flight

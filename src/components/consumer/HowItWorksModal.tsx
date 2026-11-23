@@ -29,7 +29,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
         <div className="p-5 border-b border-[#E2E6E1] flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-[#15201D] font-heading">
-              How AeroDAG Works
+              How TripCheck Works
             </h2>
             <p className="text-xs text-[#55625E]">
               Technical architecture, official regulatory knowledge, and deterministic constraints.
@@ -103,7 +103,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
                   <span>Invisible Multi-Agent DAG Execution</span>
                 </div>
                 <p className="text-xs text-[#55625E]">
-                  AeroDAG runs an orchestration pipeline where specialized micro-agents coordinate deterministically. LLMs are never allowed to fabricate prices or arithmetic.
+                  TripCheck runs an orchestration pipeline where specialized micro-agents coordinate deterministically. LLMs are never allowed to fabricate prices or arithmetic.
                 </p>
               </div>
 
@@ -132,7 +132,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
           {activeTab === 'knowledge' && (
             <div className="space-y-3">
               <div className="text-xs text-[#55625E] pb-2 border-b border-[#E2E6E1]">
-                All 15 documents in AeroDAG's knowledge base originate from official government, civil aviation, or consular authorities with recorded timestamps.
+                All 15 documents in TripCheck's knowledge base originate from official government, civil aviation, or consular authorities with recorded timestamps.
               </div>
 
               <div className="space-y-2">

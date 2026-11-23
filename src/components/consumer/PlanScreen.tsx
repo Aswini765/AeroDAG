@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   TripPlan,
   TripPreferences,
@@ -24,7 +24,8 @@ import { alignItineraryToPlan } from '../../services/itineraryText';
 import { BudgetCard } from './plan/BudgetCard';
 import { StaySelector } from './plan/StaySelector';
 import { MoreOptionsModal } from './plan/MoreOptionsModal';
-import { StepCard, TravelStep, StayStep, AddPlaceToDay, TotalStep } from './plan/StepPlanner';
+import { TravelStep, StayStep, AddPlaceToDay, TotalStep, bestFitPlan } from './plan/StepPlanner';
+import { PlanSummary, ChoiceRow } from './plan/SimplePlan';
 import { gettingThereOptions } from '../../services/gettingThere';
 import { SeasonalAndPersonaCard } from './plan/SeasonalAndPersonaCard';
 import { BudgetBufferAndQuirksCard } from './plan/BudgetBufferAndQuirksCard';
@@ -77,7 +78,14 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
   const travelChosen = Boolean(plan.userChoices?.travelKey);
   const stayChosen = travelChosen && Boolean(plan.userChoices?.hotelId);
   const daysIncludeTravel = Boolean(plan.daysIncludeTravel ?? (tripContext as any)?.daysIncludeTravel);
-  const [openStep, setOpenStep] = useState<number | null>(() => (!plan.userChoices?.travelKey ? 1 : !plan.userChoices?.hotelId ? 2 : 3));
+  // TripCheck picks travel and stay for you (each with a reason); one tap on Change opens the choices
+  const [openRow, setOpenRow] = useState<'travel' | 'stay' | 'days' | null>(null);
+  useEffect(() => {
+    if (plan.userChoices?.travelKey) return;
+    const target = plan.budget?.basis === 'none' ? 0 : computeFullTripCost(plan, preferences).targetBudgetINR;
+    onPlanChange(bestFitPlan(plan, preferences, target));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan.userChoices?.travelKey, plan.destination, plan.origin, plan.durationDays, plan.travellers.total]);
   // One-line summaries of what was chosen, always read from the plan itself
   const travelSummary = !travelChosen ? null : plan.flight
     ? `✈️ Flight · ${plan.flight.flightNumber || plan.flight.airline}`
@@ -286,6 +294,22 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
   };
 
   const currentStayArea = plan.hotel.area || plan.hotelZone || plan.destination;
+  const why = plan.userChoices?.why || {};
+  const yourChoice = (next: TripPlan, key: 'travel' | 'stay'): TripPlan => ({ ...next, userChoices: { ...(next.userChoices || {}), why: { ...(next.userChoices?.why || {}), [key]: 'Your choice' } } });
+  const travelLineINR = cost.lines.find((l) => l.id === 'cost-travel')?.amountINR || 0;
+  const tr = plan.selectedTrain;
+  const travelIcon = plan.flight ? '✈️' : tr ? (tr.mode === 'bus' ? '🚌' : '🚆') : /selfdrive/.test(plan.userChoices?.travelKey || '') ? '🚗' : plan.userChoices?.travelKey === 'local' ? '📍' : '🚕';
+  const travelName = plan.flight
+    ? `Flight · ${plan.flight.flightNumber || plan.flight.airline}`
+    : tr ? (tr.mode === 'bus' ? tr.trainName : `${tr.trainName}${tr.trainNumber ? ` (${tr.trainNumber})` : ''}${tr.selectedClass ? ` · ${tr.selectedClass}` : ''}`)
+    : plan.userChoices?.travelKey === 'local' ? 'No long journey' : (plan.transfer?.vehicleType || 'By road');
+  const travelTitle = travelLineINR > 0 ? `${travelName} · ₹${travelLineINR.toLocaleString('en-IN')}` : travelName;
+  const jr = plan.userChoices?.journey;
+  const travelSub = jr ? `Reach ${jr.arrive} · home ${jr.home}` : 'Both ways, for everyone';
+  const stayNights = Math.max(1, plan.durationDays - 1) + (plan.userChoices?.extraNights || 0);
+  const stayTitle = `${(plan.hotel?.name || 'Your stay').replace(/,\s*~₹.*$/, '')} · ₹${(plan.hotel?.pricePerNightINR || 0).toLocaleString('en-IN')}/night`;
+  const staySub = `${(plan.hotel?.area || plan.destination).replace(/,.*$/, '')} · ${stayNights} ${stayNights === 1 ? 'night' : 'nights'}`;
+  const daysSub = alignItineraryToPlan(plan).slice(1, 3).map((d) => (d.title || '').replace(/^Day \d+\s*[·:-]\s*/, '')).filter(Boolean).join(' · ');
 
   const effectiveContext: TripContext = tripContext || {
     destination: plan.destination,
@@ -337,13 +361,6 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
         bookingReady={stayChosen}
       />
 
-      {/* A real photo of the place (Wikipedia), so the plan feels like a trip, not a spreadsheet */}
-      <PlacePhoto
-        place={(plan.stays && plan.stays.length > 1 ? plan.stays[0].baseName : plan.destination).replace(/,.*$/, '')}
-        className="h-32 sm:h-40 w-full rounded-2xl"
-        showCredit
-      />
-
       {saveState === 'saved' && isGuest && onContinueWithEmail && !emailCardDismissed && (
         <div className="mb-4">
           <KeepTripsCard
@@ -360,18 +377,55 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
              exact one-tap fixes, or places that fit (see PlanOptionsSelector) */}
       {(
         <>
-          {/* TWO PANES ON DESKTOP (Left = Chat & Plan Cards; Right = Sticky Map) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* LEFT PANE (Chat & Plan Cards - 7 columns) */}
-            <div className="lg:col-span-7 space-y-5">
-              {/* THE PLAN, STEP BY STEP: nothing is picked for you. Each step opens after the one before. */}
-              <StepCard
-                n={1}
-                id="step-travel"
-                title="How do you want to get there?"
-                summary={travelSummary}
-                open={openStep === 1}
-                onToggle={() => setOpenStep(openStep === 1 ? null : 1)}
+          {/* LEFT: the photo and the total (stays in view on wide screens). RIGHT: what we picked, the days, the map. */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-20">
+              <PlacePhoto
+                place={(plan.stays && plan.stays.length > 1 ? plan.stays[0].baseName : plan.destination).replace(/,.*$/, '')}
+                className="h-36 sm:h-48 w-full rounded-2xl"
+                showCredit
+              />
+              <PlanSummary
+                plan={plan}
+                preferences={preferences}
+                budgetINR={noBudget ? 0 : targetBudget}
+                onApply={(next, msg) => { onPlanChange(next); showRefineMsg(msg); }}
+                details={
+                  <TotalStep
+                    plan={plan}
+                    preferences={preferences}
+                    budgetINR={noBudget ? 0 : targetBudget}
+                    onApply={(next, msg) => { onPlanChange(next); showRefineMsg(msg); }}
+                    onTryPlace={onStartNewPlan ? (place) => {
+                      const t = plan.travellers;
+                      const who = t.children > 0 ? `${t.adults} adults and ${t.children} kids` : `${t.total} ${t.total === 1 ? 'person' : 'people'}`;
+                      const budgetWords = plan.budget?.basis === 'per_person' ? `budget ${Math.round(targetBudget / Math.max(1, t.total))} per person` : `budget ${targetBudget} in total`;
+                      onStartNewPlan(`${plan.durationDays} days in ${place} for ${who} from ${plan.origin.replace(/\s*\([^)]*\)/, '')}, ${budgetWords}`);
+                    } : undefined}
+                  />
+                }
+              />
+              <div className="hidden lg:block bg-white border border-[#E2E6E1] rounded-2xl p-2">
+                <UnifiedPlanMap
+                  destination={plan.destination}
+                  stayArea={currentStayArea}
+                  itinerary={alignItineraryToPlan(plan)}
+                  className="h-[260px]"
+                  dayIndex={mapDay}
+                  onDayChange={setMapDay}
+                />
+              </div>
+            </div>
+
+            <div className="lg:col-span-7 space-y-3">
+              <ChoiceRow
+                id="row-travel"
+                icon={travelIcon}
+                title={travelTitle}
+                sub={travelSub}
+                why={why.travel}
+                open={openRow === 'travel'}
+                onToggle={() => setOpenRow(openRow === 'travel' ? null : 'travel')}
               >
                 <TravelStep
                   plan={plan}
@@ -379,109 +433,67 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
                   onDaysIncludeTravel={(v) => onPlanChange({ ...plan, daysIncludeTravel: v })}
                   budgetINR={noBudget ? 0 : targetBudget}
                   onChoose={(next, summary) => {
-                    onPlanChange(next);
-                    setOpenStep(2);
+                    onPlanChange(yourChoice(next, 'travel'));
+                    setOpenRow(null);
                     showRefineMsg(`Travel: ${summary}`);
                   }}
                 />
-              </StepCard>
-
-              <StepCard
-                n={2}
-                id="step-stay"
-                title="Where do you want to stay?"
-                summary={staySummary}
-                open={openStep === 2}
-                locked={!travelChosen}
-                lockedText="Choose how you'll travel first"
-                onToggle={() => setOpenStep(openStep === 2 ? null : 2)}
+              </ChoiceRow>
+              <ChoiceRow
+                id="row-stay"
+                icon="🏨"
+                title={stayTitle}
+                sub={staySub}
+                why={why.stay}
+                open={openRow === 'stay'}
+                onToggle={() => setOpenRow(openRow === 'stay' ? null : 'stay')}
               >
                 <StayStep
                   plan={plan}
                   preferences={preferences}
                   onChoose={(next, summary) => {
-                    onPlanChange(next);
-                    setOpenStep(3);
+                    onPlanChange(yourChoice(next, 'stay'));
+                    setOpenRow(null);
                     showRefineMsg(`Stay: ${summary}`);
                   }}
                 />
-              </StepCard>
-
-              <StepCard
-                n={3}
-                id="step-days"
-                title="Your days"
-                summary={stayChosen && openStep !== 3 ? `${plan.durationDays} days planned${plan.userChoices?.addedStops?.length ? ` · ${plan.userChoices.addedStops.length} place${plan.userChoices.addedStops.length > 1 ? 's' : ''} you added` : ''}` : null}
-                open={openStep === 3}
-                locked={!stayChosen}
-                lockedText="Choose where you'll stay first"
-                onToggle={() => setOpenStep(openStep === 3 ? null : 3)}
+              </ChoiceRow>
+              <ChoiceRow
+                id="row-days"
+                icon="📅"
+                title={`${plan.durationDays} ${plan.durationDays === 1 ? 'day' : 'days'} planned${plan.userChoices?.addedStops?.length ? ` · ${plan.userChoices.addedStops.length} added by you` : ''}`}
+                sub={daysSub}
+                why="Near your stay"
+                open={openRow === 'days'}
+                onToggle={() => setOpenRow(openRow === 'days' ? null : 'days')}
               >
-                {/* Permits and notes for this group (kids, seniors, pure veg, solo, big group) */}
-                <ForYourTripCard plan={plan} preferences={preferences} />
                 <AddPlaceToDay plan={plan} onAdd={(next, msg) => { onPlanChange(next); showRefineMsg(msg); }} />
-                <DayByDay
-                  itinerary={alignItineraryToPlan(plan)}
+              </ChoiceRow>
+
+              {/* Permits and notes for this group (kids, seniors, pure veg, solo, big group) */}
+              <ForYourTripCard plan={plan} preferences={preferences} />
+
+              <DayByDay
+                itinerary={alignItineraryToPlan(plan)}
+                destination={plan.destination}
+                stayArea={currentStayArea}
+                onAdjustDay={onUpdateItineraryDay}
+                onCardFocus={(pinNum) => setActivePin(pinNum)}
+                onDayChange={setMapDay}
+              />
+              {/* Phones and tablets: the map comes after the days */}
+              <div className="lg:hidden bg-white border border-[#E2E6E1] rounded-2xl p-2">
+                <UnifiedPlanMap
                   destination={plan.destination}
                   stayArea={currentStayArea}
-                  onAdjustDay={onUpdateItineraryDay}
-                  onCardFocus={(pinNum) => setActivePin(pinNum)}
+                  itinerary={alignItineraryToPlan(plan)}
+                  className="h-[280px]"
+                  dayIndex={mapDay}
                   onDayChange={setMapDay}
                 />
-              </StepCard>
-
-              <StepCard
-                n={4}
-                id="step-total"
-                title="Your total & where to book"
-                summary={null}
-                open={openStep === 4 || (stayChosen && openStep === 3)}
-                locked={!stayChosen}
-                lockedText="Your exact total appears once travel and stay are chosen"
-                onToggle={() => setOpenStep(openStep === 4 ? 3 : 4)}
-              >
-                <TotalStep
-                  plan={plan}
-                  preferences={preferences}
-                  budgetINR={noBudget ? 0 : targetBudget}
-                  onApply={(next, msg) => { onPlanChange(next); showRefineMsg(msg); }}
-                  onTryPlace={onStartNewPlan ? (place) => {
-                    const t = plan.travellers;
-                    const who = t.children > 0 ? `${t.adults} adults and ${t.children} kids` : `${t.total} ${t.total === 1 ? 'person' : 'people'}`;
-                    const budgetWords = plan.budget?.basis === 'per_person' ? `budget ${Math.round(targetBudget / Math.max(1, t.total))} per person` : `budget ${targetBudget} in total`;
-                    onStartNewPlan(`${plan.durationDays} days in ${place} for ${who} from ${plan.origin.replace(/\s*\([^)]*\)/, '')}, ${budgetWords}`);
-                  } : undefined}
-                />
-              </StepCard>
-
-              {/* MOBILE: Collapsible Map (collapsed by default at 375px per Prompt 6) */}
-              <div className="block lg:hidden">
-                <details className="card-consumer p-0 overflow-hidden border border-[#E2E6E1] bg-white rounded-2xl shadow-xs group">
-                  <summary className="p-3.5 flex items-center justify-between text-xs font-bold text-[#15201D] cursor-pointer hover:bg-[#F9FAF9] select-none">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-[#0E6B59]" />
-                      <span className="flex flex-col">
-                        <span className="text-sm">Map of your days</span>
-                        <span className="text-xs font-normal text-[#55625E]">Your stay and each day's places, with photos</span>
-                      </span>
-                    </div>
-                    <span className="text-xs font-semibold text-[#0E6B59]"><span className="group-open:hidden">Show</span><span className="hidden group-open:inline">Hide</span></span>
-                  </summary>
-                  <div className="p-2 border-t border-[#E2E6E1]">
-                    <UnifiedPlanMap
-                      destination={plan.destination}
-                      stayArea={currentStayArea}
-                      itinerary={alignItineraryToPlan(plan)}
-                      className="h-[36vh] min-h-[210px] max-h-[280px]"
-                      dayIndex={mapDay}
-                      onDayChange={setMapDay}
-                    />
-                  </div>
-                </details>
               </div>
 
-
-              {stayChosen && (<>
+              {(<>
               {/* ======================================================== */}
               {/* 4 TAP-TO-OPEN SECTIONS (Prompt 7 requirement)            */}
               {/* ======================================================== */}
@@ -689,21 +701,6 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
               )}
             </div>
 
-            {/* RIGHT PANE: DESKTOP STICKY MAP & SUMMARY (5 columns) */}
-            <div className="hidden lg:block lg:col-span-5 space-y-4 sticky top-20">
-              {/* Sticky Map Component */}
-              <div className="card-consumer p-4 border border-[#E2E6E1] bg-white rounded-2xl">
-                <UnifiedPlanMap
-                  destination={plan.destination}
-                  stayArea={currentStayArea}
-                  itinerary={alignItineraryToPlan(plan)}
-                  className="h-[34vh] min-h-[240px]"
-                  dayIndex={mapDay}
-                  onDayChange={setMapDay}
-                />
-              </div>
-
-            </div>
           </div>
         </>
       )}

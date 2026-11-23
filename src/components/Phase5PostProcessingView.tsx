@@ -262,7 +262,7 @@ export const Phase5PostProcessingView: React.FC<Phase5Props> = ({
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `AeroDAG_Itinerary_${intent.destination.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
+                a.download = `TripCheck_Itinerary_${intent.destination.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
                 a.click();
               }}
               className="text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-600 flex items-center gap-1.5 transition font-mono"

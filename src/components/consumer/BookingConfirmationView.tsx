@@ -44,7 +44,7 @@ export const BookingConfirmationView: React.FC<BookingConfirmationViewProps> = (
     <div className="max-w-3xl mx-auto px-4 py-10 space-y-8 animate-fade-in-slide">
       {/* Print only banner for downloaded itinerary */}
       <div className="hidden print:block text-center font-mono text-xs text-[#55625E] pb-2 border-b border-[#E2E6E1]">
-        Demo booking — not a ticket • AeroDAG demo
+        Demo booking — not a ticket • TripCheck demo
       </div>
 
       {/* 1. Centered Confirmation Card */}

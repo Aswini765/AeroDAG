@@ -352,7 +352,7 @@ export const BookedItems: React.FC<BookedItemsProps> = ({
       {/* Direct Outbound Booking Guarantee Note */}
       <div className="p-2.5 rounded-xl bg-[#F6F8F6] border border-[#E2E6E1] text-[11px] text-[#55625E] flex items-center justify-between gap-2">
         <span>
-          <strong>Direct Outbound Links:</strong> Book directly with official travel providers (MakeMyTrip, IRCTC, hotel official portals). No checkout or payment handling on AeroDAG.
+          <strong>Direct Outbound Links:</strong> Book directly with official travel providers (MakeMyTrip, IRCTC, hotel official portals). No checkout or payment handling on TripCheck.
         </span>
         <a
           href="https://www.irctc.co.in/nget/train-search"

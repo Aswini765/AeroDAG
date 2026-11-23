@@ -236,7 +236,7 @@ async function runTests() {
   assert(bookedItemsFile.includes('https://www.makemytrip.com/flights/'), 'BookedItems contains MakeMyTrip Flights link');
   assert(bookedItemsFile.includes('buildHotelSearchUrl'), 'BookedItems links to a MakeMyTrip hotel search with dates and guests');
   assert(bookedItemsFile.includes('official site booking'), 'BookedItems contains direct official hotel booking search link');
-  assert(bookedItemsFile.includes('No checkout or payment handling on AeroDAG'), 'Explicitly notes no checkout required');
+  assert(bookedItemsFile.includes('No checkout or payment handling on TripCheck'), 'Explicitly notes no checkout required');
 
   // =========================================================================
   // TEST 6: DAY PLAN WITH MAP & GOOGLE MAPS NAVIGATION HAND-OFF

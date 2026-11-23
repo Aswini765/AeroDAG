@@ -189,7 +189,7 @@ export const ArchitectureBlueprintView: React.FC = () => {
             The Micro-Agent DAG Execution Advantage
           </h3>
           <p className="text-xs text-slate-300 leading-relaxed">
-            Rather than relying on a single monolithic prompt, AeroDAG deconstructs the travel problem into specialized autonomous domain workers (Flight GDS, Hotel CRS, Consular RAG, and Local Scheduler) executing strictly within explicit bounds set by The Puppeteer supervisor.
+            Rather than relying on a single monolithic prompt, TripCheck deconstructs the travel problem into specialized autonomous domain workers (Flight GDS, Hotel CRS, Consular RAG, and Local Scheduler) executing strictly within explicit bounds set by The Puppeteer supervisor.
           </p>
         </div>
 

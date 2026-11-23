@@ -261,6 +261,69 @@ export const TravelStep: React.FC<{
 /* ------------------------------------------------------------------ */
 /* Step 2: where do you want to stay?                                  */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* TripCheck picks for you (each pick shows why, and can be changed)  */
+/* ------------------------------------------------------------------ */
+const withStay = (p: TripPlan, h: HotelItem): TripPlan => ({ ...TripPlanningEngine.swapComponent(p, { hotel: h }), userChoices: { ...(p.userChoices || {}), hotelId: h.id } });
+const doorHours = (o: TravelOption) => o.oneWayHours + o.overheadHours;
+
+/**
+ * The plan a sensible traveller would pick: the cheapest way to get there that doesn't eat the trip
+ * (no own car assumed, travel under 40% of the trip's hours), and the best stay that still fits the budget.
+ */
+export function bestFitPlan(plan: TripPlan, preferences: TripPreferences | null | undefined, budgetINR: number): TripPlan {
+  const days = tripDays(plan);
+  const all = travelOptions(plan);
+  const tripHours = Math.max(1, plan.durationDays) * 24;
+  const sensible = all.filter((o) => o.mode !== 'selfdrive' && (doorHours(o) * 2) / tripHours <= 0.4);
+  const pool = sensible.length ? sensible : all.filter((o) => o.mode !== 'selfdrive').length ? all.filter((o) => o.mode !== 'selfdrive') : all;
+  let base = plan;
+  let travelWhy = '';
+  if (pool.length) {
+    const priced = pool.map((o) => ({ o, p: applyTravelOption(plan, o, { trainClass: o.mode === 'train' ? '3A' : undefined, firstDay: days?.first, lastDay: days?.last }) }))
+      .map((x) => ({ ...x, cost: computeFullTripCost(x.p, preferences || undefined).lines.find((l) => l.id === 'cost-travel')?.amountINR || 0 }));
+    priced.sort((a, b) => a.cost - b.cost);
+    const pick = priced[0];
+    base = pick.p;
+    const fastest = [...pool].sort((a, b) => doorHours(a) - doorHours(b))[0];
+    travelWhy = pick.o === fastest ? (pool.length > 1 ? 'Cheapest and fastest' : 'Best way there') : 'Cheapest sensible way';
+  } else {
+    base = { ...plan, userChoices: { ...(plan.userChoices || {}), travelKey: 'local' } };
+    travelWhy = 'No long journey';
+  }
+  const stays = stayChoices(base);
+  if (!stays.length) return { ...base, userChoices: { ...(base.userChoices || {}), why: { travel: travelWhy } } };
+  const totals = stays.map((h) => ({ h, p: withStay(base, h) })).map((x) => ({ ...x, t: computeFullTripCost(x.p, preferences || undefined).totalWithBufferINR }));
+  let chosen = totals[0];
+  let stayWhy = 'Cheapest stay';
+  if (budgetINR > 0) {
+    const fits = totals.filter((x) => x.t <= budgetINR);
+    if (fits.length) { chosen = fits[fits.length - 1]; stayWhy = fits.length === totals.length ? 'Best stay in your budget' : 'Best stay that fits'; }
+  } else {
+    chosen = totals[Math.floor((totals.length - 1) / 2)];
+    stayWhy = 'Good value';
+  }
+  return { ...chosen.p, userChoices: { ...(chosen.p.userChoices || {}), why: { travel: travelWhy, stay: stayWhy } } };
+}
+
+/** The cheapest way to do the same trip (sleeper / 3A trains, every stay): for "Make it fit" */
+export function cheapestPlan(plan: TripPlan, preferences: TripPreferences | null | undefined): { plan: TripPlan; total: number; label: string } | null {
+  const days = tripDays(plan);
+  let best: { plan: TripPlan; total: number; label: string } | null = null;
+  for (const o of travelOptions(plan)) {
+    const variants = o.mode === 'train' ? (['SL', '3A'] as const) : ([undefined] as const);
+    for (const cls of variants) {
+      const withTravel = applyTravelOption(plan, o, { trainClass: cls, firstDay: days?.first, lastDay: days?.last });
+      for (const h of stayChoices(plan)) {
+        const p = withStay(withTravel, h);
+        const t = computeFullTripCost(p, preferences || undefined).totalWithBufferINR;
+        if (!best || t < best.total) best = { plan: { ...p, userChoices: { ...(p.userChoices || {}), why: { travel: 'Cheapest', stay: 'Cheapest' } } }, total: t, label: `${o.title}${cls ? ` (${cls})` : ''} + ${h.name.replace(/,\s*~₹.*$/, '')}` };
+      }
+    }
+  }
+  return best;
+}
+
 export function stayChoices(plan: TripPlan): HotelItem[] {
   const listed = [...(plan.availableHotels || [])];
   if (listed.length === 0 && plan.hotel) listed.push(plan.hotel);

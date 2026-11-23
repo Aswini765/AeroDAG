@@ -209,7 +209,7 @@ export const ShareSaveSheet: React.FC<ShareSaveSheetProps> = ({
                 <ArrowUpRight className="h-[18px] w-[18px] text-[#0E6B59] shrink-0" />
               </a>
             ))}
-            <p className="text-xs text-[#55625E]">Prices on these sites can differ from our estimate. AeroDAG doesn't take bookings or payments.</p>
+            <p className="text-xs text-[#55625E]">Prices on these sites can differ from our estimate. TripCheck doesn't take bookings or payments.</p>
           </section>
         </div>
       </div>

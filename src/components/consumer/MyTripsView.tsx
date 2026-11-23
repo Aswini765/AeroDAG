@@ -35,8 +35,8 @@ interface MyTripsViewProps {
 const getInitialAssistantMessage = (isSaved: boolean) => ({
   sender: 'assistant' as const,
   text: isSaved
-    ? "Hello! I'm your AeroDAG Trip Assistant. Your saved plan is ready. How can I help with dining, day pacing, or budget questions?"
-    : "Hello! I'm your AeroDAG Trip Assistant. Your booked trip is ready. How can I help with dining, day pacing, or packing questions?"
+    ? "Hello! I'm your TripCheck Trip Assistant. Your saved plan is ready. How can I help with dining, day pacing, or budget questions?"
+    : "Hello! I'm your TripCheck Trip Assistant. Your booked trip is ready. How can I help with dining, day pacing, or packing questions?"
 });
 
 export const MyTripsView: React.FC<MyTripsViewProps> = ({
