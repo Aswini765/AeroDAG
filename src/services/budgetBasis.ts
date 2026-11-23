@@ -21,12 +21,12 @@ export function basisFromWords(text: string): Exclude<BudgetBasis, 'none'> | nul
 }
 
 /**
- * The words didn't say: a group of 5+ friends usually means a per-head amount,
+ * The words didn't say: a group of friends (3+) usually means a per-head amount,
  * unless the number is too big to be one person's share. Families and couples mean a total.
  */
 export function guessBasis(amountINR: number, travellers: number, partyType?: string | null): Exclude<BudgetBasis, 'none'> {
   const friends = partyType === 'friends' || partyType === 'group';
-  if (friends && travellers >= 5 && amountINR <= 30000) return 'per_person';
+  if (friends && travellers >= 3 && amountINR <= 30000) return 'per_person';
   return 'total';
 }
 

@@ -26,7 +26,8 @@ function assert(condition: boolean, msg: string) {
     ['Coorg 2 adults 2 kids budget 40000', 4, 'family', 'total'],
     ['visit each beach, budget 30000', 2, 'couple', 'total'],
     ['10 friends goa 12000', 10, 'friends', 'per_person'],
-    ['10 of us, 50000 Goa', 10, 'friends', 'total']
+    ['10 of us, 50000 Goa', 10, 'friends', 'total'],
+    ['Coorg weekend, 4 friends, budget 9000', 4, 'friends', 'per_person']
   ];
   for (const [text, n, party, want] of cases) {
     const amount = parseBudgetINR(text) || 0;
@@ -56,6 +57,12 @@ function assert(condition: boolean, msg: string) {
   // Home card stories: totals for a stated group, with the city they're priced from
   for (const [name, st] of Object.entries(CARD_STORIES)) {
     assert(st.fromINR > 5000 && st.people >= 2 && new RegExp(name, 'i').test(st.prompt) && st.prompt.includes(st.origin), `${name} card: ${st.who} · ${st.days} · from ₹${st.fromINR} for ${st.people}, from ${st.origin}`);
+  }
+
+  // Friends think per head: every friends card shows each person's share, never a group total
+  for (const [name, st] of Object.entries(CARD_STORIES)) {
+    if (/friends/i.test(st.who)) assert(st.perPerson === true, `${name} friends card shows per person`);
+    else assert(!st.perPerson, `${name} (${st.who}) card shows the total for the group`);
   }
 
   console.log(`TOTAL PASSED: ${passed}`);

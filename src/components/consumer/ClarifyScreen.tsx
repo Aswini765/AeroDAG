@@ -216,7 +216,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
   ]));
   // Total for everyone, or each person's share? Friends groups of 5+ usually think per head.
   const [budgetBasisPick, setBudgetBasisPick] = useState<'total' | 'per_person' | 'none'>(
-    initialContext.budgetBasis === 'per_person' || (tripContext.partyType === 'friends' && (tripContext.totalTravellers || 0) >= 5) ? 'per_person' : 'total'
+    initialContext.budgetBasis === 'per_person' || (tripContext.partyType === 'friends' && (tripContext.totalTravellers || 0) >= 3) ? 'per_person' : 'total'
   );
   const paxNow = Math.max(1, selectedTravellersCount);
   const perPersonPicks = Array.from(new Set([0.75, 1, 1.5].map((f) => roundTo((typicalTotalINR / paxNow) * f, 1000))));

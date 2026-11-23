@@ -18,7 +18,7 @@ export interface DestinationCardData {
   imageUrl: string;
   isAiEstimate?: boolean;
   /** Home card: a small real trip people take there, priced by the same cost engine as the plan */
-  story?: { who: string; days: string; people: number; fromINR: number; origin: string; prompt: string };
+  story?: { who: string; days: string; people: number; fromINR: number; origin: string; prompt: string; perPerson?: boolean };
 }
 
 /**
@@ -28,7 +28,8 @@ export interface DestinationCardData {
  */
 export const CARD_STORIES: Record<string, NonNullable<DestinationCardData['story']>> = {
   Goa: { who: 'Couple', days: '4 days', people: 2, fromINR: 28500, origin: 'Bengaluru', prompt: '4 days in Goa for 2 adults from Bengaluru' },
-  Coorg: { who: '4 friends', days: 'weekend', people: 4, fromINR: 34000, origin: 'Bengaluru', prompt: 'Weekend in Coorg for 4 friends from Bengaluru' },
+  // Friends think per head, so a friends card shows each person's share
+  Coorg: { who: '4 friends', days: 'weekend', people: 4, fromINR: 34000, origin: 'Bengaluru', prompt: 'Weekend in Coorg for 4 friends from Bengaluru', perPerson: true },
   Mysuru: { who: 'Family of 4', days: 'weekend', people: 4, fromINR: 24000, origin: 'Bengaluru', prompt: 'Weekend in Mysuru for 2 adults and 2 kids from Bengaluru' },
   Kerala: { who: 'Couple', days: '5 days', people: 2, fromINR: 30000, origin: 'Bengaluru', prompt: '5 days in Kerala for 2 adults from Bengaluru' },
   Ooty: { who: 'Family of 4', days: '3 days', people: 4, fromINR: 33000, origin: 'Bengaluru', prompt: '3 days in Ooty for 2 adults and 2 kids from Bengaluru' },

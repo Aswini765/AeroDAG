@@ -436,7 +436,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
                 setInputText(e.target.value);
                 if (errorMessage) setErrorMessage(null);
               }}
-              placeholder="e.g. 4 days in Coorg for 2 adults under ₹25,000, or: Coorg or Ooty by train"
+              placeholder="e.g. 4 days in Coorg for 2 adults under ₹25,000"
               className="w-full bg-transparent border-0 resize-none text-[#15201D] placeholder-[#55625E]/60 text-xs sm:text-sm focus:ring-0 focus:outline-none p-1 font-sans leading-relaxed min-h-[56px] sm:min-h-[44px]"
             />
           </div>
@@ -589,7 +589,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
                     {story ? (
                       <div className="mt-0.5 leading-tight" title={`Cheapest sensible way from ${story.origin}: travel, stay, food, local cabs and a 15% buffer. Your city and choices change it.`}>
                         <div className="text-[10px] sm:text-[11px] text-[#55625E]">{story.who} · {story.days}{story.origin !== 'Bengaluru' ? ` · from ${story.origin}` : ''}</div>
-                        <div className="text-[10px] sm:text-[11px] font-bold text-[#15201D]">from ₹{story.fromINR.toLocaleString('en-IN')} for {story.people}</div>
+                        <div className="text-[10px] sm:text-[11px] font-bold text-[#15201D]">{story.perPerson ? `from ₹${(Math.round(story.fromINR / story.people / 500) * 500).toLocaleString('en-IN')} each` : `from ₹${story.fromINR.toLocaleString('en-IN')}`}</div>
                       </div>
                     ) : (
                       <div className="text-[10px] sm:text-[11px] font-bold text-[#15201D] mt-0.5">
@@ -615,7 +615,7 @@ export const DescribeScreen: React.FC<DescribeScreenProps> = ({
             );
           })}
         </div>
-        <p className="text-[10px] sm:text-[11px] text-[#55625E] mt-1">Card prices: the cheapest sensible way from Bengaluru (Udaipur from Delhi) — travel, stay, food and a 15% buffer. Your city changes them.</p>
+        <p className="text-[10px] sm:text-[11px] text-[#55625E] mt-1">Card prices: the cheapest sensible way from Bengaluru (Udaipur from Delhi) — travel, stay, food and a 15% buffer. Friends trips show each person's share. Your city changes them.</p>
       </section>
 
       {/* 4. Example Trips */}
