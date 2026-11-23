@@ -56,7 +56,12 @@ export const PlanSummary: React.FC<{
         </div>
       )}
 
-      {over > 0 && cheapest && (
+      {over > 0 && (!cheapest || cheapest.total >= total - 200) && (
+        <div id="already-cheapest" className="rounded-xl bg-[#FFF6EC] text-[#8A3D00] px-3 py-2.5 text-sm">
+          This is already the cheapest way to do this trip. To fit, try fewer days or another place (see Price details).
+        </div>
+      )}
+      {over > 0 && cheapest && cheapest.total < total - 200 && (
         <div className="space-y-2">
           <button
             type="button"

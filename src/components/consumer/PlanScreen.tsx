@@ -26,6 +26,7 @@ import { StaySelector } from './plan/StaySelector';
 import { MoreOptionsModal } from './plan/MoreOptionsModal';
 import { TravelStep, StayStep, AddPlaceToDay, TotalStep, bestFitPlan } from './plan/StepPlanner';
 import { PlanSummary, ChoiceRow } from './plan/SimplePlan';
+import { FriendsGroup, isFriendsTrip } from './plan/FriendsGroup';
 import { gettingThereOptions } from '../../services/gettingThere';
 import { SeasonalAndPersonaCard } from './plan/SeasonalAndPersonaCard';
 import { BudgetBufferAndQuirksCard } from './plan/BudgetBufferAndQuirksCard';
@@ -469,6 +470,11 @@ export const PlanScreen: React.FC<PlanScreenProps> = ({
               >
                 <AddPlaceToDay plan={plan} onAdd={(next, msg) => { onPlanChange(next); showRefineMsg(msg); }} />
               </ChoiceRow>
+
+              {/* Friends: who's in, and the tightest budget (kept private) */}
+              {isFriendsTrip(plan, (tripContext as any)?.partyType) && (
+                <FriendsGroup plan={plan} preferences={preferences} onApply={(next, msg) => { onPlanChange(next); showRefineMsg(msg); }} />
+              )}
 
               {/* Permits and notes for this group (kids, seniors, pure veg, solo, big group) */}
               <ForYourTripCard plan={plan} preferences={preferences} />

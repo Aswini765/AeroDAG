@@ -5,6 +5,7 @@
 import { TripPlanningEngine } from '../../src/services/tripPlanningEngine';
 import { computeFullTripCost } from '../../src/services/fullTripCostHelper';
 import { bestFitPlan, cheapestPlan } from '../../src/components/consumer/plan/StepPlanner';
+import { isFriendsTrip } from '../../src/components/consumer/plan/FriendsGroup';
 
 let passed = 0;
 function assert(condition: boolean, msg: string) {
@@ -40,6 +41,11 @@ function assert(condition: boolean, msg: string) {
   const goa: any = await TripPlanningEngine.buildDeterministicPlan(ctx({ destination: 'Goa', origin: 'Kolkata (CCU)', durationDays: 4, dates: '4–7 Dec 2027', adultsCount: 2, childrenCount: 0, childrenAges: [], totalTravellers: 2, budgetTotalINR: 60000 }));
   const goaFit = bestFitPlan(goa, null, 60000);
   assert(Boolean(goaFit.flight), `4-day Goa from Kolkata: flight, not 2 days on a train (${goaFit.userChoices?.travelKey})`);
+
+  // The friends card shows for friend groups only, never for a family with kids
+  const t = (total: number, children = 0): any => ({ travellers: { total, adults: total - children, children } });
+  assert(isFriendsTrip(t(6), 'friends') && isFriendsTrip(t(4), undefined), 'Friends card: 6 friends, or 4 adults with nothing said');
+  assert(!isFriendsTrip(t(4, 2), 'family') && !isFriendsTrip(t(2), 'couple') && !isFriendsTrip(t(4), 'family'), 'No friends card for families or couples');
 
   console.log(`TOTAL PASSED: ${passed}`);
 })().catch((e) => { console.error(e); process.exit(1); });
