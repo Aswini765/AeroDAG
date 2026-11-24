@@ -121,6 +121,11 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
     initialContext.adultsCount &&
     initialContext.adultsCount > 0
   );
+  const whoText = (() => {
+    const a = tripContext.adultsCount || 0, k = tripContext.childrenCount || 0, o = tripContext.seniorsCount || 0;
+    const parts = [a ? `${a} adult${a === 1 ? '' : 's'}` : '', k ? `${k} kid${k === 1 ? '' : 's'}` : '', o ? `${o} senior${o === 1 ? '' : 's'}` : ''].filter(Boolean);
+    return parts.length ? parts.join(', ') : `${tripContext.totalTravellers || 2} people`;
+  })();
 
   const timeAlreadyStated = Boolean(
     initialContext.fieldSources?.pace === 'stated' &&
@@ -652,14 +657,19 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
         You wrote: <span className="text-[#15201D] font-semibold">“{initialPrompt}”</span>
       </div>
 
-      {/* Got it: each field with "You said" or "Assumed" */}
+      {/* Your trip: each field with "You said" or "Assumed"; anything we still need is asked right in this list */}
       <section id="clarify-what-we-understood" aria-labelledby="clarify-got-it" className="space-y-2">
-        <h2 id="clarify-got-it" className="text-xs font-semibold uppercase tracking-wider text-[#55625E]">Got it</h2>
+        <h2 id="clarify-got-it" className="text-xs font-semibold uppercase tracking-wider text-[#55625E]">Your trip</h2>
         {[
           { key: 'destination', label: 'Where', value: cleanDest, stated: tripContext.fieldSources?.destination !== 'assumed' },
           { key: 'duration', label: 'How long', value: `${Math.max(1, tripContext.durationDays || 4)} days · ${Math.max(1, (tripContext.durationDays || 4) - 1)} night${(tripContext.durationDays || 4) - 1 === 1 ? '' : 's'}`, stated: tripContext.fieldSources?.duration === 'stated' },
           { key: 'dates', label: 'When', value: tripContext.dates || 'Next free weekend', stated: tripContext.fieldSources?.dates === 'stated' },
-          { key: 'origin', label: 'From', value: (tripContext.origin || 'Bengaluru').replace(/\s*\([^)]*\)/, '').trim(), stated: tripContext.fieldSources?.origin === 'stated' }
+          // Not said yet? "From" is asked right below instead of showing a guess
+          ...(currentStep === 'basics' && !originAlreadyStated ? [] : [{ key: 'origin', label: 'From', value: (tripContext.origin || 'Bengaluru').replace(/\s*\([^)]*\)/, '').trim(), stated: tripContext.fieldSources?.origin === 'stated' }]),
+          ...(travellersAlreadyStated ? [{ key: 'who', label: 'Who', value: whoText, stated: true }] : []),
+          ...(budgetAlreadyStated && tripContext.budgetBasis !== 'none' && tripContext.budgetTotalINR
+            ? [{ key: 'budget', label: 'Budget', value: budgetLine(tripContext.budgetTotalINR, tripContext.budgetBasis === 'per_person' ? 'per_person' : 'total', Math.max(1, tripContext.totalTravellers || 1)), stated: true }]
+            : [])
         ].map((f) => (
           <div key={f.key} className="rounded-xl bg-white border border-[#E2E6E1] px-3 py-2.5 min-h-[48px]">
             <div className="flex items-center justify-between gap-2">
@@ -675,7 +685,7 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
                   type="button"
                   onClick={() => {
                     // Where changes the whole trip, so edit the sentence; everything else is changed right here
-                    if (f.key === 'destination') { onBackToDescribe(); return; }
+                    if (f.key === 'destination' || f.key === 'who' || f.key === 'budget') { onBackToDescribe(); return; }
                     setEditingField(editingField === f.key ? null : f.key);
                   }}
                   aria-label={`Change ${f.label}`}
@@ -925,15 +935,11 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
         {/* STEP: BASICS — "Two things change the total" */}
         {currentStep === 'basics' && (
           <div className="space-y-4 animate-fade-in-slide">
-            <section aria-labelledby="clarify-two-things" className="rounded-2xl bg-white border-2 border-[#0E6B59] p-4 space-y-4">
-              <h2 id="clarify-two-things" className="text-[17px] font-bold text-[#15201D]">{(() => {
-                const n = [!originAlreadyStated, !travellersAlreadyStated, !budgetAlreadyStated].filter(Boolean).length;
-                return n === 1 ? 'One thing changes the total' : n === 2 ? 'Two things change the total' : 'Three things change the total';
-              })()}</h2>
+            <section aria-label="Tell us" className="space-y-2 -mt-2">
 
               {!originAlreadyStated && (
-                <fieldset className="space-y-2" id="clarify-origin">
-                  <legend className="text-sm font-semibold text-[#15201D] mb-2">Where are you starting from?</legend>
+                <fieldset className="rounded-xl bg-white border-2 border-[#0E6B59] px-3 py-3 space-y-2" id="clarify-origin">
+                  <legend className="float-left w-full flex items-center justify-between gap-2 mb-2"><span><span className="block text-xs text-[#55625E]">From</span><span className="block text-[15px] font-semibold text-[#15201D]">Where are you starting from?</span></span><span className="text-[11px] font-bold rounded-full px-2 py-1 bg-[#FCEFD9] text-[#8A4307]">Tell us</span></legend><div className="clear-both" />
                   <div className="flex flex-wrap gap-2">
                     {['Bengaluru', 'New Delhi', 'Mumbai', 'Chennai', 'Hyderabad', 'Kolkata', 'Pune'].map((city) => {
                       const on = pickedOrigin === city && !customOriginInput.trim();
@@ -965,8 +971,8 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
               )}
 
               {!travellersAlreadyStated && (
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-semibold text-[#15201D] mb-2">How many of you?</legend>
+              <fieldset className="rounded-xl bg-white border-2 border-[#0E6B59] px-3 py-3 space-y-2">
+                <legend className="float-left w-full flex items-center justify-between gap-2 mb-2"><span><span className="block text-xs text-[#55625E]">Who</span><span className="block text-[15px] font-semibold text-[#15201D]">How many of you?</span></span><span className="text-[11px] font-bold rounded-full px-2 py-1 bg-[#FCEFD9] text-[#8A4307]">Tell us</span></legend><div className="clear-both" />
                 <div className="flex gap-2">
                   {[1, 2, 3, 4].map((num) => {
                     const on = !isCustomTravellersOpen && selectedTravellersCount === num;
@@ -1012,8 +1018,8 @@ export const ClarifyScreen: React.FC<ClarifyScreenProps> = ({
               )}
 
               {!budgetAlreadyStated && (
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-semibold text-[#15201D] mb-2">Roughly what budget?</legend>
+              <fieldset className="rounded-xl bg-white border-2 border-[#0E6B59] px-3 py-3 space-y-2">
+                <legend className="float-left w-full flex items-center justify-between gap-2 mb-2"><span><span className="block text-xs text-[#55625E]">Budget</span><span className="block text-[15px] font-semibold text-[#15201D]">Roughly what budget?</span></span><span className="text-[11px] font-bold rounded-full px-2 py-1 bg-[#FCEFD9] text-[#8A4307]">Tell us</span></legend><div className="clear-both" />
                 <div className="flex flex-wrap gap-2" role="group" aria-label="What the budget covers">
                   {([['total', 'Total for all'], ['per_person', 'Per person'], ['none', 'Not sure — show me the cost']] as const).map(([k, label]) => {
                     const on = budgetBasisPick === k;

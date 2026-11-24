@@ -455,7 +455,7 @@ export default function App() {
     const hasTripIntent = /\b(trip|holiday|vacation|getaway|weekend|travel|tour|honeymoon|outing|days?|nights?|week|budget|₹|\d+k)\b/i.test(promptText);
     const WHERE_TO_MSG = `Where would you like to go? Add a place, like "${promptText.trim().replace(/[.!?]+$/, '')} to Coorg". Not sure yet? Tap a place below — each card shows a typical price.`;
     const noPlaceMsg = () => (hasTripIntent && !looksLikeGibberish(promptText) ? WHERE_TO_MSG : UNPARSEABLE_MSG);
-    const lower = promptText.toLowerCase();
+    const lower = promptText.toLowerCase().replace(/(\d)(adults?|kids?|children|child|people|persons?|friends|days?|nights?|seniors?|pax)\b/g, '$1 $2');
 
     // 1. Try the AI parser first (server-side Gemini), when it is configured.
     const ai: ParseTripResult = isAiAvailable ? await callParseTrip(promptText) : { kind: 'failed' };
